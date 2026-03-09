@@ -398,7 +398,28 @@ export function getLLMConfig(): { apiKey: string; apiUrl: string; model: string 
   return cfg.apiKey ? cfg : null;
 }
 
-export function buildLLMPrompt(persona: PersonaData, computed: ComputedOutputs): string {
+// Bug Fix #1: buildLLMPrompt now takes shapes to inform LLM about actual spatial elements
+export function buildLLMPrompt(persona: PersonaData, computed: ComputedOutputs, shapes: Shape[]): string {
+  // Determine which spatial elements actually exist on the map
+  const hasWindows = shapes.some((s) => s.type === "window");
+  const hasDoors = shapes.some((s) => s.type === "door");
+  const hasRooms = shapes.some((s) => s.type === "room");
+  const windowCount = shapes.filter((s) => s.type === "window").length;
+  const doorCount = shapes.filter((s) => s.type === "door").length;
+  const roomCount = shapes.filter((s) => s.type === "room").length;
+
+  // Build spatial awareness context
+  const spatialContext = [
+    `SPATIAL ELEMENTS ACTUALLY PRESENT ON MAP:`,
+    `- Rooms: ${roomCount} ${hasRooms ? "(agent is inside a defined room)" : "(NO rooms defined — agent is in undefined open space)"}`,
+    `- Windows: ${windowCount} ${hasWindows ? `(nearest window is ${persona.spatial.dist_to_window} m away)` : "(NO windows exist in this space — there is NO natural light, NO outside view, NO window ventilation)"}`,
+    `- Doors/Exits: ${doorCount} ${hasDoors ? `(nearest exit is ${persona.spatial.dist_to_exit} m away)` : "(NO doors/exits defined — exit path is unclear)"}`,
+  ].join("\n");
+
+  const windowInstruction = hasWindows
+    ? "The agent CAN perceive windows and natural light from them."
+    : "CRITICAL: There are NO windows in this space. The agent CANNOT see outside, CANNOT feel natural light from windows, and CANNOT wish to move closer to a window. All lighting is artificial. Do NOT mention windows, views, or natural light in the narrative.";
+
   return `You are simulating the subjective experience of a building occupant. Based on the following persona, environmental, and spatial data, generate a first-person narrative and perceptual analysis.
 
 AGENT:
@@ -423,13 +444,17 @@ ENVIRONMENT:
 - Humidity: ${persona.environment.humidity}%
 - Air velocity: ${persona.environment.air_velocity} m/s
 
-SPATIAL:
-- Distance to wall: ${persona.spatial.dist_to_wall} m
-- Distance to window: ${persona.spatial.dist_to_window} m
-- Distance to exit: ${persona.spatial.dist_to_exit} m
+${spatialContext}
+
+SPATIAL METRICS:
+- Distance to wall: ${persona.spatial.dist_to_wall} m${hasRooms ? "" : " (no room defined)"}
+- Distance to window: ${hasWindows ? persona.spatial.dist_to_window + " m" : "N/A (no windows exist)"}
+- Distance to exit: ${hasDoors ? persona.spatial.dist_to_exit + " m" : "N/A (no exits defined)"}
 - Ceiling height: ${persona.spatial.ceiling_h} m
 - Enclosure ratio: ${persona.spatial.enclosure_ratio}
 - Visible agents: ${persona.spatial.visible_agents}
+
+${windowInstruction}
 
 COMPUTED (PMV/PPD):
 - PMV: ${computed.PMV}
@@ -455,12 +480,14 @@ Respond in this exact JSON format (no markdown, no explanation, just JSON):
   "rule_triggers": ["<issue_tag_1>", "<issue_tag_2>"]
 }
 
-Important: As an ${persona.agent.mbti} personality type, reflect their cognitive functions and emotional tendencies. The comfort score should reflect genuine subjective experience, not just physical conditions. Consider how their MBTI type would react to the spatial enclosure, noise levels, lighting, and social density.`;
+Important: As an ${persona.agent.mbti} personality type, reflect their cognitive functions and emotional tendencies. The comfort score should reflect genuine subjective experience, not just physical conditions. Consider how their MBTI type would react to the spatial enclosure, noise levels, lighting, and social density. Only reference spatial elements (windows, doors, rooms) that ACTUALLY EXIST on the map.`;
 }
 
+// Bug Fix #1: callLLM now takes shapes parameter to pass spatial awareness to LLM
 export async function callLLM(
   persona: PersonaData,
-  computed: ComputedOutputs
+  computed: ComputedOutputs,
+  shapes: Shape[] = []
 ): Promise<{
   experience: ExperienceData;
   accumulatedState: AccumulatedState;
@@ -482,9 +509,9 @@ export async function callLLM(
           {
             role: "system",
             content:
-              "You are an agent-based environmental experience model. You simulate how different MBTI personality types experience architectural spaces. MBTI is the sole personality input — you must infer all preferences from it. Always respond with valid JSON only, no markdown.",
+              "You are an agent-based environmental experience model. You simulate how different MBTI personality types experience architectural spaces. MBTI is the sole personality input — you must infer all preferences from it. CRITICAL: Only reference spatial elements (windows, doors, rooms) that are explicitly listed as present. If no windows exist, do NOT mention windows, views, or natural light. Always respond with valid JSON only, no markdown.",
           },
-          { role: "user", content: buildLLMPrompt(persona, computed) },
+          { role: "user", content: buildLLMPrompt(persona, computed, shapes) },
         ],
         temperature: 0.8,
         max_tokens: 1200,

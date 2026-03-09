@@ -17,6 +17,7 @@ import type {
   AccumulatedState,
   ComputedOutputs,
 } from "@/lib/store";
+import SliderField from "@/components/SliderField";
 
 // ---- Inline Editable Field ----
 function EditableField({
@@ -367,12 +368,11 @@ export default function PersonaMindMap({
                 ]} />
             </DataRow>
             <div className="mt-1 pt-1" style={{ borderTop: "1px dashed #D4C4A8" }}>
-              <DataRow label="Met">
-                <EditableField value={agent.metabolic_rate} onChange={(v) => updateAgent("metabolic_rate", v)} />
-              </DataRow>
-              <DataRow label="Clo">
-                <EditableField value={agent.clothing_insulation} onChange={(v) => updateAgent("clothing_insulation", v)} />
-              </DataRow>
+              {/* Feature #3: Slider bars for Met and Clo */}
+              <SliderField label="Met" value={agent.metabolic_rate} min={0.5} max={4} step={0.1}
+                onChange={(v) => updateAgent("metabolic_rate", String(v))} color="#B85C38" />
+              <SliderField label="Clo" value={agent.clothing_insulation} min={0} max={3} step={0.1}
+                onChange={(v) => updateAgent("clothing_insulation", String(v))} color="#C67B4B" />
             </div>
           </Panel>
         </div>
@@ -391,25 +391,20 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ---- ENVIRONMENT ---- */}
+        {/* ---- ENVIRONMENT (Feature #3: Slider bars) ---- */}
         <div className="col-span-12 md:col-span-4" data-node="environment">
           <SectionTag label="ENVIRONMENT" icon="●" color="#3D6B4F" />
           <Panel>
-            <DataRow label="Lux">
-              <EditableField value={environment.lux} onChange={(v) => updateEnv("lux", v)} />
-            </DataRow>
-            <DataRow label="Noise">
-              <EditableField value={environment.dB} onChange={(v) => updateEnv("dB", v)} suffix="dB" />
-            </DataRow>
-            <DataRow label="Temp">
-              <EditableField value={environment.air_temp} onChange={(v) => updateEnv("air_temp", v)} suffix="°C" />
-            </DataRow>
-            <DataRow label="RH">
-              <EditableField value={environment.humidity} onChange={(v) => updateEnv("humidity", v)} suffix="%" />
-            </DataRow>
-            <DataRow label="Air V.">
-              <EditableField value={environment.air_velocity} onChange={(v) => updateEnv("air_velocity", v)} suffix="m/s" />
-            </DataRow>
+            <SliderField label="Lux" value={environment.lux} min={0} max={2000} step={10}
+              onChange={(v) => updateEnv("lux", String(v))} color="#C4956A" />
+            <SliderField label="Noise" value={environment.dB} min={0} max={120} step={1} suffix="dB"
+              onChange={(v) => updateEnv("dB", String(v))} color="#B85C38" />
+            <SliderField label="Temp" value={environment.air_temp} min={-10} max={50} step={0.5} suffix="°C"
+              onChange={(v) => updateEnv("air_temp", String(v))} color="#3D6B4F" />
+            <SliderField label="RH" value={environment.humidity} min={0} max={100} step={1} suffix="%"
+              onChange={(v) => updateEnv("humidity", String(v))} color="#4A90B8" />
+            <SliderField label="Air V." value={environment.air_velocity} min={0} max={5} step={0.05} suffix="m/s"
+              onChange={(v) => updateEnv("air_velocity", String(v))} color="#6B8E5A" />
           </Panel>
         </div>
 
@@ -457,12 +452,12 @@ export default function PersonaMindMap({
                   {comfortDelta > 0 ? "+" : ""}{comfortDelta.toFixed(1)} vs prev
                 </span>
               )}
-              {/* Feedback #6: Show trend only once, not duplicated */}
+              {/* Bug Fix #2: Show IMPROVING/DECLINING based on actual comfort delta */}
               <span className="font-pixel text-[9px]" style={{
                 color: experience.trend === "declining" ? "#B85C38" : experience.trend === "rising" ? "#6B8E5A" : "#C4956A",
               }}>
                 {experience.trend === "declining" ? "▼" : experience.trend === "rising" ? "▲" : "—"}{" "}
-                {experience.trend.toUpperCase()}
+                {experience.trend === "rising" ? "IMPROVING" : experience.trend === "declining" ? "DECLINING" : "STABLE"}
               </span>
             </div>
 

@@ -134,11 +134,21 @@ export default function Home() {
     }
     setRunning(true);
     toast.info("Running agent simulation...");
-    const result = await callLLM(persona, computed);
+    const result = await callLLM(persona, computed, shapes);
     if (result) {
       setPrevExperience({ ...experience });
       setPrevAccState({ ...accState });
-      setExperience(result.experience);
+      // Bug Fix #2: Override LLM trend with computed trend based on comfort delta
+      const prevScore = experience.comfort_score;
+      const newScore = result.experience.comfort_score;
+      let computedTrend: "rising" | "declining" | "stable" = "stable";
+      if (prevScore > 0) {
+        const delta = newScore - prevScore;
+        if (delta > 0.5) computedTrend = "rising";
+        else if (delta < -0.5) computedTrend = "declining";
+        else computedTrend = "stable";
+      }
+      setExperience({ ...result.experience, trend: computedTrend });
       setAccState(result.accumulatedState);
       setTriggers(result.ruleTriggers);
       toast.success("Simulation complete!");
