@@ -1,10 +1,11 @@
 // ============================================================
-// SpatialMap Component - 2D Canvas for room/window/door shapes
-// Design: Pixel Architecture Art
+// SpatialMap Component - Multi-Agent 2D Canvas
+// Supports 3 agents with distinct pixel avatars and colors
 // ============================================================
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import type { Shape, AgentPosition } from "@/lib/store";
+import { PERSONA_COLORS } from "@/lib/store";
 
 const CANVAS_SIZE = 620;
 const WORLD_SIZE = 20000;
@@ -31,13 +32,86 @@ const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string
   door: { fill: "rgba(198, 123, 75, 0.15)", stroke: "#C67B4B", label: "DOOR" },
 };
 
+// Draw a pixel avatar on canvas
+function drawPixelAvatar(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number,
+  index: number,
+  isActive: boolean,
+  scale: number = 1
+) {
+  const color = PERSONA_COLORS[index];
+  const s = 2 * scale; // pixel size
+
+  // Glow for active agent
+  if (isActive) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16 * scale, 0, Math.PI * 2);
+    ctx.fillStyle = `${color.bg}`;
+    ctx.fill();
+    ctx.strokeStyle = color.primary;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Body
+  ctx.fillStyle = color.primary;
+  ctx.fillRect(cx - 3 * s, cy - 1 * s, 6 * s, 5 * s);
+
+  // Head
+  ctx.fillStyle = color.secondary;
+  ctx.fillRect(cx - 3 * s, cy - 6 * s, 6 * s, 5 * s);
+
+  // Eyes
+  ctx.fillStyle = "#F2E8D5";
+  ctx.fillRect(cx - 2 * s, cy - 4 * s, 2 * s, s);
+  ctx.fillRect(cx + 1 * s, cy - 4 * s, 2 * s, s);
+
+  // Distinct features
+  if (index === 0) {
+    // Hat
+    ctx.fillStyle = color.primary;
+    ctx.fillRect(cx - 4 * s, cy - 8 * s, 8 * s, 2 * s);
+    ctx.fillRect(cx - 5 * s, cy - 7 * s, 10 * s, s);
+  } else if (index === 1) {
+    // Glasses
+    ctx.strokeStyle = "#F2E8D5";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - 3 * s, cy - 5 * s, 3 * s, 3 * s);
+    ctx.strokeRect(cx + 1 * s, cy - 5 * s, 3 * s, 3 * s);
+    ctx.fillStyle = "#F2E8D5";
+    ctx.fillRect(cx, cy - 4 * s, s, s);
+  } else if (index === 2) {
+    // Backpack
+    ctx.fillStyle = color.primary;
+    ctx.fillRect(cx + 3 * s, cy - 2 * s, 3 * s, 5 * s);
+    ctx.fillStyle = color.secondary;
+    ctx.fillRect(cx + 4 * s, cy - 1 * s, s, 2 * s);
+  }
+
+  // Legs
+  ctx.fillStyle = color.primary;
+  ctx.fillRect(cx - 3 * s, cy + 4 * s, 2 * s, 2 * s);
+  ctx.fillRect(cx + 1 * s, cy + 4 * s, 2 * s, 2 * s);
+
+  // Label
+  ctx.font = "bold 9px 'Silkscreen', monospace";
+  ctx.fillStyle = color.primary;
+  ctx.textAlign = "center";
+  ctx.fillText(`P${index + 1}`, cx, cy + 10 * s);
+}
+
 export default function SpatialMap({
   shapes,
-  agentPosition,
+  agentPositions,
+  activeAgentIdx,
   onAgentPlace,
 }: {
   shapes: Shape[];
-  agentPosition: AgentPosition | null;
+  agentPositions: (AgentPosition | null)[];
+  activeAgentIdx: number;
   onAgentPlace: (pos: AgentPosition) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -160,41 +234,28 @@ export default function SpatialMap({
       ctx.fillText(label, lx, ly + 4);
     });
 
-    // Agent position
-    if (agentPosition) {
-      const [ax, ay] = worldToCanvas(agentPosition.x, agentPosition.y);
-      // Glow
-      ctx.beginPath();
-      ctx.arc(ax, ay, 12, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(184, 92, 56, 0.15)";
-      ctx.fill();
-      // Outer
-      ctx.beginPath();
-      ctx.arc(ax, ay, 8, 0, Math.PI * 2);
-      ctx.fillStyle = "#B85C38";
-      ctx.fill();
-      // Inner
-      ctx.beginPath();
-      ctx.arc(ax, ay, 4, 0, Math.PI * 2);
-      ctx.fillStyle = "#F2E8D5";
-      ctx.fill();
-      // Label
-      ctx.font = "9px 'Silkscreen', monospace";
-      ctx.fillStyle = "#B85C38";
-      ctx.textAlign = "left";
-      ctx.fillText("AGENT", ax + 12, ay + 3);
-    }
+    // Draw all agents (inactive first, active last so it's on top)
+    const drawOrder = agentPositions
+      .map((pos, i) => ({ pos, i }))
+      .filter((a) => a.pos !== null)
+      .sort((a, b) => (a.i === activeAgentIdx ? 1 : 0) - (b.i === activeAgentIdx ? 1 : 0));
+
+    drawOrder.forEach(({ pos, i }) => {
+      if (!pos) return;
+      const [ax, ay] = worldToCanvas(pos.x, pos.y);
+      drawPixelAvatar(ctx, ax, ay, i, i === activeAgentIdx);
+    });
 
     // Hover crosshair
     if (hoverPos) {
-      ctx.strokeStyle = "rgba(184, 92, 56, 0.3)";
+      ctx.strokeStyle = `${PERSONA_COLORS[activeAgentIdx].primary}60`;
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.moveTo(hoverPos.x, MARGIN); ctx.lineTo(hoverPos.x, CANVAS_SIZE - MARGIN); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(MARGIN, hoverPos.y); ctx.lineTo(CANVAS_SIZE - MARGIN, hoverPos.y); ctx.stroke();
       ctx.setLineDash([]);
     }
-  }, [shapes, agentPosition, hoverPos]);
+  }, [shapes, agentPositions, activeAgentIdx, hoverPos]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -237,6 +298,24 @@ export default function SpatialMap({
 
   return (
     <div ref={containerRef}>
+      {/* Agent legend */}
+      <div className="flex items-center gap-4 mb-3">
+        {agentPositions.map((pos, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <div className="w-3 h-3" style={{
+              background: PERSONA_COLORS[i].primary,
+              border: i === activeAgentIdx ? "2px solid #6B4C3B" : "1px solid #D4C4A8",
+              opacity: pos ? 1 : 0.3,
+            }} />
+            <span className="font-pixel text-[8px]" style={{
+              color: i === activeAgentIdx ? PERSONA_COLORS[i].primary : "#A89B8C",
+            }}>
+              P{i + 1} {pos ? `(${pos.x}, ${pos.y})` : "not placed"}
+            </span>
+          </div>
+        ))}
+      </div>
+
       <canvas
         ref={canvasRef}
         width={CANVAS_SIZE}
@@ -248,7 +327,7 @@ export default function SpatialMap({
           width: `${CANVAS_SIZE * scale}px`,
           height: `${CANVAS_SIZE * scale}px`,
           cursor: "crosshair",
-          border: "3px solid #B85C38",
+          border: `3px solid ${PERSONA_COLORS[activeAgentIdx].primary}`,
           boxShadow: "3px 3px 0px #6B4C3B",
         }}
       />

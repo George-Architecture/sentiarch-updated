@@ -284,6 +284,8 @@ export default function PersonaMindMap({
   prevExperience,
   prevAccumulatedState,
   onPersonaChange,
+  hasSimulated = true,
+  personaColor,
 }: {
   persona: PersonaData;
   experience: ExperienceData;
@@ -293,6 +295,8 @@ export default function PersonaMindMap({
   prevExperience: ExperienceData | null;
   prevAccumulatedState: AccumulatedState | null;
   onPersonaChange: (p: PersonaData) => void;
+  hasSimulated?: boolean;
+  personaColor?: { primary: string; secondary: string; bg: string; label: string };
 }) {
   const { agent, position, environment, spatial } = persona;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -315,7 +319,8 @@ export default function PersonaMindMap({
     onPersonaChange({ ...persona, spatial: { ...persona.spatial, [key]: parseFloat(val) || 0 } });
   }, [persona, onPersonaChange]);
 
-  const comfortDelta = prevExperience && prevExperience.comfort_score > 0
+  // Baseline reset: only show delta if this persona has been simulated AND has prev results
+  const comfortDelta = hasSimulated && prevExperience && prevExperience.comfort_score > 0
     ? experience.comfort_score - prevExperience.comfort_score : null;
 
   const mbtiOptions = [
@@ -496,9 +501,8 @@ export default function PersonaMindMap({
               <EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" />
             </DataRow>
             <StaticRow label="Encl." value={spatial.enclosure_ratio} />
-            <DataRow label="Vis.Ag">
-              <EditableField value={spatial.visible_agents} onChange={(v) => updateSpatial("visible_agents", v)} />
-            </DataRow>
+            <StaticRow label="Vis.Ag" value={spatial.visible_agents} />
+            <div className="mt-1 font-pixel text-[6px]" style={{ color: "#A89B8C" }}>auto-calculated from map</div>
           </Panel>
         </div>
 
