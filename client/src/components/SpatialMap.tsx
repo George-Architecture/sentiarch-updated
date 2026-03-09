@@ -108,16 +108,19 @@ export default function SpatialMap({
   agentPositions,
   activeAgentIdx,
   onAgentPlace,
+  onAgentRemove,
 }: {
   shapes: Shape[];
   agentPositions: (AgentPosition | null)[];
   activeAgentIdx: number;
   onAgentPlace: (pos: AgentPosition) => void;
+  onAgentRemove?: (idx: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredAgentIdx, setHoveredAgentIdx] = useState<number | null>(null);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -294,14 +297,39 @@ export default function SpatialMap({
     const cx = (e.clientX - rect.left) * scaleX;
     const cy = (e.clientY - rect.top) * scaleY;
     setHoverPos({ x: cx, y: cy });
+
+    // Check if hovering over any agent
+    let hoveredIdx: number | null = null;
+    for (let i = 0; i < agentPositions.length; i++) {
+      const pos = agentPositions[i];
+      if (!pos) continue;
+      const [ax, ay] = worldToCanvas(pos.x, pos.y);
+      const dist = Math.sqrt((cx - ax) ** 2 + (cy - ay) ** 2);
+      if (dist < 16) {
+        hoveredIdx = i;
+        break;
+      }
+    }
+    setHoveredAgentIdx(hoveredIdx);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (hoveredAgentIdx !== null && onAgentRemove) {
+      onAgentRemove(hoveredAgentIdx);
+      setHoveredAgentIdx(null);
+    }
   };
 
   return (
     <div ref={containerRef}>
-      {/* Agent legend */}
-      <div className="flex items-center gap-4 mb-3">
+      {/* Agent legend with Remove buttons */}
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
         {agentPositions.map((pos, i) => (
-          <div key={i} className="flex items-center gap-1.5">
+          <div key={i} className="flex items-center gap-1.5 px-2 py-1" style={{
+            background: i === activeAgentIdx ? PERSONA_COLORS[i].bg : "transparent",
+            border: i === activeAgentIdx ? `1px solid ${PERSONA_COLORS[i].primary}` : "none",
+          }}>
             <div className="w-3 h-3" style={{
               background: PERSONA_COLORS[i].primary,
               border: i === activeAgentIdx ? "2px solid #6B4C3B" : "1px solid #D4C4A8",
@@ -312,6 +340,22 @@ export default function SpatialMap({
             }}>
               P{i + 1} {pos ? `(${pos.x}, ${pos.y})` : "not placed"}
             </span>
+            {pos && onAgentRemove && (
+              <button
+                onClick={() => onAgentRemove(i)}
+                className="ml-1 px-1.5 py-0 text-[10px]"
+                style={{
+                  background: "#EDE3D0",
+                  color: PERSONA_COLORS[i].primary,
+                  border: `1px solid ${PERSONA_COLORS[i].primary}`,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-pixel)",
+                }}
+                title="Remove this agent"
+              >
+                ✕
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -322,11 +366,13 @@ export default function SpatialMap({
         height={CANVAS_SIZE}
         onClick={handleClick}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoverPos(null)}
+        onMouseLeave={() => { setHoverPos(null); setHoveredAgentIdx(null); }}
+        onContextMenu={handleContextMenu}
+        title="Left-click to place agent | Right-click on agent to remove"
         style={{
           width: `${CANVAS_SIZE * scale}px`,
           height: `${CANVAS_SIZE * scale}px`,
-          cursor: "crosshair",
+          cursor: hoveredAgentIdx !== null ? "pointer" : "crosshair",
           border: `3px solid ${PERSONA_COLORS[activeAgentIdx].primary}`,
           boxShadow: "3px 3px 0px #6B4C3B",
         }}

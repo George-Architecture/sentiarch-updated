@@ -498,6 +498,9 @@ export default function Home() {
               agentPositions={agentPositions}
               activeAgentIdx={activeTab}
               onAgentPlace={(pos) => placeAgent(activeTab, pos)}
+              onAgentRemove={(idx) => {
+                setStates((prev) => prev.map((s, i) => i === idx ? { ...s, agentPos: null } : s));
+              }}
             />
           </div>
         </div>
