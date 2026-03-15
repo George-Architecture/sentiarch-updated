@@ -102,8 +102,8 @@ export const PERSONA_COLORS = [
 
 // ---- Defaults ----
 export const defaultEnvironment: EnvironmentData = {
-  lux: 180,
-  dB: 58,
+  lux: 300,
+  dB: 55,
   air_temp: 24,
   humidity: 55,
   air_velocity: 0.1,
@@ -111,48 +111,51 @@ export const defaultEnvironment: EnvironmentData = {
 
 export const defaultPersonas: PersonaData[] = [
   {
+    // Persona 01: Elderly female, low metabolism, thick clothing → feels comfortable at 24°C (PMV ≈ +0.03)
     agent: {
       id: "persona_01",
-      age: 78,
+      age: 75,
       gender: "female",
-      mbti: "ESFP",
+      mbti: "ISFJ",
       mobility: "walker",
       hearing: "impaired",
       vision: "mild_impairment",
       metabolic_rate: 0.8,
-      clothing_insulation: 1,
+      clothing_insulation: 1.2,
     },
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 45 },
     environment: { ...defaultEnvironment },
     spatial: { dist_to_wall: 0, dist_to_window: 0, dist_to_exit: 0, ceiling_h: 2.8, enclosure_ratio: 0, visible_agents: 0 },
   },
   {
+    // Persona 02: Young male, high metabolism, thin clothing → feels warm/hot at 24°C (PMV ≈ +0.46)
     agent: {
       id: "persona_02",
-      age: 32,
+      age: 28,
       gender: "male",
-      mbti: "INTJ",
+      mbti: "ENTP",
       mobility: "normal",
       hearing: "normal",
       vision: "normal",
-      metabolic_rate: 1.2,
-      clothing_insulation: 0.7,
+      metabolic_rate: 1.6,
+      clothing_insulation: 0.5,
     },
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 30 },
     environment: { ...defaultEnvironment },
     spatial: { dist_to_wall: 0, dist_to_window: 0, dist_to_exit: 0, ceiling_h: 2.8, enclosure_ratio: 0, visible_agents: 0 },
   },
   {
+    // Persona 03: Middle-aged female, mid metabolism, severe vision impairment → thermally neutral but high visual load (PMV ≈ -0.08, EffLux = 150)
     agent: {
       id: "persona_03",
-      age: 55,
+      age: 45,
       gender: "female",
-      mbti: "ENFJ",
-      mobility: "cane",
+      mbti: "INFP",
+      mobility: "normal",
       hearing: "normal",
-      vision: "mild_impairment",
+      vision: "severe_impairment",
       metabolic_rate: 1.0,
-      clothing_insulation: 0.9,
+      clothing_insulation: 0.8,
     },
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 60 },
     environment: { ...defaultEnvironment },
