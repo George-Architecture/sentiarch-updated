@@ -449,8 +449,18 @@ export function posToCell(x: number, y: number, cellSize = 1000): [number, numbe
 }
 
 // ---- LocalStorage Persistence ----
-const SHAPES_KEY = "thesis_spatial_shapes";
-const MULTI_AGENT_KEY = "thesis_multi_agent";
+// Version bump forces all clients to reset to new default personas
+const STORE_VERSION = "v2";
+const SHAPES_KEY = `thesis_spatial_shapes_${STORE_VERSION}`;
+const MULTI_AGENT_KEY = `thesis_multi_agent_${STORE_VERSION}`;
+
+// Clear any old versioned keys on load
+if (typeof window !== "undefined") {
+  ["thesis_spatial_shapes", "thesis_multi_agent",
+   "thesis_spatial_shapes_v1", "thesis_multi_agent_v1"].forEach((k) => {
+    try { localStorage.removeItem(k); } catch {}
+  });
+}
 
 export function saveShapes(shapes: Shape[]) {
   try { localStorage.setItem(SHAPES_KEY, JSON.stringify(shapes)); } catch {}
