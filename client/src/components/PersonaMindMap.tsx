@@ -311,6 +311,7 @@ export default function PersonaMindMap({
   onPersonaChange,
   hasSimulated = true,
   personaColor,
+  agentPlaced = false,
 }: {
   persona: PersonaData;
   experience: ExperienceData;
@@ -322,6 +323,7 @@ export default function PersonaMindMap({
   onPersonaChange: (p: PersonaData) => void;
   hasSimulated?: boolean;
   personaColor?: { primary: string; secondary: string; bg: string; label: string };
+  agentPlaced?: boolean;
 }) {
   const { agent, position, environment, spatial } = persona;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -539,14 +541,29 @@ export default function PersonaMindMap({
         <div className="col-span-12 md:col-span-3" data-node="spatial">
           <SectionTag label="SPATIAL" icon="□" color="#C67B4B" />
           <Panel>
-            <StaticRow label="→ Wall" value={spatial.dist_to_wall} unit="m" />
-            <StaticRow label="→ Win." value={spatial.dist_to_window} unit="m" />
-            <StaticRow label="→ Exit" value={spatial.dist_to_exit} unit="m" />
+            {/* Wall: show — if agent not placed OR no room drawn */}
+            <StaticRow
+              label="→ Wall"
+              value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : spatial.dist_to_wall}
+              unit={!agentPlaced || spatial.dist_to_wall < 0 ? undefined : "m"}
+            />
+            {/* Win.: show — if agent not placed OR no window drawn */}
+            <StaticRow
+              label="→ Win."
+              value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : spatial.dist_to_window}
+              unit={!agentPlaced || spatial.dist_to_window < 0 ? undefined : "m"}
+            />
+            {/* Exit: show — if agent not placed OR no door/room drawn */}
+            <StaticRow
+              label="→ Exit"
+              value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : spatial.dist_to_exit}
+              unit={!agentPlaced || spatial.dist_to_exit < 0 ? undefined : "m"}
+            />
             <DataRow label="Ceil.">
               <EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" />
             </DataRow>
-            <StaticRow label="Encl." value={spatial.enclosure_ratio} />
-            <StaticRow label="Vis.Ag" value={spatial.visible_agents} />
+            <StaticRow label="Encl." value={!agentPlaced ? "—" : spatial.enclosure_ratio} />
+            <StaticRow label="Vis.Ag" value={!agentPlaced ? "—" : spatial.visible_agents} />
             <div className="mt-1 font-pixel text-[8px]" style={{ color: "#3A2A1A" }}>auto-calculated from map</div>
           </Panel>
         </div>

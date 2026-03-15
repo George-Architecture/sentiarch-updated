@@ -463,6 +463,7 @@ export default function Home() {
               onPersonaChange={(p) => updatePersonaWithEnvSync(activeTab, p)}
               hasSimulated={current.hasSimulated}
               personaColor={PERSONA_COLORS[activeTab]}
+              agentPlaced={current.agentPos !== null}
             />
           )}
         </div>

@@ -328,7 +328,7 @@ function distToSegment(px: number, py: number, x1: number, y1: number, x2: numbe
 export function distToShapeType(ax: number, ay: number, shapes: Shape[], type: string): number {
   let minDist = Infinity;
   const filtered = shapes.filter((s) => s.type === type);
-  if (filtered.length === 0) return 0;
+  if (filtered.length === 0) return -1; // -1 = no shape of this type drawn
   for (const shape of filtered) {
     const pts = shape.points;
     for (let i = 0; i < pts.length; i++) {
@@ -338,7 +338,7 @@ export function distToShapeType(ax: number, ay: number, shapes: Shape[], type: s
       if (d < minDist) minDist = d;
     }
   }
-  return minDist === Infinity ? 0 : Math.round(minDist / 100) / 10;
+  return minDist === Infinity ? -1 : Math.round(minDist / 100) / 10;
 }
 
 function lineIntersect(
@@ -400,7 +400,8 @@ export function computeSpatialFromAgent(
   return {
     dist_to_wall: distWall,
     dist_to_window: distWin,
-    dist_to_exit: distDoor || distWall,
+    // -1 means no shape found; prefer door, fallback to wall, else -1
+    dist_to_exit: distDoor >= 0 ? distDoor : distWall >= 0 ? distWall : -1,
     ceiling_h: currentSpatial.ceiling_h,
     enclosure_ratio: enclosure,
     visible_agents: currentSpatial.visible_agents, // will be overridden by computeVisibleAgents
