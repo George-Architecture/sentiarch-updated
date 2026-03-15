@@ -43,7 +43,7 @@ export default function Settings() {
 
         <div className="pixel-panel space-y-4">
           <div>
-            <label className="font-pixel text-[9px] block mb-2" style={{ color: "#A89B8C" }}>
+            <label className="font-pixel text-[11px] block mb-2" style={{ color: "#3A2A1A" }}>
               API KEY
             </label>
             <input
@@ -61,7 +61,7 @@ export default function Settings() {
           </div>
 
           <div>
-            <label className="font-pixel text-[9px] block mb-2" style={{ color: "#A89B8C" }}>
+            <label className="font-pixel text-[11px] block mb-2" style={{ color: "#3A2A1A" }}>
               API URL
             </label>
             <input
@@ -78,7 +78,7 @@ export default function Settings() {
           </div>
 
           <div>
-            <label className="font-pixel text-[9px] block mb-2" style={{ color: "#A89B8C" }}>
+            <label className="font-pixel text-[11px] block mb-2" style={{ color: "#3A2A1A" }}>
               MODEL
             </label>
             <input

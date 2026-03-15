@@ -7,7 +7,9 @@
 //   #4: Tab names (AGENT, POSITION, ENVIRONMENT) larger font
 //   #5: "EXPERIENCE" renamed to "ENV. SATISFACTION" (short for Built Environment Satisfaction)
 //   #6: Cleaned duplicate content (ESFP, PERSONA, STABLE removed from redundant places)
-//   #7: "RUN LLM" renamed to "Simulate Response"
+//   #7: "RUN LLM" renamed to "Calculate Current Respond"
+//   #8: Font sizes increased, grey text changed to black, ENV. SATISFACTION high-contrast colours
+//   #9: thermBAL-aligned PMV validity warnings
 // ============================================================
 
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
@@ -59,8 +61,8 @@ function EditableField({
           value={draft}
           onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); setEditing(false); }}
           onBlur={() => setEditing(false)}
-          className="font-pixel-data text-base px-1 py-0 outline-none"
-          style={{ background: "#F5ECD8", color: "#6B4C3B", border: "2px solid #3D6B4F", minWidth: 60 }}
+          className="font-pixel-data text-lg px-1 py-0 outline-none"
+          style={{ background: "#F5ECD8", color: "#3A2A1A", border: "2px solid #3D6B4F", minWidth: 60 }}
         >
           {options.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -77,10 +79,10 @@ function EditableField({
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
         step={type === "number" ? "any" : undefined}
-        className="font-pixel-data text-base px-1 py-0 outline-none"
+        className="font-pixel-data text-lg px-1 py-0 outline-none"
         style={{
           background: "#F5ECD8",
-          color: "#6B4C3B",
+          color: "#3A2A1A",
           border: "2px solid #3D6B4F",
           width: type === "time" ? 80 : Math.max(40, String(value).length * 10 + 20),
         }}
@@ -91,12 +93,12 @@ function EditableField({
   return (
     <span
       onClick={() => { setDraft(String(value)); setEditing(true); }}
-      className="font-pixel-data text-base cursor-pointer px-1 py-0 inline-block hover:outline hover:outline-2 hover:outline-dashed"
-      style={{ color: highlight ? "#B85C38" : "#6B4C3B", fontWeight: "bold", outlineColor: "#3D6B4F" }}
+      className="font-pixel-data text-lg cursor-pointer px-1 py-0 inline-block hover:outline hover:outline-2 hover:outline-dashed"
+      style={{ color: highlight ? "#B85C38" : "#3A2A1A", fontWeight: "bold", outlineColor: "#3D6B4F" }}
       title="Click to edit"
     >
       {value}
-      {suffix && <span style={{ color: "#A89B8C", fontWeight: "normal" }}> {suffix}</span>}
+      {suffix && <span style={{ color: "#5A4A3A", fontWeight: "normal" }}> {suffix}</span>}
     </span>
   );
 }
@@ -105,7 +107,7 @@ function EditableField({
 function DataRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex justify-between items-center py-0.5 px-1">
-      <span className="font-pixel-data text-base" style={{ color: "#A89B8C" }}>{label}</span>
+      <span className="font-pixel-data text-lg" style={{ color: "#3A2A1A" }}>{label}</span>
       {children}
     </div>
   );
@@ -114,10 +116,10 @@ function DataRow({ label, children }: { label: string; children: ReactNode }) {
 function StaticRow({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
   return (
     <div className="flex justify-between items-center py-0.5 px-1">
-      <span className="font-pixel-data text-base" style={{ color: "#A89B8C" }}>{label}</span>
-      <span className="font-pixel-data text-base" style={{ color: "#6B4C3B", fontWeight: "bold" }}>
+      <span className="font-pixel-data text-lg" style={{ color: "#3A2A1A" }}>{label}</span>
+      <span className="font-pixel-data text-lg" style={{ color: "#3A2A1A", fontWeight: "bold" }}>
         {value}
-        {unit && <span style={{ color: "#A89B8C", fontWeight: "normal" }}> {unit}</span>}
+        {unit && <span style={{ color: "#5A4A3A", fontWeight: "normal" }}> {unit}</span>}
       </span>
     </div>
   );
@@ -131,15 +133,15 @@ function LoadBar({ label, value, prevValue }: { label: string; value: number; pr
 
   return (
     <div className="flex items-center gap-2 mb-1.5">
-      <span className="font-pixel-data text-base w-20 shrink-0" style={{ color: "#6B4C3B" }}>{label}</span>
+      <span className="font-pixel-data text-lg w-20 shrink-0" style={{ color: "#3A2A1A" }}>{label}</span>
       <div className="flex-1 h-4 relative" style={{ background: "#F2E8D5", border: "2px solid #6B4C3B" }}>
         <div className="h-full" style={{ width: `${value * 100}%`, background: color, transition: "width 0.6s ease" }} />
       </div>
-      <span className="font-pixel-data text-base w-8 text-right shrink-0" style={{ color: "#6B4C3B" }}>
+      <span className="font-pixel-data text-lg w-8 text-right shrink-0" style={{ color: "#3A2A1A" }}>
         {value.toFixed(1)}
       </span>
       {hasPrev && Math.abs(delta) >= 0.01 && (
-        <span className="font-pixel text-[8px] w-10 text-right shrink-0" style={{ color: delta > 0 ? "#B85C38" : "#6B8E5A" }}>
+        <span className="font-pixel text-[9px] w-10 text-right shrink-0" style={{ color: delta > 0 ? "#B85C38" : "#6B8E5A" }}>
           {delta > 0 ? "+" : ""}{delta.toFixed(1)}
         </span>
       )}
@@ -229,20 +231,20 @@ function ConnectionLines({ containerRef }: { containerRef: React.RefObject<HTMLD
 function InterventionArrow() {
   return (
     <div className="mt-3 pt-3" style={{ borderTop: "2px dashed #D4C4A8" }}>
-      <div className="font-pixel text-[8px] tracking-wider mb-2" style={{ color: "#A89B8C" }}>
+      <div className="font-pixel text-[9px] tracking-wider mb-2" style={{ color: "#3A2A1A" }}>
         DESIGN INTERVENTION → CHANGE
       </div>
       <div className="flex items-center gap-2">
         {/* Before state */}
         <div className="flex-1 p-2 text-center" style={{ background: "#F2E8D5", border: "2px solid #B85C38" }}>
-          <div className="font-pixel text-[7px]" style={{ color: "#A89B8C" }}>BEFORE</div>
+          <div className="font-pixel text-[8px]" style={{ color: "#3A2A1A" }}>BEFORE</div>
           <div className="font-pixel-data text-lg" style={{ color: "#B85C38" }}>4</div>
-          <div className="font-pixel text-[7px]" style={{ color: "#A89B8C" }}>COMFORT</div>
+          <div className="font-pixel text-[8px]" style={{ color: "#3A2A1A" }}>COMFORT</div>
         </div>
 
         {/* Arrow with intervention label */}
         <div className="flex flex-col items-center gap-1 px-1">
-          <div className="font-pixel text-[6px] text-center leading-tight px-1 py-0.5"
+          <div className="font-pixel text-[7px] text-center leading-tight px-1 py-0.5"
             style={{ background: "#3D6B4F", color: "#F2E8D5", border: "1px solid #6B4C3B", whiteSpace: "nowrap" }}>
             +WINDOW
           </div>
@@ -254,7 +256,7 @@ function InterventionArrow() {
             </defs>
             <line x1="2" y1="8" x2="32" y2="8" stroke="#3D6B4F" strokeWidth="2" markerEnd="url(#arrowhead)" />
           </svg>
-          <div className="font-pixel text-[6px] text-center leading-tight px-1 py-0.5"
+          <div className="font-pixel text-[7px] text-center leading-tight px-1 py-0.5"
             style={{ background: "#3D6B4F", color: "#F2E8D5", border: "1px solid #6B4C3B", whiteSpace: "nowrap" }}>
             +LIGHT
           </div>
@@ -262,14 +264,37 @@ function InterventionArrow() {
 
         {/* After state */}
         <div className="flex-1 p-2 text-center" style={{ background: "#F2E8D5", border: "2px solid #6B8E5A" }}>
-          <div className="font-pixel text-[7px]" style={{ color: "#A89B8C" }}>AFTER</div>
+          <div className="font-pixel text-[8px]" style={{ color: "#3A2A1A" }}>AFTER</div>
           <div className="font-pixel-data text-lg" style={{ color: "#6B8E5A" }}>7</div>
-          <div className="font-pixel text-[7px]" style={{ color: "#A89B8C" }}>COMFORT</div>
+          <div className="font-pixel text-[8px]" style={{ color: "#3A2A1A" }}>COMFORT</div>
         </div>
       </div>
-      <div className="font-pixel text-[6px] mt-2 text-center" style={{ color: "#A89B8C", letterSpacing: "1px" }}>
+      <div className="font-pixel text-[7px] mt-2 text-center" style={{ color: "#3A2A1A", letterSpacing: "1px" }}>
         MOCK-UP: INTERVENTION FEEDBACK LOOP
       </div>
+    </div>
+  );
+}
+
+// ---- PMV Validity Warnings (thermBAL-aligned) ----
+function PMVWarnings({ computedOutputs }: { computedOutputs: ComputedOutputs }) {
+  const warnings = computedOutputs.pmv_warnings || [];
+  if (warnings.length === 0) return null;
+
+  return (
+    <div className="mt-2 px-3 py-2" style={{
+      background: "#FFF4D6",
+      border: "2px solid #D4A017",
+      borderRadius: 0,
+    }}>
+      <div className="font-pixel text-[8px] mb-1" style={{ color: "#7A5A00", letterSpacing: "0.5px" }}>
+        ⚠ PMV VALIDITY NOTES
+      </div>
+      {warnings.map((w, i) => (
+        <div key={i} className="font-body text-xs" style={{ color: "#5A4000", lineHeight: 1.5 }}>
+          · {w}
+        </div>
+      ))}
     </div>
   );
 }
@@ -328,6 +353,21 @@ export default function PersonaMindMap({
     "ESTP","ESFP","ENFP","ENTP","ESTJ","ESFJ","ENFJ","ENTJ",
   ].map((m) => ({ value: m, label: m }));
 
+  // ---- ENV. SATISFACTION high-contrast colour mapping ----
+  const getComfortBg = (score: number) => {
+    if (score === 0) return "#6B4C3B";
+    if (score <= 3) return "#8B1A1A";   // deep red — very uncomfortable
+    if (score <= 5) return "#B85C38";   // orange-red — below average
+    if (score <= 7) return "#C4956A";   // amber — moderate
+    return "#2E6B3A";                   // deep green — comfortable
+  };
+  const getComfortTextColor = () => "#FFFFFF";
+  const getTrendBg = (trend: string) => {
+    if (trend === "declining") return "#8B1A1A";
+    if (trend === "rising") return "#1A5C2A";
+    return "#4A3A00";
+  };
+
   return (
     <div ref={containerRef} className="relative w-full">
       <ConnectionLines containerRef={containerRef} />
@@ -374,9 +414,9 @@ export default function PersonaMindMap({
             </DataRow>
             <div className="mt-1 pt-1" style={{ borderTop: "1px dashed #D4C4A8" }}>
               {/* Feature #3: Slider bars for Met and Clo */}
-              <SliderField label="Met" value={agent.metabolic_rate} min={0.5} max={4} step={0.1}
+              <SliderField label="Met" value={agent.metabolic_rate} min={0.8} max={4} step={0.05}
                 onChange={(v) => updateAgent("metabolic_rate", String(v))} color="#B85C38" />
-              <SliderField label="Clo" value={agent.clothing_insulation} min={0} max={3} step={0.1}
+              <SliderField label="Clo" value={agent.clothing_insulation} min={0} max={2} step={0.05}
                 onChange={(v) => updateAgent("clothing_insulation", String(v))} color="#C67B4B" />
             </div>
           </Panel>
@@ -396,7 +436,7 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ---- ENVIRONMENT (Feature #3: Slider bars) ---- */}
+        {/* ---- ENVIRONMENT (thermBAL-aligned limits) ---- */}
         <div className="col-span-12 md:col-span-4" data-node="environment">
           <SectionTag label="ENVIRONMENT" icon="●" color="#3D6B4F" />
           <Panel>
@@ -404,16 +444,16 @@ export default function PersonaMindMap({
               onChange={(v) => updateEnv("lux", String(v))} color="#C4956A" />
             <SliderField label="Noise" value={environment.dB} min={0} max={120} step={1} suffix="dB"
               onChange={(v) => updateEnv("dB", String(v))} color="#B85C38" />
-            <SliderField label="Temp" value={environment.air_temp} min={-10} max={50} step={0.5} suffix="°C"
+            <SliderField label="Temp" value={environment.air_temp} min={10} max={35} step={0.5} suffix="°C"
               onChange={(v) => updateEnv("air_temp", String(v))} color="#3D6B4F" />
             <SliderField label="RH" value={environment.humidity} min={0} max={100} step={1} suffix="%"
               onChange={(v) => updateEnv("humidity", String(v))} color="#4A90B8" />
-            <SliderField label="Air V." value={environment.air_velocity} min={0} max={5} step={0.05} suffix="m/s"
+            <SliderField label="Air V." value={environment.air_velocity} min={0} max={2} step={0.01} suffix="m/s"
               onChange={(v) => updateEnv("air_velocity", String(v))} color="#6B8E5A" />
           </Panel>
         </div>
 
-        {/* ---- PERSONA Card (Feedback #6: cleaned - removed duplicate MBTI, PERSONA label simplified) ---- */}
+        {/* ---- PERSONA Card ---- */}
         <div className="col-span-12 flex justify-center my-4 md:my-6">
           <div data-node="persona" className="px-10 py-5 text-center relative"
             style={{
@@ -425,7 +465,6 @@ export default function PersonaMindMap({
             <div className="absolute -top-1 -right-1 w-2 h-2" style={{ background: "#FFD700" }} />
             <div className="absolute -bottom-1 -left-1 w-2 h-2" style={{ background: "#FFD700" }} />
             <div className="absolute -bottom-1 -right-1 w-2 h-2" style={{ background: "#FFD700" }} />
-            {/* Feedback #6: Removed "P E R S O N A" decorative text, show only essential info */}
             <div className="font-pixel text-lg" style={{ color: "#F2E8D5" }}>{agent.id}</div>
             <div className="font-pixel-data text-lg mt-1" style={{ color: "#EDE3D0" }}>
               {agent.age}{agent.gender === "female" ? "F" : "M"} · {agent.mobility} · {agent.mbti}
@@ -433,42 +472,48 @@ export default function PersonaMindMap({
           </div>
         </div>
 
-        {/* ---- ENV. SATISFACTION (Feedback #5: renamed from EXPERIENCE) ---- */}
+        {/* ---- ENV. SATISFACTION (high-contrast colours) ---- */}
         <div className="col-span-12 md:col-span-5" data-node="experience">
           <SectionTag label="ENV. SATISFACTION" icon="◌" color="#6B4C3B" />
           <Panel>
-            <p className="font-body text-sm italic mb-3" style={{ color: "#6B4C3B", lineHeight: 1.6 }}>
+            <p className="font-body text-sm italic mb-3" style={{ color: "#3A2A1A", lineHeight: 1.6 }}>
               "{experience.summary}"
             </p>
             <div className="flex items-center gap-3 mb-2">
-              <span className="font-pixel text-[9px] px-3 py-1" style={{
-                background: experience.comfort_score <= 4 ? "#B85C38" : experience.comfort_score <= 6 ? "#C4956A" : "#6B8E5A",
-                color: "#F2E8D5",
-                border: "2px solid #6B4C3B",
+              {/* High-contrast comfort score badge */}
+              <span className="font-pixel text-[10px] px-4 py-2" style={{
+                background: getComfortBg(experience.comfort_score),
+                color: getComfortTextColor(),
+                border: "3px solid #3A2A1A",
+                boxShadow: "2px 2px 0px #3A2A1A",
+                letterSpacing: "1px",
               }}>
-                Comfort {experience.comfort_score}
+                COMFORT {experience.comfort_score}/10
               </span>
               {comfortDelta !== null && Math.abs(comfortDelta) >= 0.1 && (
-                <span className="font-pixel text-[9px] px-2 py-1" style={{
-                  background: "#F2E8D5",
-                  color: comfortDelta > 0 ? "#6B8E5A" : "#B85C38",
-                  border: `2px solid ${comfortDelta > 0 ? "#6B8E5A" : "#B85C38"}`,
+                <span className="font-pixel text-[10px] px-3 py-2" style={{
+                  background: comfortDelta > 0 ? "#1A5C2A" : "#8B1A1A",
+                  color: "#FFFFFF",
+                  border: "3px solid #3A2A1A",
+                  boxShadow: "2px 2px 0px #3A2A1A",
                 }}>
                   {comfortDelta > 0 ? "+" : ""}{comfortDelta.toFixed(1)} vs prev
                 </span>
               )}
-              {/* Bug Fix #2: Show IMPROVING/DECLINING based on actual comfort delta */}
-              <span className="font-pixel text-[9px]" style={{
-                color: experience.trend === "declining" ? "#B85C38" : experience.trend === "rising" ? "#6B8E5A" : "#C4956A",
+              {/* High-contrast trend badge */}
+              <span className="font-pixel text-[10px] px-3 py-2" style={{
+                background: getTrendBg(experience.trend),
+                color: "#FFFFFF",
+                border: "3px solid #3A2A1A",
+                boxShadow: "2px 2px 0px #3A2A1A",
               }}>
-                {experience.trend === "declining" ? "▼" : experience.trend === "rising" ? "▲" : "—"}{" "}
-                {experience.trend === "rising" ? "IMPROVING" : experience.trend === "declining" ? "DECLINING" : "STABLE"}
+                {experience.trend === "declining" ? "▼ DECLINING" : experience.trend === "rising" ? "▲ IMPROVING" : "— STABLE"}
               </span>
             </div>
 
             {prevExperience && prevExperience.comfort_score > 0 && (
               <div className="mt-1 mb-2">
-                <span className="font-pixel text-[8px]" style={{ color: "#A89B8C" }}>
+                <span className="font-pixel text-[9px]" style={{ color: "#3A2A1A" }}>
                   PREV: Comfort {prevExperience.comfort_score} · {prevExperience.trend.toUpperCase()}
                 </span>
               </div>
@@ -478,7 +523,7 @@ export default function PersonaMindMap({
               <div className="flex flex-wrap gap-1 mt-2">
                 {ruleTriggers.map((t) => (
                   <span key={t} className="font-pixel-data text-sm px-2 py-0.5"
-                    style={{ background: "#F2E8D5", border: "1px solid #A89B8C", color: "#6B4C3B" }}>
+                    style={{ background: "#F2E8D5", border: "1px solid #6B4C3B", color: "#3A2A1A" }}>
                     {t}
                   </span>
                 ))}
@@ -502,7 +547,7 @@ export default function PersonaMindMap({
             </DataRow>
             <StaticRow label="Encl." value={spatial.enclosure_ratio} />
             <StaticRow label="Vis.Ag" value={spatial.visible_agents} />
-            <div className="mt-1 font-pixel text-[6px]" style={{ color: "#A89B8C" }}>auto-calculated from map</div>
+            <div className="mt-1 font-pixel text-[8px]" style={{ color: "#3A2A1A" }}>auto-calculated from map</div>
           </Panel>
         </div>
 
@@ -519,12 +564,14 @@ export default function PersonaMindMap({
               ].map((item) => (
                 <div key={item.label} className="p-2 text-center" title={item.tooltip}
                   style={{ background: "#F2E8D5", border: "2px solid #6B4C3B" }}>
-                  <div className="font-pixel text-[8px]" style={{ color: "#A89B8C" }}>{item.label}</div>
-                  <div className="font-pixel-data text-2xl" style={{ color: "#6B4C3B" }}>{item.value}</div>
+                  <div className="font-pixel text-[9px]" style={{ color: "#3A2A1A" }}>{item.label}</div>
+                  <div className="font-pixel-data text-2xl" style={{ color: "#3A2A1A" }}>{item.value}</div>
                 </div>
               ))}
             </div>
-            <div className="mt-2 font-pixel text-[6px] text-center" style={{ color: "#A89B8C", letterSpacing: "0.5px" }}>
+            {/* PMV Validity Warnings (thermBAL-aligned) */}
+            <PMVWarnings computedOutputs={computedOutputs} />
+            <div className="mt-2 font-pixel text-[7px] text-center" style={{ color: "#3A2A1A", letterSpacing: "0.5px" }}>
               PMV/PPD: ISO 7730 Fanger Model (pythermalcomfort)
             </div>
           </Panel>

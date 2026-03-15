@@ -316,7 +316,7 @@ export default function Home() {
             <h1 className="font-pixel text-sm md:text-base leading-relaxed" style={{ color: "#6B4C3B" }}>
               Occupant Perception Map
             </h1>
-            <p className="font-pixel text-[7px] md:text-[8px] mt-1 tracking-[2px]" style={{ color: "#A89B8C" }}>
+            <p className="font-pixel text-[9px] md:text-[10px] mt-1 tracking-[2px]" style={{ color: "#3A2A1A" }}>
               MULTI-AGENT ENVIRONMENTAL EXPERIENCE MODEL
             </p>
           </div>
@@ -328,7 +328,7 @@ export default function Home() {
               <div className="font-pixel text-[9px] mt-0.5" style={{
                 color: current.experience.comfort_score > 0
                   ? (current.experience.trend === "declining" ? "#B85C38" : current.experience.trend === "rising" ? "#6B8E5A" : "#C4956A")
-                  : "#A89B8C",
+                  : "#3A2A1A",
               }}>
                 COMFORT {current.experience.comfort_score}/10
               </div>
@@ -342,7 +342,7 @@ export default function Home() {
               disabled={running}
               style={{ opacity: running ? 0.6 : 1 }}
             >
-              {running ? "SIMULATING..." : "⟳ Simulate Response"}
+              {running ? "SIMULATING..." : "⟳ Calculate Current Respond"}
             </button>
             <button
               className="pixel-btn"
@@ -372,7 +372,7 @@ export default function Home() {
             <div className="flex-1 h-px" style={{
               background: "repeating-linear-gradient(90deg, #6B4C3B 0px, #6B4C3B 4px, transparent 4px, transparent 8px)",
             }} />
-            <span className="font-pixel text-[7px] tracking-wider" style={{ color: "#A89B8C" }}>
+            <span className="font-pixel text-[9px] tracking-wider" style={{ color: "#3A2A1A" }}>
               CLICK VALUES TO EDIT
             </span>
           </div>
@@ -422,7 +422,7 @@ export default function Home() {
 
           {/* ---- Simulate Checkboxes ---- */}
           <div className="flex items-center gap-4 mb-4 px-1">
-            <span className="font-pixel text-[8px] tracking-wider" style={{ color: "#A89B8C" }}>
+            <span className="font-pixel text-[10px] tracking-wider" style={{ color: "#3A2A1A" }}>
               SIMULATE:
             </span>
             {states.map((s, i) => (
@@ -487,7 +487,7 @@ export default function Home() {
             <div className="flex-1 h-px" style={{
               background: "repeating-linear-gradient(90deg, #6B4C3B 0px, #6B4C3B 4px, transparent 4px, transparent 8px)",
             }} />
-            <span className="font-pixel text-[7px] tracking-wider" style={{ color: "#A89B8C" }}>
+            <span className="font-pixel text-[9px] tracking-wider" style={{ color: "#3A2A1A" }}>
               LEFT-CLICK TO PLACE AGENT #{activeTab + 1} · 20,000 × 20,000 mm
             </span>
           </div>

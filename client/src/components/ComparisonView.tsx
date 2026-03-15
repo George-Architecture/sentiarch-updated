@@ -10,13 +10,13 @@ export default function ComparisonView({ states }: { states: PersonaState[] }) {
 
   return (
     <div className="pixel-panel mb-6" style={{ border: "3px solid #6B4C3B" }}>
-      <div className="font-pixel text-[10px] tracking-wider mb-4" style={{ color: "#6B4C3B" }}>
+      <div className="font-pixel text-[11px] tracking-wider mb-4" style={{ color: "#3A2A1A" }}>
         ◫ COMPARISON VIEW
       </div>
 
       {!allSimulated && (
-        <div className="font-pixel-data text-xs mb-3" style={{ color: "#A89B8C" }}>
-          Note: Some personas have not been simulated yet. Run "Simulate Response" first.
+        <div className="font-pixel-data text-sm mb-3" style={{ color: "#3A2A1A" }}>
+          Note: Some personas have not been simulated yet. Run "Calculate Current Respond" first.
         </div>
       )}
 
@@ -38,13 +38,13 @@ export default function ComparisonView({ states }: { states: PersonaState[] }) {
                   className="w-3 h-3"
                   style={{ background: color.primary }}
                 />
-                <span className="font-pixel text-[10px]" style={{ color: color.primary }}>
+                <span className="font-pixel text-[11px]" style={{ color: color.primary }}>
                   {s.persona.agent.id}
                 </span>
               </div>
 
               {/* MBTI + Demographics */}
-              <div className="font-pixel-data text-xs mb-2" style={{ color: "#6B4C3B" }}>
+              <div className="font-pixel-data text-sm mb-2" style={{ color: "#3A2A1A" }}>
                 {s.persona.agent.mbti} · {s.persona.agent.age}y · {s.persona.agent.gender}
               </div>
 
@@ -54,14 +54,14 @@ export default function ComparisonView({ states }: { states: PersonaState[] }) {
                   className="font-pixel text-[11px] px-3 py-1.5 inline-block"
                   style={{
                     background: s.hasSimulated ? color.primary : "#D4C4A8",
-                    color: s.hasSimulated ? "#F2E8D5" : "#A89B8C",
+                    color: s.hasSimulated ? "#F2E8D5" : "#3A2A1A",
                     border: "2px solid #6B4C3B",
                   }}
                 >
                   {s.hasSimulated ? `Comfort ${s.experience.comfort_score}` : "—"}
                 </div>
                 {s.hasSimulated && s.prevExperience && (
-                  <span className="font-pixel-data text-xs ml-2" style={{
+                  <span className="font-pixel-data text-sm ml-2" style={{
                     color: s.experience.trend === "rising" ? "#6B8E5A" : s.experience.trend === "declining" ? "#B85C38" : "#C4956A",
                   }}>
                     {s.experience.trend === "rising" ? "▲" : s.experience.trend === "declining" ? "▼" : "—"}{" "}
@@ -72,13 +72,13 @@ export default function ComparisonView({ states }: { states: PersonaState[] }) {
 
               {/* Summary */}
               {s.hasSimulated ? (
-                <p className="font-body text-xs leading-relaxed mb-3" style={{ color: "#6B4C3B" }}>
+                <p className="font-body text-sm leading-relaxed mb-3" style={{ color: "#3A2A1A" }}>
                   {s.experience.summary.length > 120
                     ? s.experience.summary.slice(0, 120) + "..."
                     : s.experience.summary}
                 </p>
               ) : (
-                <p className="font-pixel-data text-xs" style={{ color: "#A89B8C" }}>
+                <p className="font-pixel-data text-sm" style={{ color: "#3A2A1A" }}>
                   Not yet simulated
                 </p>
               )}
@@ -95,7 +95,7 @@ export default function ComparisonView({ states }: { states: PersonaState[] }) {
                     { label: "Wayfind.", val: s.accState.wayfinding_anxiety },
                   ].map((m) => (
                     <div key={m.label} className="flex items-center gap-1">
-                      <span className="font-pixel-data text-[10px]" style={{ color: "#A89B8C", width: 52 }}>
+                      <span className="font-pixel-data text-sm" style={{ color: "#3A2A1A", width: 52 }}>
                         {m.label}
                       </span>
                       <div className="flex-1 h-2" style={{ background: "#EDE3D0" }}>
@@ -107,7 +107,7 @@ export default function ComparisonView({ states }: { states: PersonaState[] }) {
                           }}
                         />
                       </div>
-                      <span className="font-pixel-data text-[10px]" style={{ color: "#6B4C3B", width: 24, textAlign: "right" }}>
+                      <span className="font-pixel-data text-sm" style={{ color: "#3A2A1A", width: 24, textAlign: "right" }}>
                         {m.val.toFixed(1)}
                       </span>
                     </div>
@@ -117,12 +117,12 @@ export default function ComparisonView({ states }: { states: PersonaState[] }) {
 
               {/* PMV */}
               <div className="mt-2 flex items-center gap-2">
-                <span className="font-pixel-data text-[10px]" style={{ color: "#A89B8C" }}>PMV</span>
-                <span className="font-pixel-data text-xs" style={{ color: "#6B4C3B" }}>
+                <span className="font-pixel-data text-sm" style={{ color: "#3A2A1A" }}>PMV</span>
+                <span className="font-pixel-data text-sm" style={{ color: "#3A2A1A", fontWeight: "bold" }}>
                   {s.computed.PMV}
                 </span>
-                <span className="font-pixel-data text-[10px]" style={{ color: "#A89B8C" }}>PPD</span>
-                <span className="font-pixel-data text-xs" style={{ color: "#6B4C3B" }}>
+                <span className="font-pixel-data text-sm" style={{ color: "#3A2A1A" }}>PPD</span>
+                <span className="font-pixel-data text-sm" style={{ color: "#3A2A1A", fontWeight: "bold" }}>
                   {s.computed.PPD}%
                 </span>
               </div>

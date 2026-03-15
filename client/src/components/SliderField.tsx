@@ -48,14 +48,13 @@ export default function SliderField({
     [min, max, step]
   );
 
-  const pct = ((value - min) / (max - min)) * 100;
+  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
 
   const updateFromPosition = useCallback(
     (clientX: number) => {
-      const track = trackRef.current;
-      if (!track) return;
-      const rect = track.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const rect = trackRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
       const raw = min + ratio * (max - min);
       // Snap to step
       const snapped = clamp(Math.round(raw / step) * step);
@@ -75,7 +74,6 @@ export default function SliderField({
 
   useEffect(() => {
     if (!dragging) return;
-
     const handleMouseMove = (e: MouseEvent) => {
       updateFromPosition(e.clientX);
     };
@@ -131,8 +129,8 @@ export default function SliderField({
       {/* Label + Value row */}
       <div className="flex justify-between items-center mb-1">
         <span
-          className="font-pixel-data text-base"
-          style={{ color: "#A89B8C" }}
+          className="font-pixel-data text-lg"
+          style={{ color: "#3A2A1A" }}
         >
           {label}
         </span>
@@ -153,10 +151,10 @@ export default function SliderField({
             step={step}
             min={min}
             max={max}
-            className="font-pixel-data text-base px-1 py-0 outline-none text-right"
+            className="font-pixel-data text-lg px-1 py-0 outline-none text-right"
             style={{
               background: "#F5ECD8",
-              color: "#6B4C3B",
+              color: "#3A2A1A",
               border: "2px solid #3D6B4F",
               width: 70,
             }}
@@ -164,9 +162,9 @@ export default function SliderField({
           />
         ) : (
           <span
-            className="font-pixel-data text-base cursor-pointer px-1 hover:outline hover:outline-2 hover:outline-dashed"
+            className="font-pixel-data text-lg cursor-pointer px-1 hover:outline hover:outline-2 hover:outline-dashed"
             style={{
-              color: "#6B4C3B",
+              color: "#3A2A1A",
               fontWeight: "bold",
               outlineColor: "#3D6B4F",
             }}
@@ -178,7 +176,7 @@ export default function SliderField({
           >
             {value}
             {suffix && (
-              <span style={{ color: "#A89B8C", fontWeight: "normal" }}>
+              <span style={{ color: "#5A4A3A", fontWeight: "normal" }}>
                 {" "}
                 {suffix}
               </span>
@@ -225,14 +223,14 @@ export default function SliderField({
 
         {/* Min/Max labels */}
         <div
-          className="absolute bottom-full left-0 font-pixel text-[6px]"
-          style={{ color: "#C4B8A0", transform: "translateY(-1px)" }}
+          className="absolute bottom-full left-0 font-pixel text-[7px]"
+          style={{ color: "#4A3A2A", transform: "translateY(-1px)" }}
         >
           {min}
         </div>
         <div
-          className="absolute bottom-full right-0 font-pixel text-[6px]"
-          style={{ color: "#C4B8A0", transform: "translateY(-1px)" }}
+          className="absolute bottom-full right-0 font-pixel text-[7px]"
+          style={{ color: "#4A3A2A", transform: "translateY(-1px)" }}
         >
           {max}
         </div>

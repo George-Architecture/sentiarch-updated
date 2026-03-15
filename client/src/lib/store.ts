@@ -66,6 +66,7 @@ export interface ComputedOutputs {
   PPD: number;
   effective_lux: number;
   perceived_dB: number;
+  pmv_warnings: string[];
 }
 
 export interface Shape {
@@ -161,7 +162,7 @@ export const defaultPersonas: PersonaData[] = [
 
 export const defaultExperience: ExperienceData = {
   summary:
-    'Waiting for simulation... Click "Simulate Response" to generate experience narrative.',
+    'Waiting for calculation... Click "Calculate Current Respond" to generate experience narrative.',
   comfort_score: 0,
   trend: "stable",
 };
@@ -180,6 +181,7 @@ export const defaultComputedOutputs: ComputedOutputs = {
   PPD: 5,
   effective_lux: 0,
   perceived_dB: 0,
+  pmv_warnings: [],
 };
 
 // ---- Baseline Reset: Agent Core Fields ----
@@ -239,11 +241,36 @@ export function calculatePMV(
   };
 }
 
+// ---- thermBAL-aligned PMV Validity Warnings ----
+export function getPMVWarnings(
+  tdb: number, rh: number, vr: number, met: number, clo: number, pmv: number
+): string[] {
+  const warnings: string[] = [];
+  // Air speed warning (thermBAL: >0.2 m/s)
+  if (vr > 0.2) warnings.push("Elevated air speed: PMV may be unreliable; consider SET.");
+  // Humidity warnings (thermBAL: <20% or >80%)
+  if (rh < 20 || rh > 80) warnings.push("Extreme humidity may reduce PMV reliability.");
+  // Temperature bounds (thermBAL: 10–35°C)
+  if (tdb < 10 || tdb > 35) warnings.push("Air temperature outside typical PMV bounds (10–35 °C).");
+  // Met bounds (thermBAL: 0.8–2.0 met)
+  if (met < 0.8 || met > 2.0) warnings.push("Met outside typical PMV range (0.8–2.0).");
+  // Clo bounds (thermBAL: 0–2 clo)
+  if (clo > 2) warnings.push("High clothing insulation (>2 clo).");
+  // PMV out of scale
+  if (Math.abs(pmv) > 3) warnings.push("PMV value outside comfort scale range (−3 to +3).");
+  return warnings;
+}
+
 export function computeOutputs(persona: PersonaData): ComputedOutputs {
   const { pmv, ppd } = calculatePMV(
     persona.environment.air_temp, persona.environment.air_temp,
     persona.environment.air_velocity, persona.environment.humidity,
     persona.agent.metabolic_rate, persona.agent.clothing_insulation
+  );
+  const warnings = getPMVWarnings(
+    persona.environment.air_temp, persona.environment.humidity,
+    persona.environment.air_velocity, persona.agent.metabolic_rate,
+    persona.agent.clothing_insulation, pmv
   );
   const visionFactor = persona.agent.vision === "normal" ? 1 : persona.agent.vision === "mild_impairment" ? 0.75 : 0.5;
   const hearingFactor = persona.agent.hearing === "normal" ? 1 : persona.agent.hearing === "impaired" ? 1.1 : 0.7;
@@ -251,6 +278,7 @@ export function computeOutputs(persona: PersonaData): ComputedOutputs {
     PMV: pmv, PPD: ppd,
     effective_lux: Math.round(persona.environment.lux * visionFactor),
     perceived_dB: Math.round(persona.environment.dB * hearingFactor),
+    pmv_warnings: warnings,
   };
 }
 
