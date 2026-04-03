@@ -31,6 +31,7 @@ import {
   computePerceptualLoad,
   computeSpatialFromAgent,
   computeVisibleAgents,
+  computeStressScore,
   posToCell,
   saveShapes,
   loadShapes,
@@ -49,6 +50,7 @@ import {
   getEnvAtPosition,
   zoneEnvToEnvironment,
   PERSONA_COLORS,
+  type HeatmapPoint,
 } from "@/lib/store";
 
 function createDefaultState(persona: PersonaData): PersonaState {
@@ -594,7 +596,10 @@ export default function Home() {
       experience: s.experience,
       route: {
         waypoints: s.route.waypoints,
-        perception_log: s.route.perceptionLog,
+        perception_log: s.route.perceptionLog.map((entry) => ({
+          ...entry,
+          stress_score: computeStressScore(entry.accState),
+        })),
       },
     }));
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -615,6 +620,28 @@ export default function Home() {
     });
     return wps;
   }, [states]);
+
+  // Heatmap toggle
+  const [showHeatmap, setShowHeatmap] = useState(false);
+
+  // Compute heatmap points from all perception logs
+  const heatmapPoints = useMemo<HeatmapPoint[]>(() => {
+    if (!showHeatmap) return [];
+    const points: HeatmapPoint[] = [];
+    states.forEach((s, agentIdx) => {
+      for (const entry of s.route.perceptionLog) {
+        if (entry.phase === "dwelling") {
+          points.push({
+            x: entry.position.x,
+            y: entry.position.y,
+            value: computeStressScore(entry.accState),
+            agentIdx,
+          });
+        }
+      }
+    });
+    return points;
+  }, [states, showHeatmap]);
 
   // Count total waypoints for active agent
   const activeWPs = states[activeTab]?.route.waypoints || [];
@@ -788,9 +815,22 @@ export default function Home() {
               Spatial Map
             </div>
             <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-              Click to place Agent #{activeTab + 1} &middot; World Coordinates (mm)
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                Click to place Agent #{activeTab + 1} &middot; World Coordinates (mm)
+              </span>
+              <button
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className="sa-btn text-xs px-3 py-1"
+                style={{
+                  background: showHeatmap ? "#D94F4F" : "var(--card)",
+                  color: showHeatmap ? "#fff" : "var(--foreground)",
+                  borderColor: showHeatmap ? "#D94F4F" : "var(--border)",
+                }}
+              >
+                {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
+              </button>
+            </div>
           </div>
 
           <SpatialMap
@@ -809,6 +849,8 @@ export default function Home() {
             onRemoveWaypoint={removeWaypoint}
             animatingAgents={animatingAgents}
             pathTrails={pathTrails}
+            heatmapPoints={heatmapPoints}
+            showHeatmap={showHeatmap}
           />
         </div>
       </section>
@@ -919,55 +961,249 @@ export default function Home() {
             )}
           </div>
 
-          {/* Perception Log */}
-          {activeLog.length > 0 && (
-            <div className="sa-card mt-4">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-                  Perception Log — {activeLog.length} entries
-                </span>
-              </div>
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {activeLog.map((entry, i) => (
-                  <div key={i} className="px-3 py-2 rounded-lg" style={{
-                    background: entry.phase === "walking" ? "#3B82F608" : "#1D9E7508",
-                    border: `1px solid ${entry.phase === "walking" ? "#3B82F620" : "#1D9E7520"}`,
-                  }}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{
-                        background: entry.phase === "walking" ? "#3B82F615" : "#1D9E7515",
-                        color: entry.phase === "walking" ? "#3B82F6" : "#1D9E75",
-                        fontFamily: "'JetBrains Mono', monospace",
+          {/* ---- Results Panel: Per-Waypoint Summary ---- */}
+          {activeLog.length > 0 && (() => {
+            // Group dwell entries by waypoint
+            const dwellEntries = activeLog.filter((e) => e.phase === "dwelling");
+            const walkEntries = activeLog.filter((e) => e.phase === "walking");
+            const avgComfort = activeLog.length > 0
+              ? Math.round((activeLog.reduce((s, e) => s + e.experience.comfort_score, 0) / activeLog.length) * 10) / 10
+              : 0;
+            const avgStress = dwellEntries.length > 0
+              ? Math.round((dwellEntries.reduce((s, e) => s + computeStressScore(e.accState), 0) / dwellEntries.length) * 10) / 10
+              : 0;
+
+            return (
+              <>
+                {/* Route Summary Card */}
+                <div className="sa-card mt-4">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                      Route Results Summary
+                    </span>
+                    <div className="flex-1" />
+                    <div className="flex items-center gap-3">
+                      <div className="text-center px-3 py-1.5 rounded-lg" style={{
+                        background: avgComfort >= 7 ? "#1D9E7512" : avgComfort >= 4 ? "#E67E2212" : "#D94F4F12",
+                        border: `1px solid ${avgComfort >= 7 ? "#1D9E7530" : avgComfort >= 4 ? "#E67E2230" : "#D94F4F30"}`,
                       }}>
-                        {entry.phase === "walking" ? "WALK" : "DWELL"}
-                      </span>
-                      {entry.phase === "walking" && entry.from && entry.to && (
-                        <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                          {activeWPs.find((w) => w.id === entry.from)?.label || "?"} → {activeWPs.find((w) => w.id === entry.to)?.label || "?"}
-                        </span>
-                      )}
-                      {entry.phase === "dwelling" && (
-                        <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                          @ {activeWPs.find((w) => w.id === entry.waypoint_id)?.label || "?"}
-                        </span>
-                      )}
-                      <div className="flex-1" />
-                      <span className="text-xs font-medium" style={{
-                        color: entry.experience.comfort_score >= 7 ? "#1D9E75" :
-                               entry.experience.comfort_score >= 4 ? "#E67E22" : "#D94F4F",
-                        fontFamily: "'JetBrains Mono', monospace",
+                        <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>Avg Comfort</div>
+                        <div className="text-lg font-bold" style={{
+                          color: avgComfort >= 7 ? "#1D9E75" : avgComfort >= 4 ? "#E67E22" : "#D94F4F",
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>{avgComfort}/10</div>
+                      </div>
+                      <div className="text-center px-3 py-1.5 rounded-lg" style={{
+                        background: avgStress <= 3 ? "#1D9E7512" : avgStress <= 6 ? "#E67E2212" : "#D94F4F12",
+                        border: `1px solid ${avgStress <= 3 ? "#1D9E7530" : avgStress <= 6 ? "#E67E2230" : "#D94F4F30"}`,
                       }}>
-                        {entry.experience.comfort_score}/10
-                      </span>
+                        <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>Avg Stress</div>
+                        <div className="text-lg font-bold" style={{
+                          color: avgStress <= 3 ? "#1D9E75" : avgStress <= 6 ? "#E67E22" : "#D94F4F",
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>{avgStress}/10</div>
+                      </div>
+                      <div className="text-center px-3 py-1.5 rounded-lg" style={{
+                        background: "var(--background)",
+                        border: "1px solid var(--border)",
+                      }}>
+                        <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>Entries</div>
+                        <div className="text-lg font-bold" style={{
+                          color: "var(--foreground)",
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>{activeLog.length}</div>
+                      </div>
                     </div>
-                    <p className="text-xs leading-relaxed" style={{ color: "var(--foreground)" }}>
-                      {entry.experience.summary}
-                    </p>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+
+                  {/* Per-Waypoint Result Cards */}
+                  <div className="space-y-3">
+                    {dwellEntries.map((entry, i) => {
+                      const wp = activeWPs.find((w) => w.id === entry.waypoint_id);
+                      const stress = computeStressScore(entry.accState);
+                      const stressColor = stress <= 3 ? "#1D9E75" : stress <= 6 ? "#E67E22" : "#D94F4F";
+                      const comfortColor = entry.experience.comfort_score >= 7 ? "#1D9E75" :
+                                           entry.experience.comfort_score >= 4 ? "#E67E22" : "#D94F4F";
+
+                      // Get the walking entry that leads to this waypoint
+                      const walkEntry = walkEntries.find((w) => w.to === entry.waypoint_id);
+
+                      return (
+                        <div key={i} className="rounded-xl overflow-hidden" style={{
+                          border: "1px solid var(--border)",
+                          background: "var(--background)",
+                        }}>
+                          {/* Waypoint header */}
+                          <div className="flex items-center gap-3 px-4 py-2.5" style={{
+                            background: "var(--card)",
+                            borderBottom: "1px solid var(--border)",
+                          }}>
+                            <span className="text-sm font-bold" style={{
+                              color: PERSONA_COLORS[activeTab].primary,
+                              fontFamily: "'JetBrains Mono', monospace",
+                            }}>
+                              {wp?.label || `WP${i + 1}`}
+                            </span>
+                            <span className="text-xs" style={{
+                              color: "var(--muted-foreground)",
+                              fontFamily: "'JetBrains Mono', monospace",
+                            }}>
+                              ({entry.position.x}, {entry.position.y})
+                            </span>
+                            <div className="flex-1" />
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1 px-2 py-0.5 rounded" style={{
+                                background: `${comfortColor}12`,
+                                border: `1px solid ${comfortColor}30`,
+                              }}>
+                                <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>Comfort</span>
+                                <span className="text-xs font-bold" style={{
+                                  color: comfortColor,
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                }}>{entry.experience.comfort_score}/10</span>
+                              </div>
+                              <div className="flex items-center gap-1 px-2 py-0.5 rounded" style={{
+                                background: `${stressColor}12`,
+                                border: `1px solid ${stressColor}30`,
+                              }}>
+                                <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>Stress</span>
+                                <span className="text-xs font-bold" style={{
+                                  color: stressColor,
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                }}>{stress}/10</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Stress dimension bars */}
+                          <div className="px-4 py-3">
+                            <div className="grid grid-cols-3 gap-x-4 gap-y-2 mb-3">
+                              {([
+                                { key: "thermal_discomfort", label: "Thermal" },
+                                { key: "visual_strain", label: "Visual" },
+                                { key: "noise_stress", label: "Noise" },
+                                { key: "social_overload", label: "Social" },
+                                { key: "fatigue", label: "Fatigue" },
+                                { key: "wayfinding_anxiety", label: "Wayfinding" },
+                              ] as const).map(({ key, label }) => {
+                                const val = entry.accState[key];
+                                const barColor = val <= 3 ? "#1D9E75" : val <= 6 ? "#E67E22" : "#D94F4F";
+                                return (
+                                  <div key={key}>
+                                    <div className="flex items-center justify-between mb-0.5">
+                                      <span className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "10px" }}>{label}</span>
+                                      <span className="text-xs font-medium" style={{
+                                        color: barColor,
+                                        fontFamily: "'JetBrains Mono', monospace",
+                                        fontSize: "10px",
+                                      }}>{val.toFixed(1)}</span>
+                                    </div>
+                                    <div className="w-full h-1.5 rounded-full" style={{ background: "var(--border)" }}>
+                                      <div className="h-full rounded-full transition-all" style={{
+                                        width: `${Math.min(100, val * 10)}%`,
+                                        background: barColor,
+                                        opacity: 0.7,
+                                      }} />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Narrative */}
+                            <div className="rounded-lg px-3 py-2" style={{
+                              background: "var(--card)",
+                              border: "1px solid var(--border)",
+                            }}>
+                              <p className="text-xs leading-relaxed" style={{ color: "var(--foreground)" }}>
+                                {entry.experience.summary}
+                              </p>
+                            </div>
+
+                            {/* Walking narrative (if exists) */}
+                            {walkEntry && (
+                              <div className="mt-2 rounded-lg px-3 py-2" style={{
+                                background: "#3B82F606",
+                                border: "1px solid #3B82F615",
+                              }}>
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span className="text-xs font-bold px-1 py-0.5 rounded" style={{
+                                    background: "#3B82F612",
+                                    color: "#3B82F6",
+                                    fontFamily: "'JetBrains Mono', monospace",
+                                    fontSize: "9px",
+                                  }}>WALK</span>
+                                  <span className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "10px" }}>
+                                    en route to {wp?.label || "?"}
+                                  </span>
+                                </div>
+                                <p className="text-xs leading-relaxed" style={{ color: "var(--foreground)" }}>
+                                  {walkEntry.experience.summary}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Full Perception Log (collapsible) */}
+                <details className="sa-card mt-4">
+                  <summary className="cursor-pointer text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                    Full Perception Log — {activeLog.length} entries
+                  </summary>
+                  <div className="space-y-2 mt-3 max-h-80 overflow-y-auto">
+                    {activeLog.map((entry, i) => (
+                      <div key={i} className="px-3 py-2 rounded-lg" style={{
+                        background: entry.phase === "walking" ? "#3B82F608" : "#1D9E7508",
+                        border: `1px solid ${entry.phase === "walking" ? "#3B82F620" : "#1D9E7520"}`,
+                      }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{
+                            background: entry.phase === "walking" ? "#3B82F615" : "#1D9E7515",
+                            color: entry.phase === "walking" ? "#3B82F6" : "#1D9E75",
+                            fontFamily: "'JetBrains Mono', monospace",
+                          }}>
+                            {entry.phase === "walking" ? "WALK" : "DWELL"}
+                          </span>
+                          {entry.phase === "walking" && entry.from && entry.to && (
+                            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                              {activeWPs.find((w) => w.id === entry.from)?.label || "?"} → {activeWPs.find((w) => w.id === entry.to)?.label || "?"}
+                            </span>
+                          )}
+                          {entry.phase === "dwelling" && (
+                            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                              @ {activeWPs.find((w) => w.id === entry.waypoint_id)?.label || "?"}
+                            </span>
+                          )}
+                          <div className="flex-1" />
+                          <span className="text-xs" style={{
+                            color: "var(--muted-foreground)",
+                            fontFamily: "'JetBrains Mono', monospace",
+                            fontSize: "10px",
+                          }}>
+                            Stress: {computeStressScore(entry.accState).toFixed(1)}
+                          </span>
+                          <span className="text-xs font-medium" style={{
+                            color: entry.experience.comfort_score >= 7 ? "#1D9E75" :
+                                   entry.experience.comfort_score >= 4 ? "#E67E22" : "#D94F4F",
+                            fontFamily: "'JetBrains Mono', monospace",
+                          }}>
+                            {entry.experience.comfort_score}/10
+                          </span>
+                        </div>
+                        <p className="text-xs leading-relaxed" style={{ color: "var(--foreground)" }}>
+                          {entry.experience.summary}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </>
+            );
+          })()}
         </div>
       </section>
 

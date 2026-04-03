@@ -7,7 +7,7 @@
 // ============================================================
 
 import { useRef, useCallback, useEffect, useState } from "react";
-import type { Shape, AgentPosition, Zone, Waypoint } from "@/lib/store";
+import type { Shape, AgentPosition, Zone, Waypoint, HeatmapPoint } from "@/lib/store";
 import { PERSONA_COLORS, defaultZoneEnv } from "@/lib/store";
 import { toast } from "sonner";
 
@@ -174,6 +174,9 @@ export default function SpatialMap({
   // Animation props
   animatingAgents = {},
   pathTrails = {},
+  // Heatmap props
+  heatmapPoints = [],
+  showHeatmap = false,
 }: {
   shapes: Shape[];
   zones?: Zone[];
@@ -190,6 +193,9 @@ export default function SpatialMap({
   // Animation props
   animatingAgents?: Record<number, AgentPosition>;
   pathTrails?: Record<number, AgentPosition[]>;
+  // Heatmap props
+  heatmapPoints?: HeatmapPoint[];
+  showHeatmap?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -401,6 +407,52 @@ export default function SpatialMap({
       ctx.fillText(`${zone.env.temperature}°C  ${zone.env.light}lx  ${zone.env.noise}dB`, zx1 + 4, zy1 + 18);
       ctx.textBaseline = "alphabetic";
     });
+
+    // ---- Draw heatmap overlay ----
+    if (showHeatmap && heatmapPoints.length > 0) {
+      // Draw radial gradient blobs at each heatmap point
+      for (const hp of heatmapPoints) {
+        const [hx, hy] = worldToScreen(hp.x, hp.y, c);
+        const radius = Math.max(30, 2000 * c.zoom); // adaptive radius
+        const intensity = Math.min(1, hp.value / 10);
+        
+        // Color: green (low stress) -> yellow -> red (high stress)
+        let r: number, g: number, b: number;
+        if (intensity < 0.4) {
+          // Green to yellow
+          const t = intensity / 0.4;
+          r = Math.round(29 + (230 - 29) * t);
+          g = Math.round(158 + (126 - 158) * t);
+          b = Math.round(117 + (34 - 117) * t);
+        } else {
+          // Yellow to red
+          const t = (intensity - 0.4) / 0.6;
+          r = Math.round(230 + (217 - 230) * t);
+          g = Math.round(126 + (79 - 126) * t);
+          b = Math.round(34 + (79 - 34) * t);
+        }
+        
+        const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, radius);
+        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.35)`);
+        grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.15)`);
+        grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(hx, hy, radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Score label at center
+        ctx.font = "bold 11px 'JetBrains Mono', monospace";
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.9)`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(hp.value.toFixed(1), hx, hy - radius * 0.15);
+        ctx.font = "8px 'Inter', sans-serif";
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
+        ctx.fillText("stress", hx, hy + radius * 0.15);
+        ctx.textBaseline = "alphabetic";
+      }
+    }
 
     // Draw shapes
     shapes.forEach((shape) => {
@@ -705,7 +757,7 @@ export default function SpatialMap({
       ctx.textAlign = "left";
       ctx.fillText(txt, tx, ty);
     }
-  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam, drawingPoints, activeTool, allWaypoints, animatingAgents, pathTrails, animPulse]);
+  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam, drawingPoints, activeTool, allWaypoints, animatingAgents, pathTrails, animPulse, heatmapPoints, showHeatmap]);
 
   useEffect(() => { draw(); }, [draw]);
 

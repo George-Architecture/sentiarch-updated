@@ -368,6 +368,35 @@ export interface Waypoint {
   dwell_minutes: number;   // how long agent stays at this point
 }
 
+// ---- Derived Metrics ----
+export function computeStressScore(acc: AccumulatedState): number {
+  // Weighted average of all accumulated stress dimensions (0-10 scale)
+  const weights = {
+    thermal_discomfort: 0.20,
+    visual_strain: 0.15,
+    noise_stress: 0.20,
+    social_overload: 0.15,
+    fatigue: 0.15,
+    wayfinding_anxiety: 0.15,
+  };
+  const score = (
+    acc.thermal_discomfort * weights.thermal_discomfort +
+    acc.visual_strain * weights.visual_strain +
+    acc.noise_stress * weights.noise_stress +
+    acc.social_overload * weights.social_overload +
+    acc.fatigue * weights.fatigue +
+    acc.wayfinding_anxiety * weights.wayfinding_anxiety
+  );
+  return Math.round(Math.min(10, Math.max(0, score)) * 10) / 10;
+}
+
+export interface HeatmapPoint {
+  x: number;
+  y: number;
+  value: number; // 0-10 stress score
+  agentIdx: number;
+}
+
 export interface PerceptionLogEntry {
   waypoint_id: string;
   phase: "walking" | "dwelling";
