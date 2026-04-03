@@ -1259,29 +1259,42 @@ export default function SpatialMap({
     }
   };
 
-  // ---- Zoom to cursor (fixed) ----
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    const sx = (e.clientX - rect.left) * (canvasW / rect.width);
-    const sy = (e.clientY - rect.top) * (canvasH / rect.height);
+  // ---- Zoom to cursor (native wheel listener with passive:false) ----
+  // We use a native event listener instead of React onWheel because
+  // React registers wheel events as passive, making preventDefault() impossible.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    const c = camRef.current;
+    const handleWheelNative = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    // Get world position under cursor BEFORE zoom
-    const [wxBefore, wyBefore] = screenToWorld(sx, sy, c);
+      const rect = canvas.getBoundingClientRect();
+      const sx = (e.clientX - rect.left) * (canvasW / rect.width);
+      const sy = (e.clientY - rect.top) * (canvasH / rect.height);
 
-    // Apply zoom factor
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    c.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, c.zoom * factor));
+      const c = camRef.current;
 
-    // Adjust offset so the world position under cursor stays at the same screen position
-    c.offsetX = wxBefore - sx / c.zoom;
-    c.offsetY = wyBefore + sy / c.zoom;
+      // Get world position under cursor BEFORE zoom
+      const [wxBefore, wyBefore] = screenToWorld(sx, sy, c);
 
-    setCam({ ...c });
-  };
+      // Apply zoom factor
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      c.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, c.zoom * factor));
+
+      // Adjust offset so the world position under cursor stays at the same screen position
+      c.offsetX = wxBefore - sx / c.zoom;
+      c.offsetY = wyBefore + sy / c.zoom;
+
+      setCam({ ...c });
+    };
+
+    canvas.addEventListener("wheel", handleWheelNative, { passive: false });
+    return () => {
+      canvas.removeEventListener("wheel", handleWheelNative);
+    };
+  }, [canvasW, canvasH]);
 
   const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -1528,7 +1541,6 @@ export default function SpatialMap({
             dragShapeIdx.current = null;
           }
         }}
-        onWheel={handleWheel}
         onContextMenu={handleContextMenu}
       />
 
