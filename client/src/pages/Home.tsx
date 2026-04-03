@@ -2,6 +2,7 @@
 // Home Page - Multi-Agent Occupant Perception Map
 // Clean neumorphism UI with Inter font
 // Waypoint route system + agent animation + perception log
+// Dynamic agent tabs (unlimited)
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -49,7 +50,8 @@ import {
   isAgentCoreChange,
   getEnvAtPosition,
   zoneEnvToEnvironment,
-  PERSONA_COLORS,
+  getPersonaColor,
+  createNewPersona,
   type HeatmapPoint,
 } from "@/lib/store";
 
@@ -84,10 +86,10 @@ function posDist(a: AgentPosition, b: AgentPosition): number {
 export default function Home() {
   const [, navigate] = useLocation();
 
-  // Multi-agent state: array of 3 persona states
+  // Multi-agent state: dynamic array of persona states
   const [states, setStates] = useState<PersonaState[]>(() => {
     const saved = loadMultiAgent();
-    if (saved && saved.personas.length === 3) {
+    if (saved && saved.personas.length > 0) {
       return saved.personas.map((p, i) => {
         const wps = loadWaypoints(i);
         return {
@@ -103,7 +105,7 @@ export default function Home() {
   const [shapes, setShapes] = useState<Shape[]>(() => loadShapes());
   const [zones, setZones] = useState<Zone[]>(() => loadZones());
   const [activeTab, setActiveTab] = useState(0);
-  const [simChecked, setSimChecked] = useState([true, true, true]);
+  const [simChecked, setSimChecked] = useState<boolean[]>(() => states.map(() => true));
   const [running, setRunning] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
 
@@ -115,6 +117,47 @@ export default function Home() {
 
   // Current active persona state
   const current = states[activeTab];
+
+  // ---- Dynamic Agent Management ----
+  const addAgent = useCallback(() => {
+    const newIdx = states.length;
+    const newPersona = createNewPersona(newIdx);
+    setStates((prev) => [...prev, createDefaultState(newPersona)]);
+    setSimChecked((prev) => [...prev, true]);
+    setActiveTab(newIdx);
+    toast.success(`Agent P${newIdx + 1} added`);
+  }, [states.length]);
+
+  const removeAgent = useCallback((idx: number) => {
+    if (states.length <= 1) {
+      toast.error("Cannot remove the last agent");
+      return;
+    }
+    setStates((prev) => prev.filter((_, i) => i !== idx));
+    setSimChecked((prev) => prev.filter((_, i) => i !== idx));
+    setPathTrails((prev) => {
+      const next: Record<number, AgentPosition[]> = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const ki = parseInt(k);
+        if (ki < idx) next[ki] = v;
+        else if (ki > idx) next[ki - 1] = v;
+      });
+      return next;
+    });
+    setAnimatingAgents((prev) => {
+      const next: Record<number, AgentPosition> = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const ki = parseInt(k);
+        if (ki < idx) next[ki] = v;
+        else if (ki > idx) next[ki - 1] = v;
+      });
+      return next;
+    });
+    if (activeTab >= idx && activeTab > 0) {
+      setActiveTab(activeTab - 1);
+    }
+    toast.info(`Agent P${idx + 1} removed`);
+  }, [states.length, activeTab]);
 
   // Persist
   useEffect(() => { saveShapes(shapes); }, [shapes]);
@@ -161,9 +204,7 @@ export default function Home() {
       };
     }));
   }, [
-    states[0]?.agentPos?.x, states[0]?.agentPos?.y,
-    states[1]?.agentPos?.x, states[1]?.agentPos?.y,
-    states[2]?.agentPos?.x, states[2]?.agentPos?.y,
+    ...states.map((s) => `${s.agentPos?.x},${s.agentPos?.y}`),
     shapes,
   ]);
 
@@ -172,7 +213,6 @@ export default function Home() {
     setShapes((s) => [...s, shape]);
   }, []);
 
-  // Shape update/delete for drag-move and selection delete
   const updateShapes = useCallback((newShapes: Shape[]) => {
     setShapes(newShapes);
   }, []);
@@ -211,6 +251,7 @@ export default function Home() {
   const addWaypoint = useCallback((agentIdx: number, wp: Waypoint) => {
     setStates((prev) => {
       const next = [...prev];
+      if (!next[agentIdx]) return prev;
       const route = { ...next[agentIdx].route };
       route.waypoints = [...route.waypoints, wp];
       next[agentIdx] = { ...next[agentIdx], route };
@@ -222,6 +263,7 @@ export default function Home() {
   const removeWaypoint = useCallback((agentIdx: number, wpId: string) => {
     setStates((prev) => {
       const next = [...prev];
+      if (!next[agentIdx]) return prev;
       const route = { ...next[agentIdx].route };
       route.waypoints = route.waypoints.filter((w) => w.id !== wpId);
       next[agentIdx] = { ...next[agentIdx], route };
@@ -233,6 +275,7 @@ export default function Home() {
   const updateWaypointDwell = useCallback((agentIdx: number, wpId: string, minutes: number) => {
     setStates((prev) => {
       const next = [...prev];
+      if (!next[agentIdx]) return prev;
       const route = { ...next[agentIdx].route };
       route.waypoints = route.waypoints.map((w) =>
         w.id === wpId ? { ...w, dwell_minutes: minutes } : w
@@ -246,6 +289,7 @@ export default function Home() {
   const clearWaypoints = useCallback((agentIdx: number) => {
     setStates((prev) => {
       const next = [...prev];
+      if (!next[agentIdx]) return prev;
       next[agentIdx] = {
         ...next[agentIdx],
         route: { waypoints: [], perceptionLog: [] },
@@ -264,6 +308,7 @@ export default function Home() {
   const placeAgent = useCallback((idx: number, pos: AgentPosition) => {
     setStates((prev) => {
       const next = [...prev];
+      if (!next[idx]) return prev;
       const cell = posToCell(pos.x, pos.y);
       const spatial = computeSpatialFromAgent(pos, shapes, next[idx].persona.spatial);
       const zoneEnv = getEnvAtPosition(pos.x, pos.y, zones, shapes);
@@ -286,6 +331,7 @@ export default function Home() {
   const updatePersona = useCallback((idx: number, newPersona: PersonaData) => {
     setStates((prev) => {
       const next = [...prev];
+      if (!next[idx]) return prev;
       const old = next[idx];
       if (isAgentCoreChange(old.persona.agent, newPersona.agent)) {
         next[idx] = {
@@ -305,12 +351,12 @@ export default function Home() {
     });
   }, []);
 
-  // Environment sync
+  // Environment sync (no longer syncs across agents - each agent gets zone-based env)
   const updatePersonaWithEnvSync = useCallback((idx: number, newPersona: PersonaData) => {
     setStates((prev) => {
       const next = [...prev];
+      if (!next[idx]) return prev;
       const old = next[idx];
-      const envChanged = JSON.stringify(old.persona.environment) !== JSON.stringify(newPersona.environment);
 
       if (isAgentCoreChange(old.persona.agent, newPersona.agent)) {
         next[idx] = {
@@ -323,24 +369,10 @@ export default function Home() {
           triggers: [],
           hasSimulated: false,
         };
-        if (envChanged) {
-          for (let i = 0; i < next.length; i++) {
-            if (i !== idx) {
-              next[i] = { ...next[i], persona: { ...next[i].persona, environment: { ...newPersona.environment } } };
-            }
-          }
-        }
         return next;
       }
 
       next[idx] = { ...old, persona: newPersona };
-      if (envChanged) {
-        for (let i = 0; i < next.length; i++) {
-          if (i !== idx) {
-            next[i] = { ...next[i], persona: { ...next[i].persona, environment: { ...newPersona.environment } } };
-          }
-        }
-      }
       return next;
     });
   }, []);
@@ -348,11 +380,13 @@ export default function Home() {
   // Simulate single persona (snapshot)
   const simulateSingle = async (idx: number): Promise<boolean> => {
     const s = states[idx];
+    if (!s) return false;
     const result = await callLLM(s.persona, s.computed, shapes);
     if (!result) return false;
 
     setStates((prev) => {
       const next = [...prev];
+      if (!next[idx]) return prev;
       const old = next[idx];
       const prevScore = old.hasSimulated ? old.experience.comfort_score : 0;
       const newScore = result.experience.comfort_score;
@@ -384,7 +418,7 @@ export default function Home() {
       navigate("/settings");
       return;
     }
-    const toRun = simChecked.map((c, i) => c ? i : -1).filter((i) => i >= 0);
+    const toRun = simChecked.map((c, i) => c ? i : -1).filter((i) => i >= 0 && i < states.length);
     if (toRun.length === 0) {
       toast.error("Please select at least one persona to simulate");
       return;
@@ -402,13 +436,14 @@ export default function Home() {
   // ---- Route Playback Engine ----
   const runRouteForAgent = async (idx: number): Promise<PerceptionLogEntry[]> => {
     const s = states[idx];
+    if (!s) return [];
     const wps = s.route.waypoints;
     if (wps.length < 2) return [];
 
     const log: PerceptionLogEntry[] = [];
     const trail: AgentPosition[] = [wps[0].position];
-    const WALK_SPEED = 1200; // mm per second (1.2 m/s walking speed)
-    const ANIM_INTERVAL = 50; // ms per animation frame
+    const WALK_SPEED = 1200;
+    const ANIM_INTERVAL = 50;
 
     for (let i = 0; i < wps.length - 1; i++) {
       if (routeAbortRef.current) break;
@@ -416,10 +451,9 @@ export default function Home() {
       const fromWP = wps[i];
       const toWP = wps[i + 1];
       const dist = posDist(fromWP.position, toWP.position);
-      const walkDuration = (dist / WALK_SPEED) * 1000; // ms
+      const walkDuration = (dist / WALK_SPEED) * 1000;
       const steps = Math.max(1, Math.floor(walkDuration / ANIM_INTERVAL));
 
-      // ---- Walking phase animation ----
       for (let step = 0; step <= steps; step++) {
         if (routeAbortRef.current) break;
         const t = step / steps;
@@ -432,7 +466,6 @@ export default function Home() {
 
       if (routeAbortRef.current) break;
 
-      // ---- Walking LLM call (at midpoint) ----
       const midPos = lerpPos(fromWP.position, toWP.position, 0.5);
       const walkEnv = getEnvAtPosition(midPos.x, midPos.y, zones, shapes);
       const walkEnvData = zoneEnvToEnvironment(walkEnv);
@@ -459,10 +492,10 @@ export default function Home() {
       };
       log.push(walkEntry);
 
-      // Update state with walking result
       if (walkResult) {
         setStates((prev) => {
           const next = [...prev];
+          if (!next[idx]) return prev;
           next[idx] = {
             ...next[idx],
             experience: walkResult.experience,
@@ -476,7 +509,6 @@ export default function Home() {
 
       if (routeAbortRef.current) break;
 
-      // ---- Dwelling phase ----
       const dwellWP = toWP;
       const arrivalPos = dwellWP.position;
       setAnimatingAgents((prev) => ({ ...prev, [idx]: arrivalPos }));
@@ -504,10 +536,10 @@ export default function Home() {
       };
       log.push(dwellEntry);
 
-      // Update state with dwell result
       if (dwellResult) {
         setStates((prev) => {
           const next = [...prev];
+          if (!next[idx]) return prev;
           next[idx] = {
             ...next[idx],
             experience: dwellResult.experience,
@@ -520,11 +552,9 @@ export default function Home() {
         });
       }
 
-      // Brief pause at waypoint to visualize dwelling
       await new Promise((r) => setTimeout(r, 800));
     }
 
-    // Remove from animating
     setAnimatingAgents((prev) => {
       const next = { ...prev };
       delete next[idx];
@@ -555,7 +585,6 @@ export default function Home() {
     setPathTrails({});
     toast.info(`Running route simulation for ${agentsWithRoutes.length} agent(s)...`);
 
-    // Run all agents in parallel
     const results = await Promise.all(
       agentsWithRoutes.map(async ({ idx }) => {
         try {
@@ -568,14 +597,15 @@ export default function Home() {
       })
     );
 
-    // Store perception logs
     setStates((prev) => {
       const next = [...prev];
       for (const { idx, log } of results) {
-        next[idx] = {
-          ...next[idx],
-          route: { ...next[idx].route, perceptionLog: log },
-        };
+        if (next[idx]) {
+          next[idx] = {
+            ...next[idx],
+            route: { ...next[idx].route, perceptionLog: log },
+          };
+        }
       }
       return next;
     });
@@ -633,7 +663,6 @@ export default function Home() {
   // Heatmap toggle
   const [showHeatmap, setShowHeatmap] = useState(false);
 
-  // Compute heatmap points from all perception logs
   const heatmapPoints = useMemo<HeatmapPoint[]>(() => {
     if (!showHeatmap) return [];
     const points: HeatmapPoint[] = [];
@@ -652,9 +681,10 @@ export default function Home() {
     return points;
   }, [states, showHeatmap]);
 
-  // Count total waypoints for active agent
   const activeWPs = states[activeTab]?.route.waypoints || [];
   const activeLog = states[activeTab]?.route.perceptionLog || [];
+
+  if (!current) return null;
 
   return (
     <div className="min-h-screen" style={{ background: "var(--background)" }}>
@@ -722,34 +752,67 @@ export default function Home() {
             </span>
           </div>
 
-          {/* Persona Tabs */}
-          <div className="flex items-center gap-2 mb-4">
+          {/* ---- Dynamic Persona Tabs ---- */}
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
             {states.map((s, i) => {
-              const color = PERSONA_COLORS[i];
+              const color = getPersonaColor(i);
               const isActive = activeTab === i;
               return (
-                <button
-                  key={i}
-                  onClick={() => setActiveTab(i)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium"
-                  style={{
-                    background: isActive ? color.primary : "var(--card)",
-                    color: isActive ? "#fff" : color.primary,
-                    border: `1.5px solid ${isActive ? color.primary : "var(--border)"}`,
-                    boxShadow: isActive
-                      ? `0 2px 8px ${color.primary}30`
-                      : "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
-                    transform: isActive ? "translateY(-1px)" : "none",
-                  }}
-                >
-                  <div className="w-4 h-4 rounded-full" style={{
-                    background: isActive ? "#fff" : color.primary,
-                    opacity: isActive ? 0.9 : 0.7,
-                  }} />
-                  <span>{s.persona.agent.id}</span>
-                </button>
+                <div key={i} className="relative group">
+                  <button
+                    onClick={() => setActiveTab(i)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium"
+                    style={{
+                      background: isActive ? color.primary : "var(--card)",
+                      color: isActive ? "#fff" : color.primary,
+                      border: `1.5px solid ${isActive ? color.primary : "var(--border)"}`,
+                      boxShadow: isActive
+                        ? `0 2px 8px ${color.primary}30`
+                        : "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
+                      transform: isActive ? "translateY(-1px)" : "none",
+                    }}
+                  >
+                    <div className="w-4 h-4 rounded-full" style={{
+                      background: isActive ? "#fff" : color.primary,
+                      opacity: isActive ? 0.9 : 0.7,
+                    }} />
+                    <span>{s.persona.agent.id}</span>
+                  </button>
+                  {/* Remove button on hover */}
+                  {states.length > 1 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeAgent(i); }}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{
+                        background: "#D94F4F",
+                        color: "#fff",
+                        boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+                        lineHeight: 1,
+                      }}
+                      title={`Remove P${i + 1}`}
+                    >
+                      x
+                    </button>
+                  )}
+                </div>
               );
             })}
+
+            {/* Add Agent Button */}
+            <button
+              onClick={addAgent}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all text-sm font-medium"
+              style={{
+                background: "var(--card)",
+                color: "var(--muted-foreground)",
+                border: "1.5px dashed var(--border)",
+                boxShadow: "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
+              }}
+              title="Add new agent"
+            >
+              <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
+              <span>Add Agent</span>
+            </button>
 
             <div className="flex-1" />
             <button
@@ -765,28 +828,31 @@ export default function Home() {
           </div>
 
           {/* Simulate Checkboxes */}
-          <div className="flex items-center gap-4 mb-4 px-1">
+          <div className="flex items-center gap-4 mb-4 px-1 flex-wrap">
             <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
               Simulate:
             </span>
-            {states.map((s, i) => (
-              <label key={i} className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={simChecked[i]}
-                  onChange={(e) => {
-                    const next = [...simChecked];
-                    next[i] = e.target.checked;
-                    setSimChecked(next);
-                  }}
-                  className="w-4 h-4 rounded"
-                  style={{ accentColor: PERSONA_COLORS[i].primary }}
-                />
-                <span className="text-sm" style={{ color: PERSONA_COLORS[i].primary, fontFamily: "'JetBrains Mono', monospace" }}>
-                  {s.persona.agent.id}
-                </span>
-              </label>
-            ))}
+            {states.map((s, i) => {
+              const color = getPersonaColor(i);
+              return (
+                <label key={i} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={simChecked[i] ?? true}
+                    onChange={(e) => {
+                      const next = [...simChecked];
+                      next[i] = e.target.checked;
+                      setSimChecked(next);
+                    }}
+                    className="w-4 h-4 rounded"
+                    style={{ accentColor: color.primary }}
+                  />
+                  <span className="text-sm" style={{ color: color.primary, fontFamily: "'JetBrains Mono', monospace" }}>
+                    {s.persona.agent.id}
+                  </span>
+                </label>
+              );
+            })}
           </div>
 
           {/* Comparison View */}
@@ -804,7 +870,7 @@ export default function Home() {
               prevAccumulatedState={current.prevAccState}
               onPersonaChange={(p) => updatePersonaWithEnvSync(activeTab, p)}
               hasSimulated={current.hasSimulated}
-              personaColor={PERSONA_COLORS[activeTab]}
+              personaColor={getPersonaColor(activeTab)}
               agentPlaced={current.agentPos !== null}
             />
           )}
@@ -898,7 +964,7 @@ export default function Home() {
           {/* Active agent waypoints */}
           <div className="sa-card">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-3 h-3 rounded-full" style={{ background: PERSONA_COLORS[activeTab].primary }} />
+              <div className="w-3 h-3 rounded-full" style={{ background: getPersonaColor(activeTab).primary }} />
               <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
                 P{activeTab + 1} Route — {activeWPs.length} waypoint{activeWPs.length !== 1 ? "s" : ""}
               </span>
@@ -924,7 +990,7 @@ export default function Home() {
                     border: "1px solid var(--border)",
                   }}>
                     <span className="text-xs font-bold" style={{
-                      color: PERSONA_COLORS[activeTab].primary,
+                      color: getPersonaColor(activeTab).primary,
                       fontFamily: "'JetBrains Mono', monospace",
                       minWidth: "24px",
                     }}>
@@ -974,7 +1040,6 @@ export default function Home() {
 
           {/* ---- Results Panel: Per-Waypoint Summary ---- */}
           {activeLog.length > 0 && (() => {
-            // Group dwell entries by waypoint
             const dwellEntries = activeLog.filter((e) => e.phase === "dwelling");
             const walkEntries = activeLog.filter((e) => e.phase === "walking");
             const avgComfort = activeLog.length > 0
@@ -986,7 +1051,6 @@ export default function Home() {
 
             return (
               <>
-                {/* Route Summary Card */}
                 <div className="sa-card mt-4">
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
@@ -1027,7 +1091,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Per-Waypoint Result Cards */}
                   <div className="space-y-3">
                     {dwellEntries.map((entry, i) => {
                       const wp = activeWPs.find((w) => w.id === entry.waypoint_id);
@@ -1035,8 +1098,6 @@ export default function Home() {
                       const stressColor = stress <= 3 ? "#1D9E75" : stress <= 6 ? "#E67E22" : "#D94F4F";
                       const comfortColor = entry.experience.comfort_score >= 7 ? "#1D9E75" :
                                            entry.experience.comfort_score >= 4 ? "#E67E22" : "#D94F4F";
-
-                      // Get the walking entry that leads to this waypoint
                       const walkEntry = walkEntries.find((w) => w.to === entry.waypoint_id);
 
                       return (
@@ -1044,13 +1105,12 @@ export default function Home() {
                           border: "1px solid var(--border)",
                           background: "var(--background)",
                         }}>
-                          {/* Waypoint header */}
                           <div className="flex items-center gap-3 px-4 py-2.5" style={{
                             background: "var(--card)",
                             borderBottom: "1px solid var(--border)",
                           }}>
                             <span className="text-sm font-bold" style={{
-                              color: PERSONA_COLORS[activeTab].primary,
+                              color: getPersonaColor(activeTab).primary,
                               fontFamily: "'JetBrains Mono', monospace",
                             }}>
                               {wp?.label || `WP${i + 1}`}
@@ -1086,7 +1146,6 @@ export default function Home() {
                             </div>
                           </div>
 
-                          {/* Stress dimension bars */}
                           <div className="px-4 py-3">
                             <div className="grid grid-cols-3 gap-x-4 gap-y-2 mb-3">
                               {([
@@ -1121,7 +1180,6 @@ export default function Home() {
                               })}
                             </div>
 
-                            {/* Narrative */}
                             <div className="rounded-lg px-3 py-2" style={{
                               background: "var(--card)",
                               border: "1px solid var(--border)",
@@ -1131,7 +1189,6 @@ export default function Home() {
                               </p>
                             </div>
 
-                            {/* Walking narrative (if exists) */}
                             {walkEntry && (
                               <div className="mt-2 rounded-lg px-3 py-2" style={{
                                 background: "#3B82F606",
@@ -1160,7 +1217,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Full Perception Log (collapsible) */}
                 <details className="sa-card mt-4">
                   <summary className="cursor-pointer text-sm font-semibold" style={{ color: "var(--foreground)" }}>
                     Full Perception Log — {activeLog.length} entries

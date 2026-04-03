@@ -10,7 +10,7 @@
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import type { Shape, AgentPosition, Zone, Waypoint, HeatmapPoint } from "@/lib/store";
-import { PERSONA_COLORS, defaultZoneEnv } from "@/lib/store";
+import { getPersonaColor, defaultZoneEnv } from "@/lib/store";
 import { toast } from "sonner";
 
 // ---- Types ----
@@ -166,7 +166,7 @@ function drawAgent(
   isActive: boolean,
   zoom: number,
 ) {
-  const color = PERSONA_COLORS[index];
+  const color = getPersonaColor(index);
   const r = Math.max(6, Math.min(14, 10 / (zoom * 50)));
 
   if (isActive) {
@@ -213,7 +213,7 @@ function drawAnimatedAgent(
   zoom: number,
   pulse: number,
 ) {
-  const color = PERSONA_COLORS[index];
+  const color = getPersonaColor(index);
   const r = Math.max(5, Math.min(12, 8 / (zoom * 50)));
   const pulseR = r + 3 * Math.sin(pulse * Math.PI * 2);
 
@@ -735,7 +735,7 @@ export default function SpatialMap({
     // ---- Draw path trails (history) ----
     for (const [idxStr, trail] of Object.entries(pathTrails)) {
       const idx = parseInt(idxStr);
-      const color = PERSONA_COLORS[idx];
+      const color = getPersonaColor(idx);
       if (!trail || trail.length < 2) continue;
 
       ctx.beginPath();
@@ -755,7 +755,7 @@ export default function SpatialMap({
     // ---- Draw waypoints for all agents ----
     for (const [idxStr, wps] of Object.entries(allWaypoints)) {
       const idx = parseInt(idxStr);
-      const color = PERSONA_COLORS[idx];
+      const color = getPersonaColor(idx);
       if (!wps || wps.length === 0) continue;
 
       if (wps.length >= 2) {
@@ -913,7 +913,7 @@ export default function SpatialMap({
 
     // Hover crosshair
     if (hoverWorld && (activeTool === "select" || activeTool === "waypoint")) {
-      const color = activeTool === "waypoint" ? "#E67E22" : PERSONA_COLORS[activeAgentIdx].primary;
+      const color = activeTool === "waypoint" ? "#E67E22" : getPersonaColor(activeAgentIdx).primary;
       const [hx, hy] = worldToScreen(hoverWorld.x, hoverWorld.y, c);
       ctx.strokeStyle = `${color}30`;
       ctx.lineWidth = 1;
@@ -1471,16 +1471,16 @@ export default function SpatialMap({
           const wps = allWaypoints[i] || [];
           return (
             <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all" style={{
-              background: i === activeAgentIdx ? `${PERSONA_COLORS[i].primary}12` : "transparent",
-              border: i === activeAgentIdx ? `1.5px solid ${PERSONA_COLORS[i].primary}40` : "1.5px solid transparent",
+              background: i === activeAgentIdx ? `${getPersonaColor(i).primary}12` : "transparent",
+              border: i === activeAgentIdx ? `1.5px solid ${getPersonaColor(i).primary}40` : "1.5px solid transparent",
             }}>
               <div className="w-3 h-3 rounded-full" style={{
-                background: PERSONA_COLORS[i].primary,
+                background: getPersonaColor(i).primary,
                 opacity: pos ? 1 : 0.3,
-                boxShadow: pos ? `0 0 6px ${PERSONA_COLORS[i].primary}40` : "none",
+                boxShadow: pos ? `0 0 6px ${getPersonaColor(i).primary}40` : "none",
               }} />
               <span className="text-xs font-medium" style={{
-                color: i === activeAgentIdx ? PERSONA_COLORS[i].primary : "#8A847A",
+                color: i === activeAgentIdx ? getPersonaColor(i).primary : "#8A847A",
                 fontFamily: "'JetBrains Mono', monospace",
                 fontSize: "11px",
               }}>
@@ -1492,8 +1492,8 @@ export default function SpatialMap({
                   onClick={() => onAgentRemove(i)}
                   className="ml-0.5 w-5 h-5 flex items-center justify-center rounded-full text-xs transition-colors"
                   style={{
-                    background: `${PERSONA_COLORS[i].primary}15`,
-                    color: PERSONA_COLORS[i].primary,
+                    background: `${getPersonaColor(i).primary}15`,
+                    color: getPersonaColor(i).primary,
                   }}
                   title="Remove this agent"
                 >

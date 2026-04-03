@@ -3,7 +3,7 @@
 // Design: Academic Instrument Dashboard (Neumorphism)
 // ============================================================
 
-import { type PersonaState, PERSONA_COLORS } from "@/lib/store";
+import { type PersonaState, getPersonaColor } from "@/lib/store";
 
 function MiniBar({ val }: { val: number }) {
   const bg = val > 0.6 ? "#C44040" : val > 0.3 ? "#D4A017" : "#2E8B6A";
@@ -50,9 +50,9 @@ export default function ComparisonView({ states }: { states: PersonaState[] }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(states.length, 4)}, 1fr)` }}>
         {states.map((s, i) => {
-          const color = PERSONA_COLORS[i];
+          const color = getPersonaColor(i);
           const prevScore = s.prevExperience ? s.prevExperience.comfort_score : null;
           const currScore = s.experience.comfort_score;
           const delta = prevScore != null && prevScore > 0 ? currScore - prevScore : null;

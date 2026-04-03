@@ -432,11 +432,31 @@ export interface PersonaState {
 }
 
 // ---- Persona Colors & Identities ----
-export const PERSONA_COLORS = [
+export const PERSONA_COLORS_PRESETS = [
   { primary: "#B85C38", secondary: "#D4856A", bg: "rgba(184, 92, 56, 0.15)", label: "P1" },
   { primary: "#2E6B8A", secondary: "#5A9AB5", bg: "rgba(46, 107, 138, 0.15)", label: "P2" },
   { primary: "#6B8E5A", secondary: "#8FB87A", bg: "rgba(107, 142, 90, 0.15)", label: "P3" },
+  { primary: "#8B5E83", secondary: "#B07DA8", bg: "rgba(139, 94, 131, 0.15)", label: "P4" },
+  { primary: "#C47A2B", secondary: "#D9A05C", bg: "rgba(196, 122, 43, 0.15)", label: "P5" },
+  { primary: "#4A7B8C", secondary: "#6FA0B0", bg: "rgba(74, 123, 140, 0.15)", label: "P6" },
+  { primary: "#7B6B4A", secondary: "#A08E6A", bg: "rgba(123, 107, 74, 0.15)", label: "P7" },
+  { primary: "#5A6B8E", secondary: "#7A8FB8", bg: "rgba(90, 107, 142, 0.15)", label: "P8" },
 ];
+
+export function getPersonaColor(index: number) {
+  if (index < PERSONA_COLORS_PRESETS.length) return PERSONA_COLORS_PRESETS[index];
+  // Generate deterministic color for indices beyond presets
+  const hue = (index * 137.508) % 360; // golden angle
+  const s = 45 + (index % 3) * 10;
+  const l = 35 + (index % 4) * 5;
+  const primary = `hsl(${hue}, ${s}%, ${l}%)`;
+  const secondary = `hsl(${hue}, ${s}%, ${l + 20}%)`;
+  const bg = `hsla(${hue}, ${s}%, ${l}%, 0.15)`;
+  return { primary, secondary, bg, label: `P${index + 1}` };
+}
+
+// Backward-compatible alias
+export const PERSONA_COLORS = PERSONA_COLORS_PRESETS;
 
 // ---- Defaults ----
 export const defaultEnvironment: EnvironmentData = {
@@ -500,6 +520,26 @@ export const defaultPersonas: PersonaData[] = [
     spatial: { dist_to_wall: 0, dist_to_window: 0, dist_to_exit: 0, ceiling_h: 2.8, enclosure_ratio: 0, visible_agents: 0 },
   },
 ];
+
+// Factory function for creating new agents with dynamic index
+export function createNewPersona(index: number): PersonaData {
+  return {
+    agent: {
+      id: `persona_${String(index + 1).padStart(2, "0")}`,
+      age: 30,
+      gender: "male",
+      mbti: "INTJ",
+      mobility: "normal",
+      hearing: "normal",
+      vision: "normal",
+      metabolic_rate: 1.2,
+      clothing_insulation: 0.7,
+    },
+    position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 30 },
+    environment: { ...defaultEnvironment },
+    spatial: { dist_to_wall: 0, dist_to_window: 0, dist_to_exit: 0, ceiling_h: 2.8, enclosure_ratio: 0, visible_agents: 0 },
+  };
+}
 
 export const defaultExperience: ExperienceData = {
   summary:
