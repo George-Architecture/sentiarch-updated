@@ -360,6 +360,34 @@ export interface AgentPosition {
   y: number;
 }
 
+// ---- Waypoint & Route System ----
+export interface Waypoint {
+  id: string;
+  label: string;
+  position: AgentPosition; // world coords (mm)
+  dwell_minutes: number;   // how long agent stays at this point
+}
+
+export interface PerceptionLogEntry {
+  waypoint_id: string;
+  phase: "walking" | "dwelling";
+  from?: string;           // waypoint_id of origin (for walking phase)
+  to?: string;             // waypoint_id of destination (for walking phase)
+  position: AgentPosition;
+  environment: EnvironmentData;
+  spatial: SpatialData;
+  computed: ComputedOutputs;
+  experience: ExperienceData;
+  accState: AccumulatedState;
+  triggers: string[];
+  timestamp: string;
+}
+
+export interface AgentRoute {
+  waypoints: Waypoint[];
+  perceptionLog: PerceptionLogEntry[];
+}
+
 // ---- Multi-Agent Per-Persona State ----
 export interface PersonaState {
   persona: PersonaData;
@@ -371,6 +399,7 @@ export interface PersonaState {
   prevAccState: AccumulatedState | null;
   agentPos: AgentPosition | null;
   hasSimulated: boolean; // tracks if this persona has ever been simulated
+  route: AgentRoute;     // waypoint route + perception log
 }
 
 // ---- Persona Colors & Identities ----
@@ -764,6 +793,28 @@ export function loadMultiAgent(): { personas: PersonaData[]; positions: (AgentPo
   try { const s = localStorage.getItem(MULTI_AGENT_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
 }
 
+// ---- Waypoint Persistence ----
+const WAYPOINTS_KEY = `thesis_waypoints_${STORE_VERSION}`;
+
+export function saveWaypoints(agentIdx: number, waypoints: Waypoint[]) {
+  try {
+    const all = loadAllWaypoints();
+    all[agentIdx] = waypoints;
+    localStorage.setItem(WAYPOINTS_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+export function loadAllWaypoints(): Record<number, Waypoint[]> {
+  try {
+    const s = localStorage.getItem(WAYPOINTS_KEY);
+    return s ? JSON.parse(s) : {};
+  } catch { return {}; }
+}
+
+export function loadWaypoints(agentIdx: number): Waypoint[] {
+  return loadAllWaypoints()[agentIdx] || [];
+}
+
 // ---- LLM Integration ----
 export function getLLMConfig(): { apiKey: string; apiUrl: string; model: string } | null {
   const raw = localStorage.getItem("llm_config");
@@ -817,6 +868,77 @@ Respond in this exact JSON format (no markdown):
 }
 
 As ${persona.agent.mbti}, reflect cognitive functions and emotional tendencies. Only reference spatial elements that ACTUALLY EXIST.`;
+}
+
+// ---- Walk / Dwell LLM Prompts ----
+export function buildWalkPrompt(
+  persona: PersonaData, computed: ComputedOutputs, shapes: Shape[],
+  fromWP: Waypoint, toWP: Waypoint, currentPos: AgentPosition
+): string {
+  const base = buildLLMPrompt(persona, computed, shapes);
+  return `${base}
+
+CONTEXT: The agent is currently WALKING from "${fromWP.label}" (${fromWP.position.x}, ${fromWP.position.y}) to "${toWP.label}" (${toWP.position.x}, ${toWP.position.y}).
+Current position along the path: (${currentPos.x}, ${currentPos.y}).
+The agent is in transit — focus on the MOVEMENT EXPERIENCE: how the spatial transition feels, changes in light/sound/temperature as they walk, wayfinding clarity, and the emotional quality of the journey between spaces.
+Keep the narrative brief (2-3 sentences) and first-person.`;
+}
+
+export function buildDwellPrompt(
+  persona: PersonaData, computed: ComputedOutputs, shapes: Shape[],
+  waypoint: Waypoint, dwellMinutes: number
+): string {
+  const base = buildLLMPrompt(persona, computed, shapes);
+  return `${base}
+
+CONTEXT: The agent has arrived at "${waypoint.label}" and is STAYING here for ${dwellMinutes} minutes.
+Position: (${waypoint.position.x}, ${waypoint.position.y}).
+Focus on the DWELLING EXPERIENCE: how the space feels after settling in, comfort level over time, sensory adaptation, social awareness, and overall satisfaction with this location.
+Keep the narrative brief (2-3 sentences) and first-person.`;
+}
+
+export async function callLLMWithPrompt(
+  prompt: string
+): Promise<{
+  experience: ExperienceData;
+  accumulatedState: AccumulatedState;
+  ruleTriggers: string[];
+} | null> {
+  const config = getLLMConfig();
+  if (!config) return null;
+
+  try {
+    const response = await fetch(config.apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          { role: "system", content: "You are an agent-based environmental experience model. Simulate how MBTI personality types experience architectural spaces. CRITICAL: Only reference spatial elements that are explicitly listed as present. Always respond with valid JSON only, no markdown." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.8,
+        max_tokens: 1200,
+      }),
+    });
+
+    const data = await response.json();
+    let content = data.choices?.[0]?.message?.content;
+    if (!content) return null;
+    content = content.trim();
+    if (content.startsWith("```")) {
+      content = content.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    }
+    const parsed = JSON.parse(content);
+    return {
+      experience: { summary: parsed.experience.summary, comfort_score: parsed.experience.comfort_score, trend: parsed.experience.trend },
+      accumulatedState: parsed.accumulated_state,
+      ruleTriggers: parsed.rule_triggers || [],
+    };
+  } catch (err) {
+    console.error("LLM call failed:", err);
+    return null;
+  }
 }
 
 export async function callLLM(

@@ -1,17 +1,18 @@
 // ============================================================
 // SpatialMap Component - Multi-Agent 2D Canvas
 // World coordinate system with pan + zoom
-// Toolbar for placing walls, windows, doors, zones
+// Toolbar for placing walls, windows, doors, zones, waypoints
+// Agent route animation with path trails
 // Clean neumorphism UI with circle agents
 // ============================================================
 
 import { useRef, useCallback, useEffect, useState } from "react";
-import type { Shape, AgentPosition, Zone } from "@/lib/store";
+import type { Shape, AgentPosition, Zone, Waypoint } from "@/lib/store";
 import { PERSONA_COLORS, defaultZoneEnv } from "@/lib/store";
 import { toast } from "sonner";
 
 // ---- Types ----
-type ToolMode = "select" | "wall" | "window" | "door" | "room" | "zone";
+type ToolMode = "select" | "wall" | "window" | "door" | "room" | "zone" | "waypoint";
 
 // ---- World / Screen Transform ----
 interface Camera {
@@ -68,6 +69,7 @@ const TOOLS: { mode: ToolMode; label: string; icon: string; hint: string }[] = [
   { mode: "window", label: "Window", icon: "▭", hint: "Click 2 points to draw window" },
   { mode: "door", label: "Door", icon: "◫", hint: "Click 2 points to draw door" },
   { mode: "zone", label: "Zone", icon: "▦", hint: "Click 2 corners to define zone rectangle" },
+  { mode: "waypoint", label: "Waypoint", icon: "◉", hint: "Click to place waypoint for active agent's route" },
 ];
 
 // ---- Draw circle agent ----
@@ -117,6 +119,45 @@ function drawAgent(
   ctx.textBaseline = "alphabetic";
 }
 
+// ---- Animated agent (smaller, pulsing) ----
+function drawAnimatedAgent(
+  ctx: CanvasRenderingContext2D,
+  sx: number, sy: number,
+  index: number,
+  zoom: number,
+  pulse: number, // 0-1 animation phase
+) {
+  const color = PERSONA_COLORS[index];
+  const r = Math.max(5, Math.min(12, 8 / (zoom * 50)));
+  const pulseR = r + 3 * Math.sin(pulse * Math.PI * 2);
+
+  // Pulse ring
+  ctx.beginPath();
+  ctx.arc(sx, sy, pulseR + 4, 0, Math.PI * 2);
+  ctx.fillStyle = `${color.primary}10`;
+  ctx.fill();
+  ctx.strokeStyle = `${color.primary}40`;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Main circle
+  ctx.beginPath();
+  ctx.arc(sx, sy, r, 0, Math.PI * 2);
+  ctx.fillStyle = color.primary;
+  ctx.fill();
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Label
+  ctx.font = `600 ${Math.max(9, r - 1)}px 'Inter', sans-serif`;
+  ctx.fillStyle = color.primary;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText(`P${index + 1}`, sx, sy + r + 3);
+  ctx.textBaseline = "alphabetic";
+}
+
 export default function SpatialMap({
   shapes,
   zones = [],
@@ -126,6 +167,13 @@ export default function SpatialMap({
   onAgentRemove,
   onAddShape,
   onAddZone,
+  // Waypoint props
+  allWaypoints = {},
+  onAddWaypoint,
+  onRemoveWaypoint,
+  // Animation props
+  animatingAgents = {},
+  pathTrails = {},
 }: {
   shapes: Shape[];
   zones?: Zone[];
@@ -135,6 +183,13 @@ export default function SpatialMap({
   onAgentRemove?: (idx: number) => void;
   onAddShape?: (shape: Shape) => void;
   onAddZone?: (zone: Zone) => void;
+  // Waypoint props
+  allWaypoints?: Record<number, Waypoint[]>;
+  onAddWaypoint?: (agentIdx: number, wp: Waypoint) => void;
+  onRemoveWaypoint?: (agentIdx: number, wpId: string) => void;
+  // Animation props
+  animatingAgents?: Record<number, AgentPosition>;
+  pathTrails?: Record<number, AgentPosition[]>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -159,6 +214,23 @@ export default function SpatialMap({
   const dragMoved = useRef(false);
   const [hoverWorld, setHoverWorld] = useState<{ x: number; y: number } | null>(null);
   const [hoveredAgentIdx, setHoveredAgentIdx] = useState<number | null>(null);
+
+  // Animation pulse
+  const [animPulse, setAnimPulse] = useState(0);
+  const hasAnimating = Object.keys(animatingAgents).length > 0;
+
+  useEffect(() => {
+    if (!hasAnimating) return;
+    let frame: number;
+    let start = performance.now();
+    const animate = (now: number) => {
+      const elapsed = (now - start) / 1000;
+      setAnimPulse(elapsed % 1);
+      frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [hasAnimating]);
 
   // ---- Resize observer ----
   useEffect(() => {
@@ -187,6 +259,12 @@ export default function SpatialMap({
       allPoints.push([z.bounds.x, z.bounds.y]);
       allPoints.push([z.bounds.x + z.bounds.width, z.bounds.y + z.bounds.height]);
     }
+    // Include waypoints
+    for (const wps of Object.values(allWaypoints)) {
+      for (const wp of wps) {
+        allPoints.push([wp.position.x, wp.position.y]);
+      }
+    }
     if (allPoints.length > 0) {
       minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
       for (const [px, py] of allPoints) {
@@ -211,7 +289,7 @@ export default function SpatialMap({
     };
     camRef.current = newCam;
     setCam({ ...newCam });
-  }, [shapes, zones, canvasW, canvasH]);
+  }, [shapes, zones, allWaypoints, canvasW, canvasH]);
 
   useEffect(() => {
     fitToContent();
@@ -396,13 +474,122 @@ export default function SpatialMap({
       ctx.textBaseline = "alphabetic";
     });
 
+    // ---- Draw path trails (history) ----
+    for (const [idxStr, trail] of Object.entries(pathTrails)) {
+      const idx = parseInt(idxStr);
+      const color = PERSONA_COLORS[idx];
+      if (!trail || trail.length < 2) continue;
+
+      ctx.beginPath();
+      const [tx0, ty0] = worldToScreen(trail[0].x, trail[0].y, c);
+      ctx.moveTo(tx0, ty0);
+      for (let i = 1; i < trail.length; i++) {
+        const [tx, ty] = worldToScreen(trail[i].x, trail[i].y, c);
+        ctx.lineTo(tx, ty);
+      }
+      ctx.strokeStyle = `${color.primary}60`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // ---- Draw waypoints for all agents ----
+    for (const [idxStr, wps] of Object.entries(allWaypoints)) {
+      const idx = parseInt(idxStr);
+      const color = PERSONA_COLORS[idx];
+      if (!wps || wps.length === 0) continue;
+
+      // Draw connecting lines between waypoints
+      if (wps.length >= 2) {
+        ctx.beginPath();
+        const [lx0, ly0] = worldToScreen(wps[0].position.x, wps[0].position.y, c);
+        ctx.moveTo(lx0, ly0);
+        for (let i = 1; i < wps.length; i++) {
+          const [lxi, lyi] = worldToScreen(wps[i].position.x, wps[i].position.y, c);
+          ctx.lineTo(lxi, lyi);
+        }
+        ctx.strokeStyle = `${color.primary}50`;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([8, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Arrow heads on path segments
+        for (let i = 0; i < wps.length - 1; i++) {
+          const [ax1, ay1] = worldToScreen(wps[i].position.x, wps[i].position.y, c);
+          const [ax2, ay2] = worldToScreen(wps[i + 1].position.x, wps[i + 1].position.y, c);
+          const mx = (ax1 + ax2) / 2;
+          const my = (ay1 + ay2) / 2;
+          const angle = Math.atan2(ay2 - ay1, ax2 - ax1);
+          const arrowSize = 6;
+          ctx.beginPath();
+          ctx.moveTo(mx + Math.cos(angle) * arrowSize, my + Math.sin(angle) * arrowSize);
+          ctx.lineTo(mx + Math.cos(angle + 2.5) * arrowSize, my + Math.sin(angle + 2.5) * arrowSize);
+          ctx.lineTo(mx + Math.cos(angle - 2.5) * arrowSize, my + Math.sin(angle - 2.5) * arrowSize);
+          ctx.closePath();
+          ctx.fillStyle = `${color.primary}70`;
+          ctx.fill();
+        }
+      }
+
+      // Draw waypoint markers
+      wps.forEach((wp, wpIdx) => {
+        const [wpx, wpy] = worldToScreen(wp.position.x, wp.position.y, c);
+
+        // Outer ring
+        ctx.beginPath();
+        ctx.arc(wpx, wpy, 10, 0, Math.PI * 2);
+        ctx.fillStyle = `${color.primary}15`;
+        ctx.fill();
+        ctx.strokeStyle = `${color.primary}80`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Inner dot
+        ctx.beginPath();
+        ctx.arc(wpx, wpy, 4, 0, Math.PI * 2);
+        ctx.fillStyle = color.primary;
+        ctx.fill();
+
+        // Waypoint number
+        ctx.font = "bold 9px 'JetBrains Mono', monospace";
+        ctx.fillStyle = color.primary;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(`${wpIdx + 1}`, wpx, wpy - 12);
+
+        // Label
+        ctx.font = "500 9px 'Inter', sans-serif";
+        ctx.fillStyle = `${color.primary}90`;
+        ctx.textBaseline = "top";
+        ctx.fillText(wp.label, wpx, wpy + 14);
+        ctx.textBaseline = "alphabetic";
+
+        // Dwell time badge
+        if (wp.dwell_minutes > 0) {
+          const dwellTxt = `${wp.dwell_minutes}min`;
+          const dtw = ctx.measureText(dwellTxt);
+          ctx.fillStyle = `${color.primary}15`;
+          ctx.beginPath();
+          ctx.roundRect(wpx - dtw.width / 2 - 3, wpy + 24, dtw.width + 6, 14, 3);
+          ctx.fill();
+          ctx.font = "8px 'JetBrains Mono', monospace";
+          ctx.fillStyle = `${color.primary}80`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          ctx.fillText(dwellTxt, wpx, wpy + 26);
+          ctx.textBaseline = "alphabetic";
+        }
+      });
+    }
+
     // Draw in-progress drawing (current tool)
-    if (drawingPoints.length > 0 && activeTool !== "select") {
+    if (drawingPoints.length > 0 && activeTool !== "select" && activeTool !== "waypoint") {
       const toolType = activeTool === "zone" ? "zone" : activeTool;
       const style = SHAPE_STYLES[toolType] || SHAPE_STYLES.room;
 
       if (activeTool === "zone" && drawingPoints.length >= 1 && hoverWorld) {
-        // Preview zone rectangle
         const p0 = drawingPoints[0];
         const p1: [number, number] = [snapToGrid(hoverWorld.x), snapToGrid(hoverWorld.y)];
         const minXz = Math.min(p0[0], p1[0]);
@@ -419,7 +606,6 @@ export default function SpatialMap({
         ctx.strokeRect(zx1, zy1, zx2 - zx1, zy2 - zy1);
         ctx.setLineDash([]);
       } else {
-        // Preview line/polygon
         ctx.beginPath();
         const [sx0, sy0] = worldToScreen(drawingPoints[0][0], drawingPoints[0][1], c);
         ctx.moveTo(sx0, sy0);
@@ -427,7 +613,6 @@ export default function SpatialMap({
           const [px, py] = worldToScreen(drawingPoints[i][0], drawingPoints[i][1], c);
           ctx.lineTo(px, py);
         }
-        // Preview line to cursor
         if (hoverWorld) {
           const [hx, hy] = worldToScreen(snapToGrid(hoverWorld.x), snapToGrid(hoverWorld.y), c);
           ctx.lineTo(hx, hy);
@@ -438,7 +623,6 @@ export default function SpatialMap({
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Draw placed points
         drawingPoints.forEach(([wx, wy]) => {
           const [vx, vy] = worldToScreen(wx, wy, c);
           ctx.beginPath();
@@ -453,10 +637,10 @@ export default function SpatialMap({
       }
     }
 
-    // Draw agents
+    // ---- Draw agents (static positions) ----
     const drawOrder = agentPositions
       .map((pos, i) => ({ pos, i }))
-      .filter((a) => a.pos !== null)
+      .filter((a) => a.pos !== null && !animatingAgents[a.i]) // don't draw static if animating
       .sort((a, b) => (a.i === activeAgentIdx ? 1 : 0) - (b.i === activeAgentIdx ? 1 : 0));
 
     drawOrder.forEach(({ pos, i }) => {
@@ -465,10 +649,18 @@ export default function SpatialMap({
       drawAgent(ctx, ax, ay, i, i === activeAgentIdx, c.zoom);
     });
 
-    // Hover crosshair (only in select mode)
-    if (hoverWorld && activeTool === "select") {
+    // ---- Draw animating agents ----
+    for (const [idxStr, pos] of Object.entries(animatingAgents)) {
+      const idx = parseInt(idxStr);
+      const [ax, ay] = worldToScreen(pos.x, pos.y, c);
+      drawAnimatedAgent(ctx, ax, ay, idx, c.zoom, animPulse);
+    }
+
+    // Hover crosshair (only in select/waypoint mode)
+    if (hoverWorld && (activeTool === "select" || activeTool === "waypoint")) {
+      const color = activeTool === "waypoint" ? "#E67E22" : PERSONA_COLORS[activeAgentIdx].primary;
       const [hx, hy] = worldToScreen(hoverWorld.x, hoverWorld.y, c);
-      ctx.strokeStyle = `${PERSONA_COLORS[activeAgentIdx].primary}30`;
+      ctx.strokeStyle = `${color}30`;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(hx, 0); ctx.lineTo(hx, canvasH); ctx.stroke();
@@ -490,11 +682,10 @@ export default function SpatialMap({
     }
 
     // Coordinate tooltip for drawing tools
-    if (hoverWorld && activeTool !== "select") {
+    if (hoverWorld && activeTool !== "select" && activeTool !== "waypoint") {
       const snapped = { x: snapToGrid(hoverWorld.x), y: snapToGrid(hoverWorld.y) };
       const [hx, hy] = worldToScreen(snapped.x, snapped.y, c);
 
-      // Snap indicator
       ctx.beginPath();
       ctx.arc(hx, hy, 5, 0, Math.PI * 2);
       ctx.strokeStyle = SHAPE_STYLES[activeTool === "zone" ? "room" : activeTool]?.stroke || "#555";
@@ -514,7 +705,7 @@ export default function SpatialMap({
       ctx.textAlign = "left";
       ctx.fillText(txt, tx, ty);
     }
-  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam, drawingPoints, activeTool]);
+  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam, drawingPoints, activeTool, allWaypoints, animatingAgents, pathTrails, animPulse]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -595,10 +786,22 @@ export default function SpatialMap({
     const snappedY = snapToGrid(wy);
 
     if (activeTool === "select") {
-      // Place agent
       onAgentPlace({ x: snappedX, y: snappedY });
+    } else if (activeTool === "waypoint") {
+      // Place waypoint for active agent
+      if (onAddWaypoint) {
+        const existingWps = allWaypoints[activeAgentIdx] || [];
+        const wpNum = existingWps.length + 1;
+        const wp: Waypoint = {
+          id: `wp_${activeAgentIdx}_${Date.now()}`,
+          label: `WP${wpNum}`,
+          position: { x: snappedX, y: snappedY },
+          dwell_minutes: 5,
+        };
+        onAddWaypoint(activeAgentIdx, wp);
+        toast.success(`Waypoint ${wpNum} placed for P${activeAgentIdx + 1}`);
+      }
     } else if (activeTool === "zone") {
-      // Zone: 2 clicks define rectangle
       const newPoints = [...drawingPoints, [snappedX, snappedY] as [number, number]];
       if (newPoints.length >= 2) {
         const p0 = newPoints[0];
@@ -624,10 +827,8 @@ export default function SpatialMap({
         setDrawingPoints(newPoints);
       }
     } else if (activeTool === "room") {
-      // Room: multi-point polygon, need at least 3 points
       setDrawingPoints([...drawingPoints, [snappedX, snappedY]]);
     } else {
-      // Wall, Window, Door: 2 points
       const newPoints = [...drawingPoints, [snappedX, snappedY] as [number, number]];
       if (newPoints.length >= 2) {
         if (onAddShape) {
@@ -678,7 +879,6 @@ export default function SpatialMap({
   const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     if (activeTool !== "select") {
-      // Cancel current drawing
       setDrawingPoints([]);
       return;
     }
@@ -757,44 +957,48 @@ export default function SpatialMap({
       {currentToolInfo && (
         <div className="text-xs mb-2 px-1" style={{ color: "var(--muted-foreground)" }}>
           {currentToolInfo.hint}
-          {activeTool !== "select" && " · Right-click or Esc to cancel"}
+          {activeTool !== "select" && activeTool !== "waypoint" && " · Right-click or Esc to cancel"}
         </div>
       )}
 
-      {/* Agent legend */}
+      {/* Agent legend + waypoint counts */}
       <div className="flex items-center gap-3 mb-3 flex-wrap">
-        {agentPositions.map((pos, i) => (
-          <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all" style={{
-            background: i === activeAgentIdx ? `${PERSONA_COLORS[i].primary}12` : "transparent",
-            border: i === activeAgentIdx ? `1.5px solid ${PERSONA_COLORS[i].primary}40` : "1.5px solid transparent",
-          }}>
-            <div className="w-3 h-3 rounded-full" style={{
-              background: PERSONA_COLORS[i].primary,
-              opacity: pos ? 1 : 0.3,
-              boxShadow: pos ? `0 0 6px ${PERSONA_COLORS[i].primary}40` : "none",
-            }} />
-            <span className="text-xs font-medium" style={{
-              color: i === activeAgentIdx ? PERSONA_COLORS[i].primary : "#8A847A",
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: "11px",
+        {agentPositions.map((pos, i) => {
+          const wps = allWaypoints[i] || [];
+          return (
+            <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all" style={{
+              background: i === activeAgentIdx ? `${PERSONA_COLORS[i].primary}12` : "transparent",
+              border: i === activeAgentIdx ? `1.5px solid ${PERSONA_COLORS[i].primary}40` : "1.5px solid transparent",
             }}>
-              P{i + 1} {pos ? `(${pos.x}, ${pos.y})` : "not placed"}
-            </span>
-            {pos && onAgentRemove && (
-              <button
-                onClick={() => onAgentRemove(i)}
-                className="ml-0.5 w-5 h-5 flex items-center justify-center rounded-full text-xs transition-colors"
-                style={{
-                  background: `${PERSONA_COLORS[i].primary}15`,
-                  color: PERSONA_COLORS[i].primary,
-                }}
-                title="Remove this agent"
-              >
-                x
-              </button>
-            )}
-          </div>
-        ))}
+              <div className="w-3 h-3 rounded-full" style={{
+                background: PERSONA_COLORS[i].primary,
+                opacity: pos ? 1 : 0.3,
+                boxShadow: pos ? `0 0 6px ${PERSONA_COLORS[i].primary}40` : "none",
+              }} />
+              <span className="text-xs font-medium" style={{
+                color: i === activeAgentIdx ? PERSONA_COLORS[i].primary : "#8A847A",
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: "11px",
+              }}>
+                P{i + 1} {pos ? `(${pos.x}, ${pos.y})` : "not placed"}
+                {wps.length > 0 && ` · ${wps.length} WP`}
+              </span>
+              {pos && onAgentRemove && (
+                <button
+                  onClick={() => onAgentRemove(i)}
+                  className="ml-0.5 w-5 h-5 flex items-center justify-center rounded-full text-xs transition-colors"
+                  style={{
+                    background: `${PERSONA_COLORS[i].primary}15`,
+                    color: PERSONA_COLORS[i].primary,
+                  }}
+                  title="Remove this agent"
+                >
+                  x
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <canvas
@@ -822,6 +1026,7 @@ export default function SpatialMap({
         <span>Scroll to zoom</span>
         {activeTool === "select" && <span>Click to place agent · Right-click to remove</span>}
         {activeTool === "room" && <span>Double-click to close polygon</span>}
+        {activeTool === "waypoint" && <span>Click to place waypoint for P{activeAgentIdx + 1}</span>}
       </div>
     </div>
   );
