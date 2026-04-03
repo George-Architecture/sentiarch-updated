@@ -1,106 +1,105 @@
 // ============================================================
 // SpatialMap Component - Multi-Agent 2D Canvas
-// Supports 3 agents with distinct pixel avatars and colors
+// World coordinate system with pan + zoom
+// Clean neumorphism UI with circle agents
 // ============================================================
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import type { Shape, AgentPosition } from "@/lib/store";
 import { PERSONA_COLORS } from "@/lib/store";
 
-const CANVAS_SIZE = 620;
-const WORLD_SIZE = 20000;
-const GRID_STEP = 2000;
-const MARGIN = 50;
-const DRAW_SIZE = CANVAS_SIZE - MARGIN * 2;
+// ---- World / Screen Transform ----
+interface Camera {
+  offsetX: number; // world X at screen left
+  offsetY: number; // world Y at screen top
+  zoom: number;    // pixels per world unit (mm)
+}
 
-function worldToCanvas(wx: number, wy: number): [number, number] {
+const MIN_ZOOM = 0.005;
+const MAX_ZOOM = 2;
+const INITIAL_ZOOM = 0.03; // ~600px for 20000mm
+const GRID_LEVELS = [500, 1000, 2000, 5000, 10000]; // mm
+
+function getGridStep(zoom: number): number {
+  // Pick grid step so that grid cells are ~60-150px on screen
+  for (const step of GRID_LEVELS) {
+    const px = step * zoom;
+    if (px >= 40 && px <= 200) return step;
+  }
+  return zoom > 0.1 ? 500 : 5000;
+}
+
+function worldToScreen(wx: number, wy: number, cam: Camera): [number, number] {
   return [
-    MARGIN + (wx / WORLD_SIZE) * DRAW_SIZE,
-    MARGIN + ((WORLD_SIZE - wy) / WORLD_SIZE) * DRAW_SIZE,
+    (wx - cam.offsetX) * cam.zoom,
+    (cam.offsetY - wy) * cam.zoom, // Y flipped: world Y up, screen Y down
   ];
 }
 
-function canvasToWorld(cx: number, cy: number): [number, number] {
-  const wx = ((cx - MARGIN) / DRAW_SIZE) * WORLD_SIZE;
-  const wy = WORLD_SIZE - ((cy - MARGIN) / DRAW_SIZE) * WORLD_SIZE;
-  return [Math.round(wx / 100) * 100, Math.round(wy / 100) * 100];
+function screenToWorld(sx: number, sy: number, cam: Camera): [number, number] {
+  return [
+    sx / cam.zoom + cam.offsetX,
+    cam.offsetY - sy / cam.zoom,
+  ];
 }
 
+// ---- Shape styles ----
 const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string }> = {
-  room: { fill: "rgba(109, 142, 90, 0.12)", stroke: "#3D6B4F", label: "ROOM" },
-  window: { fill: "rgba(74, 144, 184, 0.15)", stroke: "#4A90B8", label: "WIN" },
-  door: { fill: "rgba(198, 123, 75, 0.15)", stroke: "#C67B4B", label: "DOOR" },
+  room: { fill: "rgba(29, 158, 117, 0.06)", stroke: "#1D9E75", label: "Room" },
+  window: { fill: "rgba(59, 130, 246, 0.08)", stroke: "#3B82F6", label: "Window" },
+  door: { fill: "rgba(180, 120, 70, 0.08)", stroke: "#B47846", label: "Door" },
 };
 
-// Draw a pixel avatar on canvas
-function drawPixelAvatar(
+// ---- Draw circle agent ----
+function drawAgent(
   ctx: CanvasRenderingContext2D,
-  cx: number, cy: number,
+  sx: number, sy: number,
   index: number,
   isActive: boolean,
-  scale: number = 1
+  zoom: number,
 ) {
   const color = PERSONA_COLORS[index];
-  const s = 2 * scale; // pixel size
+  const r = Math.max(6, Math.min(14, 10 / (zoom * 50))); // adaptive radius
 
-  // Glow for active agent
+  // Outer glow for active
   if (isActive) {
     ctx.beginPath();
-    ctx.arc(cx, cy, 16 * scale, 0, Math.PI * 2);
-    ctx.fillStyle = `${color.bg}`;
+    ctx.arc(sx, sy, r + 6, 0, Math.PI * 2);
+    ctx.fillStyle = `${color.primary}18`;
     ctx.fill();
     ctx.strokeStyle = color.primary;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
     ctx.stroke();
     ctx.setLineDash([]);
   }
 
-  // Body
+  // Main circle
+  ctx.beginPath();
+  ctx.arc(sx, sy, r, 0, Math.PI * 2);
   ctx.fillStyle = color.primary;
-  ctx.fillRect(cx - 3 * s, cy - 1 * s, 6 * s, 5 * s);
+  ctx.fill();
 
-  // Head
-  ctx.fillStyle = color.secondary;
-  ctx.fillRect(cx - 3 * s, cy - 6 * s, 6 * s, 5 * s);
+  // Inner highlight
+  ctx.beginPath();
+  ctx.arc(sx - r * 0.25, sy - r * 0.25, r * 0.35, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fill();
 
-  // Eyes
-  ctx.fillStyle = "#F2E8D5";
-  ctx.fillRect(cx - 2 * s, cy - 4 * s, 2 * s, s);
-  ctx.fillRect(cx + 1 * s, cy - 4 * s, 2 * s, s);
-
-  // Distinct features
-  if (index === 0) {
-    // Hat
-    ctx.fillStyle = color.primary;
-    ctx.fillRect(cx - 4 * s, cy - 8 * s, 8 * s, 2 * s);
-    ctx.fillRect(cx - 5 * s, cy - 7 * s, 10 * s, s);
-  } else if (index === 1) {
-    // Glasses
-    ctx.strokeStyle = "#F2E8D5";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(cx - 3 * s, cy - 5 * s, 3 * s, 3 * s);
-    ctx.strokeRect(cx + 1 * s, cy - 5 * s, 3 * s, 3 * s);
-    ctx.fillStyle = "#F2E8D5";
-    ctx.fillRect(cx, cy - 4 * s, s, s);
-  } else if (index === 2) {
-    // Backpack
-    ctx.fillStyle = color.primary;
-    ctx.fillRect(cx + 3 * s, cy - 2 * s, 3 * s, 5 * s);
-    ctx.fillStyle = color.secondary;
-    ctx.fillRect(cx + 4 * s, cy - 1 * s, s, 2 * s);
-  }
-
-  // Legs
-  ctx.fillStyle = color.primary;
-  ctx.fillRect(cx - 3 * s, cy + 4 * s, 2 * s, 2 * s);
-  ctx.fillRect(cx + 1 * s, cy + 4 * s, 2 * s, 2 * s);
+  // Border
+  ctx.beginPath();
+  ctx.arc(sx, sy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = isActive ? "#FFFFFF" : "rgba(255,255,255,0.5)";
+  ctx.lineWidth = isActive ? 2 : 1;
+  ctx.stroke();
 
   // Label
-  ctx.font = "bold 9px 'Silkscreen', monospace";
+  ctx.font = `600 ${Math.max(10, r)}px 'Inter', sans-serif`;
   ctx.fillStyle = color.primary;
   ctx.textAlign = "center";
-  ctx.fillText(`P${index + 1}`, cx, cy + 10 * s);
+  ctx.textBaseline = "top";
+  ctx.fillText(`P${index + 1}`, sx, sy + r + 4);
+  ctx.textBaseline = "alphabetic";
 }
 
 export default function SpatialMap({
@@ -118,71 +117,144 @@ export default function SpatialMap({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  const [canvasW, setCanvasW] = useState(700);
+  const [canvasH, setCanvasH] = useState(500);
+
+  // Camera state
+  const camRef = useRef<Camera>({
+    offsetX: -1000,
+    offsetY: 21000,
+    zoom: INITIAL_ZOOM,
+  });
+  const [cam, setCam] = useState<Camera>({ ...camRef.current });
+
+  // Interaction state
+  const isPanning = useRef(false);
+  const panStart = useRef({ x: 0, y: 0 });
+  const [hoverWorld, setHoverWorld] = useState<{ x: number; y: number } | null>(null);
   const [hoveredAgentIdx, setHoveredAgentIdx] = useState<number | null>(null);
 
+  // ---- Resize observer ----
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        const w = Math.floor(e.contentRect.width);
+        const h = Math.max(400, Math.min(700, Math.floor(w * 0.7)));
+        setCanvasW(w);
+        setCanvasH(h);
+      }
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // ---- Fit to content ----
+  const fitToContent = useCallback(() => {
+    let minX = 0, minY = 0, maxX = 20000, maxY = 20000;
+    if (shapes.length > 0) {
+      minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
+      for (const s of shapes) {
+        for (const [px, py] of s.points) {
+          if (px < minX) minX = px;
+          if (py < minY) minY = py;
+          if (px > maxX) maxX = px;
+          if (py > maxY) maxY = py;
+        }
+      }
+      // Add padding
+      const padX = (maxX - minX) * 0.15 || 2000;
+      const padY = (maxY - minY) * 0.15 || 2000;
+      minX -= padX; minY -= padY; maxX += padX; maxY += padY;
+    }
+    const rangeX = maxX - minX || 20000;
+    const rangeY = maxY - minY || 20000;
+    const zoom = Math.min(canvasW / rangeX, canvasH / rangeY);
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const newCam: Camera = {
+      offsetX: cx - canvasW / (2 * zoom),
+      offsetY: cy + canvasH / (2 * zoom),
+      zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom)),
+    };
+    camRef.current = newCam;
+    setCam({ ...newCam });
+  }, [shapes, canvasW, canvasH]);
+
+  // Fit on first mount or when shapes change significantly
+  useEffect(() => {
+    fitToContent();
+  }, [shapes.length, canvasW, canvasH]);
+
+  // ---- Draw ----
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const c = camRef.current;
 
-    // Clear & background
-    ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-    ctx.fillStyle = "#F5ECD8";
-    ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    // HiDPI
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvasW * dpr;
+    canvas.height = canvasH * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Texture dots
-    for (let i = 0; i < 600; i++) {
-      ctx.fillStyle = `rgba(160, 132, 92, ${Math.random() * 0.03})`;
-      ctx.fillRect(Math.random() * CANVAS_SIZE, Math.random() * CANVAS_SIZE, 1, 1);
-    }
+    // Background
+    ctx.fillStyle = "#FAFAF6";
+    ctx.fillRect(0, 0, canvasW, canvasH);
 
-    // Grid border
-    ctx.strokeStyle = "#D4C4A8";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(MARGIN, MARGIN, DRAW_SIZE, DRAW_SIZE);
-
-    // Grid lines
-    ctx.strokeStyle = "#E0D5C0";
+    // Grid
+    const gridStep = getGridStep(c.zoom);
+    ctx.strokeStyle = "#E8E3DA";
     ctx.lineWidth = 0.5;
-    for (let g = 0; g <= WORLD_SIZE; g += GRID_STEP) {
-      const [gx] = worldToCanvas(g, 0);
-      const [, gyTop] = worldToCanvas(0, WORLD_SIZE);
-      const [, gyBot] = worldToCanvas(0, 0);
-      ctx.beginPath(); ctx.moveTo(gx, gyTop); ctx.lineTo(gx, gyBot); ctx.stroke();
-      const [, gy] = worldToCanvas(0, g);
-      const [gxL] = worldToCanvas(0, 0);
-      const [gxR] = worldToCanvas(WORLD_SIZE, 0);
-      ctx.beginPath(); ctx.moveTo(gxL, gy); ctx.lineTo(gxR, gy); ctx.stroke();
+    ctx.font = "10px 'JetBrains Mono', monospace";
+    ctx.fillStyle = "#C0BAB0";
+    ctx.textBaseline = "top";
+
+    // Vertical grid lines
+    const worldLeft = c.offsetX;
+    const worldRight = c.offsetX + canvasW / c.zoom;
+    const worldTop = c.offsetY;
+    const worldBottom = c.offsetY - canvasH / c.zoom;
+    const startX = Math.floor(worldLeft / gridStep) * gridStep;
+    for (let wx = startX; wx <= worldRight; wx += gridStep) {
+      const [sx] = worldToScreen(wx, 0, c);
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, canvasH);
+      ctx.stroke();
+      // Label
+      ctx.textAlign = "left";
+      ctx.fillText(`${(wx / 1000).toFixed(wx % 1000 === 0 ? 0 : 1)}m`, sx + 3, canvasH - 16);
+    }
+    // Horizontal grid lines
+    const startY = Math.floor(worldBottom / gridStep) * gridStep;
+    for (let wy = startY; wy <= worldTop; wy += gridStep) {
+      const [, sy] = worldToScreen(0, wy, c);
+      ctx.beginPath();
+      ctx.moveTo(0, sy);
+      ctx.lineTo(canvasW, sy);
+      ctx.stroke();
+      ctx.textAlign = "left";
+      ctx.fillText(`${(wy / 1000).toFixed(wy % 1000 === 0 ? 0 : 1)}m`, 4, sy + 3);
     }
 
-    // Axis labels
-    ctx.font = "11px 'VT323', monospace";
-    ctx.fillStyle = "#B8A890";
-    ctx.textAlign = "center";
-    for (let g = 0; g <= WORLD_SIZE; g += GRID_STEP * 2) {
-      const [gx] = worldToCanvas(g, 0);
-      const [, gyBot] = worldToCanvas(0, 0);
-      ctx.fillText(`${(g / 1000).toFixed(0)}k`, gx, gyBot + 16);
-    }
-    ctx.textAlign = "right";
-    for (let g = 0; g <= WORLD_SIZE; g += GRID_STEP * 2) {
-      const [, gy] = worldToCanvas(0, g);
-      ctx.fillText(`${(g / 1000).toFixed(0)}k`, MARGIN - 6, gy + 4);
-    }
-
-    // Axis titles
-    ctx.font = "9px 'Silkscreen', monospace";
-    ctx.fillStyle = "#A89B8C";
-    ctx.textAlign = "center";
-    ctx.fillText("X (mm)", CANVAS_SIZE / 2, CANVAS_SIZE - 8);
-    ctx.save();
-    ctx.translate(12, CANVAS_SIZE / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText("Y (mm)", 0, 0);
-    ctx.restore();
+    // Origin crosshair
+    const [ox, oy] = worldToScreen(0, 0, c);
+    ctx.strokeStyle = "#D0CBC2";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, canvasH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(canvasW, oy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "bold 11px 'JetBrains Mono', monospace";
+    ctx.fillStyle = "#B0AAA0";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText("O", ox + 4, oy - 4);
+    ctx.textBaseline = "alphabetic";
 
     // Draw shapes
     shapes.forEach((shape) => {
@@ -190,10 +262,10 @@ export default function SpatialMap({
       const style = SHAPE_STYLES[shape.type] || SHAPE_STYLES.room;
 
       ctx.beginPath();
-      const [sx, sy] = worldToCanvas(shape.points[0][0], shape.points[0][1]);
-      ctx.moveTo(sx, sy);
+      const [sx0, sy0] = worldToScreen(shape.points[0][0], shape.points[0][1], c);
+      ctx.moveTo(sx0, sy0);
       for (let i = 1; i < shape.points.length; i++) {
-        const [px, py] = worldToCanvas(shape.points[i][0], shape.points[i][1]);
+        const [px, py] = worldToScreen(shape.points[i][0], shape.points[i][1], c);
         ctx.lineTo(px, py);
       }
       if (shape.type === "room") {
@@ -202,42 +274,61 @@ export default function SpatialMap({
         ctx.fill();
       }
       ctx.strokeStyle = style.stroke;
-      ctx.lineWidth = 2;
-      ctx.setLineDash(shape.type === "window" ? [4, 3] : shape.type === "door" ? [6, 2] : []);
+      ctx.lineWidth = shape.type === "room" ? 2 : 2.5;
+      ctx.setLineDash(shape.type === "window" ? [6, 4] : shape.type === "door" ? [8, 3] : []);
       ctx.stroke();
       ctx.setLineDash([]);
 
       // Vertex dots
-      shape.points.forEach(([wx, wy], idx) => {
-        const [vx, vy] = worldToCanvas(wx, wy);
+      shape.points.forEach(([wx, wy]) => {
+        const [vx, vy] = worldToScreen(wx, wy, c);
+        ctx.beginPath();
+        ctx.arc(vx, vy, 3, 0, Math.PI * 2);
         ctx.fillStyle = style.stroke;
-        ctx.fillRect(vx - 4, vy - 4, 8, 8);
-        ctx.fillStyle = "#F5ECD8";
-        ctx.fillRect(vx - 2, vy - 2, 4, 4);
-        ctx.font = "9px 'VT323', monospace";
-        ctx.fillStyle = style.stroke;
-        ctx.textAlign = "left";
-        ctx.fillText(`${idx}`, vx + 6, vy - 4);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(vx, vy, 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#FAFAF6";
+        ctx.fill();
       });
 
       // Shape label
       const label = shape.label || style.label;
       const cx = shape.points.reduce((s, p) => s + p[0], 0) / shape.points.length;
       const cy = shape.points.reduce((s, p) => s + p[1], 0) / shape.points.length;
-      const [lx, ly] = worldToCanvas(cx, cy);
-      ctx.font = "11px 'Silkscreen', monospace";
+      const [lx, ly] = worldToScreen(cx, cy, c);
+      ctx.font = "500 11px 'Inter', sans-serif";
       const tw = ctx.measureText(label);
-      ctx.fillStyle = "#F5ECD8";
-      ctx.fillRect(lx - tw.width / 2 - 3, ly - 7, tw.width + 6, 14);
+      ctx.fillStyle = "rgba(255,252,247,0.85)";
+      const pad = 5;
+      ctx.beginPath();
+      const rx = lx - tw.width / 2 - pad;
+      const ry = ly - 8;
+      const rw = tw.width + pad * 2;
+      const rh = 18;
+      const rr = 4;
+      ctx.moveTo(rx + rr, ry);
+      ctx.lineTo(rx + rw - rr, ry);
+      ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + rr);
+      ctx.lineTo(rx + rw, ry + rh - rr);
+      ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - rr, ry + rh);
+      ctx.lineTo(rx + rr, ry + rh);
+      ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - rr);
+      ctx.lineTo(rx, ry + rr);
+      ctx.quadraticCurveTo(rx, ry, rx + rr, ry);
+      ctx.closePath();
+      ctx.fill();
       ctx.strokeStyle = style.stroke;
       ctx.lineWidth = 1;
-      ctx.strokeRect(lx - tw.width / 2 - 3, ly - 7, tw.width + 6, 14);
+      ctx.stroke();
       ctx.fillStyle = style.stroke;
       ctx.textAlign = "center";
-      ctx.fillText(label, lx, ly + 4);
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, lx, ly + 1);
+      ctx.textBaseline = "alphabetic";
     });
 
-    // Draw all agents (inactive first, active last so it's on top)
+    // Draw agents (inactive first, active last)
     const drawOrder = agentPositions
       .map((pos, i) => ({ pos, i }))
       .filter((a) => a.pos !== null)
@@ -245,72 +336,129 @@ export default function SpatialMap({
 
     drawOrder.forEach(({ pos, i }) => {
       if (!pos) return;
-      const [ax, ay] = worldToCanvas(pos.x, pos.y);
-      drawPixelAvatar(ctx, ax, ay, i, i === activeAgentIdx);
+      const [ax, ay] = worldToScreen(pos.x, pos.y, c);
+      drawAgent(ctx, ax, ay, i, i === activeAgentIdx, c.zoom);
     });
 
     // Hover crosshair
-    if (hoverPos) {
-      ctx.strokeStyle = `${PERSONA_COLORS[activeAgentIdx].primary}60`;
+    if (hoverWorld) {
+      const [hx, hy] = worldToScreen(hoverWorld.x, hoverWorld.y, c);
+      ctx.strokeStyle = `${PERSONA_COLORS[activeAgentIdx].primary}30`;
       ctx.lineWidth = 1;
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.moveTo(hoverPos.x, MARGIN); ctx.lineTo(hoverPos.x, CANVAS_SIZE - MARGIN); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(MARGIN, hoverPos.y); ctx.lineTo(CANVAS_SIZE - MARGIN, hoverPos.y); ctx.stroke();
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(hx, 0); ctx.lineTo(hx, canvasH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, hy); ctx.lineTo(canvasW, hy); ctx.stroke();
       ctx.setLineDash([]);
+
+      // Coordinate tooltip
+      ctx.font = "11px 'JetBrains Mono', monospace";
+      const txt = `(${Math.round(hoverWorld.x)}, ${Math.round(hoverWorld.y)})`;
+      const tw2 = ctx.measureText(txt);
+      const tx = Math.min(hx + 12, canvasW - tw2.width - 10);
+      const ty = Math.max(hy - 12, 18);
+      ctx.fillStyle = "rgba(45,42,38,0.8)";
+      ctx.beginPath();
+      ctx.roundRect(tx - 4, ty - 13, tw2.width + 8, 18, 4);
+      ctx.fill();
+      ctx.fillStyle = "#FFFFFF";
+      ctx.textAlign = "left";
+      ctx.fillText(txt, tx, ty);
     }
-  }, [shapes, agentPositions, activeAgentIdx, hoverPos]);
+  }, [shapes, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam]);
 
   useEffect(() => { draw(); }, [draw]);
 
-  useEffect(() => {
-    const resize = () => {
-      if (containerRef.current) {
-        const w = containerRef.current.clientWidth;
-        setScale(Math.min(1, w / CANVAS_SIZE));
-      }
-    };
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
-
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  // ---- Mouse handlers ----
+  const getMouseWorld = (e: React.MouseEvent<HTMLCanvasElement>): [number, number] => {
+    const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = CANVAS_SIZE / rect.width;
-    const scaleY = CANVAS_SIZE / rect.height;
-    const cx = (e.clientX - rect.left) * scaleX;
-    const cy = (e.clientY - rect.top) * scaleY;
-    const [wx, wy] = canvasToWorld(cx, cy);
-    if (wx >= 0 && wx <= WORLD_SIZE && wy >= 0 && wy <= WORLD_SIZE) {
-      onAgentPlace({ x: wx, y: wy });
+    const sx = (e.clientX - rect.left) * (canvasW / rect.width);
+    const sy = (e.clientY - rect.top) * (canvasH / rect.height);
+    return screenToWorld(sx, sy, camRef.current);
+  };
+
+  const getMouseScreen = (e: React.MouseEvent<HTMLCanvasElement>): [number, number] => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    return [
+      (e.clientX - rect.left) * (canvasW / rect.width),
+      (e.clientY - rect.top) * (canvasH / rect.height),
+    ];
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      // Middle click or Alt+Left = pan
+      isPanning.current = true;
+      panStart.current = { x: e.clientX, y: e.clientY };
+      e.preventDefault();
+    } else if (e.button === 0) {
+      // Left click = place agent (handled in mouseUp to distinguish from drag)
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = CANVAS_SIZE / rect.width;
-    const scaleY = CANVAS_SIZE / rect.height;
-    const cx = (e.clientX - rect.left) * scaleX;
-    const cy = (e.clientY - rect.top) * scaleY;
-    setHoverPos({ x: cx, y: cy });
+    if (isPanning.current) {
+      const dx = e.clientX - panStart.current.x;
+      const dy = e.clientY - panStart.current.y;
+      panStart.current = { x: e.clientX, y: e.clientY };
+      const c = camRef.current;
+      const canvas = canvasRef.current!;
+      const rect = canvas.getBoundingClientRect();
+      const scaleRatio = canvasW / rect.width;
+      c.offsetX -= (dx * scaleRatio) / c.zoom;
+      c.offsetY += (dy * scaleRatio) / c.zoom;
+      setCam({ ...c });
+      return;
+    }
 
-    // Check if hovering over any agent
-    let hoveredIdx: number | null = null;
+    const [wx, wy] = getMouseWorld(e);
+    setHoverWorld({ x: Math.round(wx / 100) * 100, y: Math.round(wy / 100) * 100 });
+
+    // Check hover over agents
+    const [sx, sy] = getMouseScreen(e);
+    let hovIdx: number | null = null;
     for (let i = 0; i < agentPositions.length; i++) {
       const pos = agentPositions[i];
       if (!pos) continue;
-      const [ax, ay] = worldToCanvas(pos.x, pos.y);
-      const dist = Math.sqrt((cx - ax) ** 2 + (cy - ay) ** 2);
-      if (dist < 16) {
-        hoveredIdx = i;
-        break;
-      }
+      const [ax, ay] = worldToScreen(pos.x, pos.y, camRef.current);
+      const dist = Math.sqrt((sx - ax) ** 2 + (sy - ay) ** 2);
+      if (dist < 18) { hovIdx = i; break; }
     }
-    setHoveredAgentIdx(hoveredIdx);
+    setHoveredAgentIdx(hovIdx);
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isPanning.current) {
+      isPanning.current = false;
+      return;
+    }
+    if (e.button === 0 && !e.altKey) {
+      const [wx, wy] = getMouseWorld(e);
+      const snappedX = Math.round(wx / 100) * 100;
+      const snappedY = Math.round(wy / 100) * 100;
+      onAgentPlace({ x: snappedX, y: snappedY });
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) * (canvasW / rect.width);
+    const sy = (e.clientY - rect.top) * (canvasH / rect.height);
+
+    const c = camRef.current;
+    const [wxBefore, wyBefore] = screenToWorld(sx, sy, c);
+
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    c.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, c.zoom * factor));
+
+    // Keep mouse position fixed in world coords
+    c.offsetX = wxBefore - sx / c.zoom;
+    c.offsetY = wyBefore + sy / c.zoom;
+
+    setCam({ ...c });
   };
 
   const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -322,61 +470,77 @@ export default function SpatialMap({
   };
 
   return (
-    <div ref={containerRef}>
-      {/* Agent legend with Remove buttons */}
+    <div ref={containerRef} className="w-full">
+      {/* Agent legend */}
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         {agentPositions.map((pos, i) => (
-          <div key={i} className="flex items-center gap-1.5 px-2 py-1" style={{
-            background: i === activeAgentIdx ? PERSONA_COLORS[i].bg : "transparent",
-            border: i === activeAgentIdx ? `1px solid ${PERSONA_COLORS[i].primary}` : "none",
+          <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all" style={{
+            background: i === activeAgentIdx ? `${PERSONA_COLORS[i].primary}12` : "transparent",
+            border: i === activeAgentIdx ? `1.5px solid ${PERSONA_COLORS[i].primary}40` : "1.5px solid transparent",
           }}>
-            <div className="w-3 h-3" style={{
+            <div className="w-3 h-3 rounded-full" style={{
               background: PERSONA_COLORS[i].primary,
-              border: i === activeAgentIdx ? "2px solid #6B4C3B" : "1px solid #D4C4A8",
               opacity: pos ? 1 : 0.3,
+              boxShadow: pos ? `0 0 6px ${PERSONA_COLORS[i].primary}40` : "none",
             }} />
-            <span className="font-pixel text-[8px]" style={{
-              color: i === activeAgentIdx ? PERSONA_COLORS[i].primary : "#A89B8C",
+            <span className="text-xs font-medium" style={{
+              color: i === activeAgentIdx ? PERSONA_COLORS[i].primary : "#8A847A",
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: "11px",
             }}>
               P{i + 1} {pos ? `(${pos.x}, ${pos.y})` : "not placed"}
             </span>
             {pos && onAgentRemove && (
               <button
                 onClick={() => onAgentRemove(i)}
-                className="ml-1 px-1.5 py-0 text-[10px]"
+                className="ml-0.5 w-5 h-5 flex items-center justify-center rounded-full text-xs transition-colors"
                 style={{
-                  background: "#EDE3D0",
+                  background: `${PERSONA_COLORS[i].primary}15`,
                   color: PERSONA_COLORS[i].primary,
-                  border: `1px solid ${PERSONA_COLORS[i].primary}`,
-                  cursor: "pointer",
-                  fontFamily: "var(--font-pixel)",
                 }}
                 title="Remove this agent"
               >
-                ✕
+                x
               </button>
             )}
           </div>
         ))}
+        <div className="flex-1" />
+        <button
+          onClick={fitToContent}
+          className="sa-btn text-xs px-3 py-1"
+          title="Fit view to content"
+        >
+          Fit View
+        </button>
       </div>
 
       <canvas
         ref={canvasRef}
-        width={CANVAS_SIZE}
-        height={CANVAS_SIZE}
-        onClick={handleClick}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => { setHoverPos(null); setHoveredAgentIdx(null); }}
-        onContextMenu={handleContextMenu}
-        title="Left-click to place agent | Right-click on agent to remove"
         style={{
-          width: `${CANVAS_SIZE * scale}px`,
-          height: `${CANVAS_SIZE * scale}px`,
-          cursor: hoveredAgentIdx !== null ? "pointer" : "crosshair",
-          border: `3px solid ${PERSONA_COLORS[activeAgentIdx].primary}`,
-          boxShadow: "3px 3px 0px #6B4C3B",
+          width: `${canvasW}px`,
+          height: `${canvasH}px`,
+          cursor: isPanning.current ? "grabbing" : hoveredAgentIdx !== null ? "pointer" : "crosshair",
+          borderRadius: "var(--radius)",
+          border: "1px solid var(--border)",
+          boxShadow: "4px 4px 12px rgba(0,0,0,0.06), -2px -2px 8px rgba(255,255,255,0.7)",
         }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={() => { setHoverWorld(null); setHoveredAgentIdx(null); isPanning.current = false; }}
+        onWheel={handleWheel}
+        onContextMenu={handleContextMenu}
+        title="Left-click: place agent | Alt+drag or middle-drag: pan | Scroll: zoom | Right-click agent: remove"
       />
+
+      {/* Controls hint */}
+      <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: "#8A847A" }}>
+        <span>Click to place agent</span>
+        <span>Alt+drag to pan</span>
+        <span>Scroll to zoom</span>
+        <span>Right-click agent to remove</span>
+      </div>
     </div>
   );
 }

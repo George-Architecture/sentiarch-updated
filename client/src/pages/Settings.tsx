@@ -30,76 +30,81 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "#F2E8D5" }}>
+    <div className="min-h-screen" style={{ background: "var(--background)" }}>
       <div className="container py-8 max-w-xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <button className="pixel-btn" onClick={() => navigate("/")}>
-            ← BACK
+          <button className="sa-btn" onClick={() => navigate("/")}>
+            Back
           </button>
-          <h1 className="font-pixel text-sm" style={{ color: "#6B4C3B" }}>
-            LLM SETTINGS
+          <h1 className="text-lg font-semibold" style={{ color: "var(--foreground)" }}>
+            LLM Settings
           </h1>
         </div>
 
-        <div className="pixel-panel space-y-4">
+        <div className="sa-card space-y-5">
           <div>
-            <label className="font-pixel text-[11px] block mb-2" style={{ color: "#3A2A1A" }}>
-              API KEY
+            <label className="text-xs font-semibold block mb-2" style={{ color: "var(--muted-foreground)" }}>
+              API Key
             </label>
             <input
               type="password"
               value={config.apiKey}
               onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-              className="w-full font-pixel-data text-base p-2"
+              className="w-full text-sm p-3 rounded-lg transition-all"
               style={{
-                background: "#F5ECD8",
-                border: "2px solid #6B4C3B",
-                color: "#6B4C3B",
+                background: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+                fontFamily: "'JetBrains Mono', monospace",
+                boxShadow: "inset 2px 2px 4px rgba(0,0,0,0.04)",
               }}
               placeholder="sk-..."
             />
           </div>
 
           <div>
-            <label className="font-pixel text-[11px] block mb-2" style={{ color: "#3A2A1A" }}>
+            <label className="text-xs font-semibold block mb-2" style={{ color: "var(--muted-foreground)" }}>
               API URL
             </label>
             <input
               type="text"
               value={config.apiUrl}
               onChange={(e) => setConfig({ ...config, apiUrl: e.target.value })}
-              className="w-full font-pixel-data text-base p-2"
+              className="w-full text-sm p-3 rounded-lg"
               style={{
-                background: "#F5ECD8",
-                border: "2px solid #6B4C3B",
-                color: "#6B4C3B",
+                background: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+                fontFamily: "'JetBrains Mono', monospace",
+                boxShadow: "inset 2px 2px 4px rgba(0,0,0,0.04)",
               }}
             />
           </div>
 
           <div>
-            <label className="font-pixel text-[11px] block mb-2" style={{ color: "#3A2A1A" }}>
-              MODEL
+            <label className="text-xs font-semibold block mb-2" style={{ color: "var(--muted-foreground)" }}>
+              Model
             </label>
             <input
               type="text"
               value={config.model}
               onChange={(e) => setConfig({ ...config, model: e.target.value })}
-              className="w-full font-pixel-data text-base p-2"
+              className="w-full text-sm p-3 rounded-lg"
               style={{
-                background: "#F5ECD8",
-                border: "2px solid #6B4C3B",
-                color: "#6B4C3B",
+                background: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+                fontFamily: "'JetBrains Mono', monospace",
+                boxShadow: "inset 2px 2px 4px rgba(0,0,0,0.04)",
               }}
             />
           </div>
 
           <button
-            className="pixel-btn w-full mt-4"
-            style={{ background: "#3D6B4F" }}
+            className="sa-btn sa-btn-primary w-full mt-4 py-3"
             onClick={handleSave}
           >
-            SAVE SETTINGS
+            Save Settings
           </button>
         </div>
       </div>

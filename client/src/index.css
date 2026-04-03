@@ -4,10 +4,10 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -27,39 +27,44 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-pixel: 'Press Start 2P', monospace;
-  --font-pixel-data: 'VT323', monospace;
-  --font-pixel-ui: 'Silkscreen', monospace;
-  --font-body: 'Nunito', sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* Keep legacy aliases so existing className references don't break */
+  --font-pixel: 'Inter', sans-serif;
+  --font-pixel-data: 'JetBrains Mono', monospace;
+  --font-pixel-ui: 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
 }
 
 :root {
-  --radius: 0px;
-  --background: oklch(0.95 0.02 75);
-  --foreground: oklch(0.30 0.04 55);
-  --card: oklch(0.92 0.02 75);
-  --card-foreground: oklch(0.30 0.04 55);
-  --popover: oklch(0.95 0.02 75);
-  --popover-foreground: oklch(0.30 0.04 55);
-  --primary: oklch(0.45 0.08 155);
-  --primary-foreground: oklch(0.95 0.02 75);
-  --secondary: oklch(0.55 0.12 45);
-  --secondary-foreground: oklch(0.95 0.02 75);
-  --muted: oklch(0.88 0.02 75);
-  --muted-foreground: oklch(0.60 0.03 75);
-  --accent: oklch(0.65 0.10 55);
-  --accent-foreground: oklch(0.95 0.02 75);
-  --destructive: oklch(0.55 0.18 25);
-  --destructive-foreground: oklch(0.95 0.02 75);
-  --border: oklch(0.50 0.06 55);
-  --input: oklch(0.50 0.06 55);
-  --ring: oklch(0.45 0.08 155);
-  --sidebar: oklch(0.92 0.02 75);
-  --sidebar-foreground: oklch(0.30 0.04 55);
-  --sidebar-accent: oklch(0.88 0.02 75);
-  --sidebar-accent-foreground: oklch(0.30 0.04 55);
-  --sidebar-border: oklch(0.50 0.06 55);
-  --sidebar-ring: oklch(0.45 0.08 155);
+  --radius: 10px;
+  /* Warm beige palette */
+  --background: #F5F0E8;
+  --foreground: #2D2A26;
+  --card: #FFFCF7;
+  --card-foreground: #2D2A26;
+  --popover: #FFFCF7;
+  --popover-foreground: #2D2A26;
+  /* Teal accent */
+  --primary: #1D9E75;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E8E2D8;
+  --secondary-foreground: #2D2A26;
+  --muted: #EDE8DF;
+  --muted-foreground: #8A847A;
+  --accent: #1D9E75;
+  --accent-foreground: #FFFFFF;
+  --destructive: #D94F4F;
+  --destructive-foreground: #FFFFFF;
+  --border: #DDD7CC;
+  --input: #DDD7CC;
+  --ring: #1D9E75;
+  --sidebar: #F5F0E8;
+  --sidebar-foreground: #2D2A26;
+  --sidebar-accent: #EDE8DF;
+  --sidebar-accent-foreground: #2D2A26;
+  --sidebar-border: #DDD7CC;
+  --sidebar-ring: #1D9E75;
 }
 
 @layer base {
@@ -68,7 +73,9 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-body);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -112,57 +119,135 @@
     }
   }
 
-  /* Pixel Art Specific Styles */
+  /* Legacy font class aliases — now map to new fonts */
   .font-pixel {
-    font-family: var(--font-pixel);
+    font-family: var(--font-sans);
+    font-weight: 600;
   }
   .font-pixel-data {
-    font-family: var(--font-pixel-data);
+    font-family: var(--font-mono);
   }
   .font-pixel-ui {
-    font-family: var(--font-pixel-ui);
+    font-family: var(--font-sans);
+    font-weight: 500;
   }
   .font-body {
-    font-family: var(--font-body);
+    font-family: var(--font-sans);
   }
 
-  .pixel-btn {
-    font-family: var(--font-pixel);
-    font-size: 9px;
-    letter-spacing: 1px;
-    padding: 8px 14px;
-    border: 2px solid #6B4C3B;
-    background: #C4956A;
-    color: #F2E8D5;
-    box-shadow: 2px 2px 0px #6B4C3B;
-    transition: all 0.15s;
+  /* Neumorphism card */
+  .sa-card {
+    background: var(--card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow:
+      4px 4px 12px rgba(0, 0, 0, 0.06),
+      -2px -2px 8px rgba(255, 255, 255, 0.7);
+    padding: 16px;
+  }
+
+  /* Primary button */
+  .sa-btn {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    box-shadow:
+      2px 2px 6px rgba(0, 0, 0, 0.06),
+      -1px -1px 4px rgba(255, 255, 255, 0.7);
+    transition: all 0.2s ease;
     cursor: pointer;
   }
-  .pixel-btn:hover {
-    transform: translate(1px, 1px);
-    box-shadow: 1px 1px 0px #6B4C3B;
+  .sa-btn:hover {
+    box-shadow:
+      1px 1px 3px rgba(0, 0, 0, 0.08),
+      -1px -1px 2px rgba(255, 255, 255, 0.5);
+    transform: translateY(1px);
   }
-  .pixel-btn:active {
-    transform: translate(2px, 2px);
-    box-shadow: 0px 0px 0px #6B4C3B;
+  .sa-btn:active {
+    box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.08);
+    transform: translateY(1px);
+  }
+  .sa-btn-primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
+  }
+  .sa-btn-primary:hover {
+    background: #178A66;
   }
 
-  .pixel-panel {
-    background: #EDE3D0;
-    border: 3px solid #6B4C3B;
-    box-shadow: 3px 3px 0px #A0845C, inset 0 0 0 1px #D4C4A8;
-    padding: 12px;
-  }
-
-  .pixel-tag {
-    font-family: var(--font-pixel);
+  /* Tag / badge */
+  .sa-tag {
+    font-family: var(--font-sans);
     font-size: 11px;
-    letter-spacing: 1px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
     padding: 4px 12px;
-    border: 2px solid;
-    background: #F2E8D5;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--card);
+  }
+
+  /* Section panel — legacy alias */
+  .pixel-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow:
+      4px 4px 12px rgba(0, 0, 0, 0.06),
+      -2px -2px 8px rgba(255, 255, 255, 0.7);
+    padding: 16px;
+  }
+
+  /* Legacy pixel-btn alias */
+  .pixel-btn {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    box-shadow:
+      2px 2px 6px rgba(0, 0, 0, 0.06),
+      -1px -1px 4px rgba(255, 255, 255, 0.7);
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+  .pixel-btn:hover {
+    box-shadow:
+      1px 1px 3px rgba(0, 0, 0, 0.08),
+      -1px -1px 2px rgba(255, 255, 255, 0.5);
+    transform: translateY(1px);
+  }
+  .pixel-btn:active {
+    box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.08);
+    transform: translateY(1px);
+  }
+
+  /* Legacy pixel-tag alias */
+  .pixel-tag {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--card);
   }
 }
