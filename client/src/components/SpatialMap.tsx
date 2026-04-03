@@ -1,27 +1,32 @@
 // ============================================================
 // SpatialMap Component - Multi-Agent 2D Canvas
 // World coordinate system with pan + zoom
+// Toolbar for placing walls, windows, doors, zones
 // Clean neumorphism UI with circle agents
 // ============================================================
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import type { Shape, AgentPosition, Zone } from "@/lib/store";
-import { PERSONA_COLORS } from "@/lib/store";
+import { PERSONA_COLORS, defaultZoneEnv } from "@/lib/store";
+import { toast } from "sonner";
+
+// ---- Types ----
+type ToolMode = "select" | "wall" | "window" | "door" | "room" | "zone";
 
 // ---- World / Screen Transform ----
 interface Camera {
-  offsetX: number; // world X at screen left
-  offsetY: number; // world Y at screen top
-  zoom: number;    // pixels per world unit (mm)
+  offsetX: number;
+  offsetY: number;
+  zoom: number;
 }
 
 const MIN_ZOOM = 0.005;
 const MAX_ZOOM = 2;
-const INITIAL_ZOOM = 0.03; // ~600px for 20000mm
-const GRID_LEVELS = [500, 1000, 2000, 5000, 10000]; // mm
+const INITIAL_ZOOM = 0.03;
+const GRID_LEVELS = [500, 1000, 2000, 5000, 10000];
+const SNAP_GRID = 100; // mm snap
 
 function getGridStep(zoom: number): number {
-  // Pick grid step so that grid cells are ~60-150px on screen
   for (const step of GRID_LEVELS) {
     const px = step * zoom;
     if (px >= 40 && px <= 200) return step;
@@ -32,7 +37,7 @@ function getGridStep(zoom: number): number {
 function worldToScreen(wx: number, wy: number, cam: Camera): [number, number] {
   return [
     (wx - cam.offsetX) * cam.zoom,
-    (cam.offsetY - wy) * cam.zoom, // Y flipped: world Y up, screen Y down
+    (cam.offsetY - wy) * cam.zoom,
   ];
 }
 
@@ -43,12 +48,27 @@ function screenToWorld(sx: number, sy: number, cam: Camera): [number, number] {
   ];
 }
 
+function snapToGrid(v: number): number {
+  return Math.round(v / SNAP_GRID) * SNAP_GRID;
+}
+
 // ---- Shape styles ----
 const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string }> = {
   room: { fill: "rgba(29, 158, 117, 0.06)", stroke: "#1D9E75", label: "Room" },
+  wall: { fill: "rgba(80, 80, 80, 0.08)", stroke: "#555555", label: "Wall" },
   window: { fill: "rgba(59, 130, 246, 0.08)", stroke: "#3B82F6", label: "Window" },
   door: { fill: "rgba(180, 120, 70, 0.08)", stroke: "#B47846", label: "Door" },
 };
+
+// ---- Tool definitions ----
+const TOOLS: { mode: ToolMode; label: string; icon: string; hint: string }[] = [
+  { mode: "select", label: "Select", icon: "↖", hint: "Click to place agent" },
+  { mode: "room", label: "Room", icon: "□", hint: "Click points to draw room polygon, double-click to close" },
+  { mode: "wall", label: "Wall", icon: "▬", hint: "Click 2 points to draw wall segment" },
+  { mode: "window", label: "Window", icon: "▭", hint: "Click 2 points to draw window" },
+  { mode: "door", label: "Door", icon: "◫", hint: "Click 2 points to draw door" },
+  { mode: "zone", label: "Zone", icon: "▦", hint: "Click 2 corners to define zone rectangle" },
+];
 
 // ---- Draw circle agent ----
 function drawAgent(
@@ -59,9 +79,8 @@ function drawAgent(
   zoom: number,
 ) {
   const color = PERSONA_COLORS[index];
-  const r = Math.max(6, Math.min(14, 10 / (zoom * 50))); // adaptive radius
+  const r = Math.max(6, Math.min(14, 10 / (zoom * 50)));
 
-  // Outer glow for active
   if (isActive) {
     ctx.beginPath();
     ctx.arc(sx, sy, r + 6, 0, Math.PI * 2);
@@ -74,26 +93,22 @@ function drawAgent(
     ctx.setLineDash([]);
   }
 
-  // Main circle
   ctx.beginPath();
   ctx.arc(sx, sy, r, 0, Math.PI * 2);
   ctx.fillStyle = color.primary;
   ctx.fill();
 
-  // Inner highlight
   ctx.beginPath();
   ctx.arc(sx - r * 0.25, sy - r * 0.25, r * 0.35, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(255,255,255,0.35)";
   ctx.fill();
 
-  // Border
   ctx.beginPath();
   ctx.arc(sx, sy, r, 0, Math.PI * 2);
   ctx.strokeStyle = isActive ? "#FFFFFF" : "rgba(255,255,255,0.5)";
   ctx.lineWidth = isActive ? 2 : 1;
   ctx.stroke();
 
-  // Label
   ctx.font = `600 ${Math.max(10, r)}px 'Inter', sans-serif`;
   ctx.fillStyle = color.primary;
   ctx.textAlign = "center";
@@ -109,6 +124,8 @@ export default function SpatialMap({
   activeAgentIdx,
   onAgentPlace,
   onAgentRemove,
+  onAddShape,
+  onAddZone,
 }: {
   shapes: Shape[];
   zones?: Zone[];
@@ -116,6 +133,8 @@ export default function SpatialMap({
   activeAgentIdx: number;
   onAgentPlace: (pos: AgentPosition) => void;
   onAgentRemove?: (idx: number) => void;
+  onAddShape?: (shape: Shape) => void;
+  onAddZone?: (zone: Zone) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -130,9 +149,14 @@ export default function SpatialMap({
   });
   const [cam, setCam] = useState<Camera>({ ...camRef.current });
 
+  // Tool state
+  const [activeTool, setActiveTool] = useState<ToolMode>("select");
+  const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
+
   // Interaction state
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
+  const dragMoved = useRef(false);
   const [hoverWorld, setHoverWorld] = useState<{ x: number; y: number } | null>(null);
   const [hoveredAgentIdx, setHoveredAgentIdx] = useState<number | null>(null);
 
@@ -155,17 +179,22 @@ export default function SpatialMap({
   // ---- Fit to content ----
   const fitToContent = useCallback(() => {
     let minX = 0, minY = 0, maxX = 20000, maxY = 20000;
-    if (shapes.length > 0) {
+    const allPoints: [number, number][] = [];
+    for (const s of shapes) {
+      for (const p of s.points) allPoints.push(p);
+    }
+    for (const z of zones) {
+      allPoints.push([z.bounds.x, z.bounds.y]);
+      allPoints.push([z.bounds.x + z.bounds.width, z.bounds.y + z.bounds.height]);
+    }
+    if (allPoints.length > 0) {
       minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
-      for (const s of shapes) {
-        for (const [px, py] of s.points) {
-          if (px < minX) minX = px;
-          if (py < minY) minY = py;
-          if (px > maxX) maxX = px;
-          if (py > maxY) maxY = py;
-        }
+      for (const [px, py] of allPoints) {
+        if (px < minX) minX = px;
+        if (py < minY) minY = py;
+        if (px > maxX) maxX = px;
+        if (py > maxY) maxY = py;
       }
-      // Add padding
       const padX = (maxX - minX) * 0.15 || 2000;
       const padY = (maxY - minY) * 0.15 || 2000;
       minX -= padX; minY -= padY; maxX += padX; maxY += padY;
@@ -182,12 +211,25 @@ export default function SpatialMap({
     };
     camRef.current = newCam;
     setCam({ ...newCam });
-  }, [shapes, canvasW, canvasH]);
+  }, [shapes, zones, canvasW, canvasH]);
 
-  // Fit on first mount or when shapes change significantly
   useEffect(() => {
     fitToContent();
-  }, [shapes.length, canvasW, canvasH]);
+  }, [shapes.length, zones.length, canvasW, canvasH]);
+
+  // ---- Cancel drawing on Escape ----
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setDrawingPoints([]);
+        if (activeTool !== "select") {
+          setActiveTool("select");
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeTool]);
 
   // ---- Draw ----
   const draw = useCallback(() => {
@@ -197,7 +239,6 @@ export default function SpatialMap({
     if (!ctx) return;
     const c = camRef.current;
 
-    // HiDPI
     const dpr = window.devicePixelRatio || 1;
     canvas.width = canvasW * dpr;
     canvas.height = canvasH * dpr;
@@ -215,7 +256,6 @@ export default function SpatialMap({
     ctx.fillStyle = "#C0BAB0";
     ctx.textBaseline = "top";
 
-    // Vertical grid lines
     const worldLeft = c.offsetX;
     const worldRight = c.offsetX + canvasW / c.zoom;
     const worldTop = c.offsetY;
@@ -227,11 +267,9 @@ export default function SpatialMap({
       ctx.moveTo(sx, 0);
       ctx.lineTo(sx, canvasH);
       ctx.stroke();
-      // Label
       ctx.textAlign = "left";
       ctx.fillText(`${(wx / 1000).toFixed(wx % 1000 === 0 ? 0 : 1)}m`, sx + 3, canvasH - 16);
     }
-    // Horizontal grid lines
     const startY = Math.floor(worldBottom / gridStep) * gridStep;
     for (let wy = startY; wy <= worldTop; wy += gridStep) {
       const [, sy] = worldToScreen(0, wy, c);
@@ -266,30 +304,23 @@ export default function SpatialMap({
       const zw = zx2 - zx1;
       const zh = zy2 - zy1;
 
-      // Zone fill
       ctx.fillStyle = "rgba(29, 158, 117, 0.04)";
       ctx.fillRect(zx1, zy1, zw, zh);
-
-      // Zone border
       ctx.strokeStyle = "rgba(29, 158, 117, 0.3)";
       ctx.lineWidth = 1;
       ctx.setLineDash([6, 4]);
       ctx.strokeRect(zx1, zy1, zw, zh);
       ctx.setLineDash([]);
 
-      // Zone label
       const zlabel = zone.label || zone.id;
       ctx.font = "500 10px 'Inter', sans-serif";
       ctx.fillStyle = "rgba(29, 158, 117, 0.6)";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
       ctx.fillText(zlabel, zx1 + 4, zy1 + 4);
-
-      // Zone env summary
       ctx.font = "9px 'JetBrains Mono', monospace";
       ctx.fillStyle = "rgba(29, 158, 117, 0.45)";
-      const envTxt = `${zone.env.temperature}°C  ${zone.env.light}lx  ${zone.env.noise}dB`;
-      ctx.fillText(envTxt, zx1 + 4, zy1 + 18);
+      ctx.fillText(`${zone.env.temperature}°C  ${zone.env.light}lx  ${zone.env.noise}dB`, zx1 + 4, zy1 + 18);
       ctx.textBaseline = "alphabetic";
     });
 
@@ -331,19 +362,19 @@ export default function SpatialMap({
 
       // Shape label
       const label = shape.label || style.label;
-      const cx = shape.points.reduce((s, p) => s + p[0], 0) / shape.points.length;
-      const cy = shape.points.reduce((s, p) => s + p[1], 0) / shape.points.length;
-      const [lx, ly] = worldToScreen(cx, cy, c);
+      const cx2 = shape.points.reduce((s, p) => s + p[0], 0) / shape.points.length;
+      const cy2 = shape.points.reduce((s, p) => s + p[1], 0) / shape.points.length;
+      const [lx, ly] = worldToScreen(cx2, cy2, c);
       ctx.font = "500 11px 'Inter', sans-serif";
       const tw = ctx.measureText(label);
       ctx.fillStyle = "rgba(255,252,247,0.85)";
       const pad = 5;
-      ctx.beginPath();
       const rx = lx - tw.width / 2 - pad;
       const ry = ly - 8;
       const rw = tw.width + pad * 2;
       const rh = 18;
       const rr = 4;
+      ctx.beginPath();
       ctx.moveTo(rx + rr, ry);
       ctx.lineTo(rx + rw - rr, ry);
       ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + rr);
@@ -365,7 +396,64 @@ export default function SpatialMap({
       ctx.textBaseline = "alphabetic";
     });
 
-    // Draw agents (inactive first, active last)
+    // Draw in-progress drawing (current tool)
+    if (drawingPoints.length > 0 && activeTool !== "select") {
+      const toolType = activeTool === "zone" ? "zone" : activeTool;
+      const style = SHAPE_STYLES[toolType] || SHAPE_STYLES.room;
+
+      if (activeTool === "zone" && drawingPoints.length >= 1 && hoverWorld) {
+        // Preview zone rectangle
+        const p0 = drawingPoints[0];
+        const p1: [number, number] = [snapToGrid(hoverWorld.x), snapToGrid(hoverWorld.y)];
+        const minXz = Math.min(p0[0], p1[0]);
+        const minYz = Math.min(p0[1], p1[1]);
+        const maxXz = Math.max(p0[0], p1[0]);
+        const maxYz = Math.max(p0[1], p1[1]);
+        const [zx1, zy1] = worldToScreen(minXz, maxYz, c);
+        const [zx2, zy2] = worldToScreen(maxXz, minYz, c);
+        ctx.fillStyle = "rgba(29, 158, 117, 0.08)";
+        ctx.fillRect(zx1, zy1, zx2 - zx1, zy2 - zy1);
+        ctx.strokeStyle = "rgba(29, 158, 117, 0.5)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(zx1, zy1, zx2 - zx1, zy2 - zy1);
+        ctx.setLineDash([]);
+      } else {
+        // Preview line/polygon
+        ctx.beginPath();
+        const [sx0, sy0] = worldToScreen(drawingPoints[0][0], drawingPoints[0][1], c);
+        ctx.moveTo(sx0, sy0);
+        for (let i = 1; i < drawingPoints.length; i++) {
+          const [px, py] = worldToScreen(drawingPoints[i][0], drawingPoints[i][1], c);
+          ctx.lineTo(px, py);
+        }
+        // Preview line to cursor
+        if (hoverWorld) {
+          const [hx, hy] = worldToScreen(snapToGrid(hoverWorld.x), snapToGrid(hoverWorld.y), c);
+          ctx.lineTo(hx, hy);
+        }
+        ctx.strokeStyle = style.stroke;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw placed points
+        drawingPoints.forEach(([wx, wy]) => {
+          const [vx, vy] = worldToScreen(wx, wy, c);
+          ctx.beginPath();
+          ctx.arc(vx, vy, 4, 0, Math.PI * 2);
+          ctx.fillStyle = style.stroke;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(vx, vy, 2, 0, Math.PI * 2);
+          ctx.fillStyle = "#fff";
+          ctx.fill();
+        });
+      }
+    }
+
+    // Draw agents
     const drawOrder = agentPositions
       .map((pos, i) => ({ pos, i }))
       .filter((a) => a.pos !== null)
@@ -377,8 +465,8 @@ export default function SpatialMap({
       drawAgent(ctx, ax, ay, i, i === activeAgentIdx, c.zoom);
     });
 
-    // Hover crosshair
-    if (hoverWorld) {
+    // Hover crosshair (only in select mode)
+    if (hoverWorld && activeTool === "select") {
       const [hx, hy] = worldToScreen(hoverWorld.x, hoverWorld.y, c);
       ctx.strokeStyle = `${PERSONA_COLORS[activeAgentIdx].primary}30`;
       ctx.lineWidth = 1;
@@ -387,21 +475,46 @@ export default function SpatialMap({
       ctx.beginPath(); ctx.moveTo(0, hy); ctx.lineTo(canvasW, hy); ctx.stroke();
       ctx.setLineDash([]);
 
-      // Coordinate tooltip
       ctx.font = "11px 'JetBrains Mono', monospace";
       const txt = `(${Math.round(hoverWorld.x)}, ${Math.round(hoverWorld.y)})`;
       const tw2 = ctx.measureText(txt);
       const tx = Math.min(hx + 12, canvasW - tw2.width - 10);
       const ty = Math.max(hy - 12, 18);
-      ctx.fillStyle = "rgba(45,42,38,0.8)";
+      ctx.fillStyle = "rgba(60,50,40,0.7)";
       ctx.beginPath();
-      ctx.roundRect(tx - 4, ty - 13, tw2.width + 8, 18, 4);
+      ctx.roundRect(tx - 4, ty - 14, tw2.width + 8, 20, 4);
       ctx.fill();
       ctx.fillStyle = "#FFFFFF";
       ctx.textAlign = "left";
       ctx.fillText(txt, tx, ty);
     }
-  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam]);
+
+    // Coordinate tooltip for drawing tools
+    if (hoverWorld && activeTool !== "select") {
+      const snapped = { x: snapToGrid(hoverWorld.x), y: snapToGrid(hoverWorld.y) };
+      const [hx, hy] = worldToScreen(snapped.x, snapped.y, c);
+
+      // Snap indicator
+      ctx.beginPath();
+      ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+      ctx.strokeStyle = SHAPE_STYLES[activeTool === "zone" ? "room" : activeTool]?.stroke || "#555";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.font = "11px 'JetBrains Mono', monospace";
+      const txt = `(${snapped.x}, ${snapped.y})`;
+      const tw2 = ctx.measureText(txt);
+      const tx = Math.min(hx + 12, canvasW - tw2.width - 10);
+      const ty = Math.max(hy - 12, 18);
+      ctx.fillStyle = "rgba(60,50,40,0.7)";
+      ctx.beginPath();
+      ctx.roundRect(tx - 4, ty - 14, tw2.width + 8, 20, 4);
+      ctx.fill();
+      ctx.fillStyle = "#FFFFFF";
+      ctx.textAlign = "left";
+      ctx.fillText(txt, tx, ty);
+    }
+  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam, drawingPoints, activeTool]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -425,12 +538,12 @@ export default function SpatialMap({
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
-      // Middle click or Alt+Left = pan
       isPanning.current = true;
+      dragMoved.current = false;
       panStart.current = { x: e.clientX, y: e.clientY };
       e.preventDefault();
     } else if (e.button === 0) {
-      // Left click = place agent (handled in mouseUp to distinguish from drag)
+      dragMoved.current = false;
     }
   };
 
@@ -438,6 +551,7 @@ export default function SpatialMap({
     if (isPanning.current) {
       const dx = e.clientX - panStart.current.x;
       const dy = e.clientY - panStart.current.y;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) dragMoved.current = true;
       panStart.current = { x: e.clientX, y: e.clientY };
       const c = camRef.current;
       const canvas = canvasRef.current!;
@@ -450,19 +564,23 @@ export default function SpatialMap({
     }
 
     const [wx, wy] = getMouseWorld(e);
-    setHoverWorld({ x: Math.round(wx / 100) * 100, y: Math.round(wy / 100) * 100 });
+    setHoverWorld({ x: snapToGrid(wx), y: snapToGrid(wy) });
 
-    // Check hover over agents
-    const [sx, sy] = getMouseScreen(e);
-    let hovIdx: number | null = null;
-    for (let i = 0; i < agentPositions.length; i++) {
-      const pos = agentPositions[i];
-      if (!pos) continue;
-      const [ax, ay] = worldToScreen(pos.x, pos.y, camRef.current);
-      const dist = Math.sqrt((sx - ax) ** 2 + (sy - ay) ** 2);
-      if (dist < 18) { hovIdx = i; break; }
+    // Check hover over agents (only in select mode)
+    if (activeTool === "select") {
+      const [sx, sy] = getMouseScreen(e);
+      let hovIdx: number | null = null;
+      for (let i = 0; i < agentPositions.length; i++) {
+        const pos = agentPositions[i];
+        if (!pos) continue;
+        const [ax, ay] = worldToScreen(pos.x, pos.y, camRef.current);
+        const dist = Math.sqrt((sx - ax) ** 2 + (sy - ay) ** 2);
+        if (dist < 18) { hovIdx = i; break; }
+      }
+      setHoveredAgentIdx(hovIdx);
+    } else {
+      setHoveredAgentIdx(null);
     }
-    setHoveredAgentIdx(hovIdx);
   };
 
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -470,11 +588,73 @@ export default function SpatialMap({
       isPanning.current = false;
       return;
     }
-    if (e.button === 0 && !e.altKey) {
-      const [wx, wy] = getMouseWorld(e);
-      const snappedX = Math.round(wx / 100) * 100;
-      const snappedY = Math.round(wy / 100) * 100;
+    if (e.button !== 0 || e.altKey || dragMoved.current) return;
+
+    const [wx, wy] = getMouseWorld(e);
+    const snappedX = snapToGrid(wx);
+    const snappedY = snapToGrid(wy);
+
+    if (activeTool === "select") {
+      // Place agent
       onAgentPlace({ x: snappedX, y: snappedY });
+    } else if (activeTool === "zone") {
+      // Zone: 2 clicks define rectangle
+      const newPoints = [...drawingPoints, [snappedX, snappedY] as [number, number]];
+      if (newPoints.length >= 2) {
+        const p0 = newPoints[0];
+        const p1 = newPoints[1];
+        const minXz = Math.min(p0[0], p1[0]);
+        const minYz = Math.min(p0[1], p1[1]);
+        const maxXz = Math.max(p0[0], p1[0]);
+        const maxYz = Math.max(p0[1], p1[1]);
+        const w = maxXz - minXz;
+        const h = maxYz - minYz;
+        if (w > 0 && h > 0 && onAddZone) {
+          const zone: Zone = {
+            id: `zone_${Date.now()}`,
+            label: `Zone ${zones.length + 1}`,
+            bounds: { x: minXz, y: minYz, width: w, height: h },
+            env: { ...defaultZoneEnv },
+          };
+          onAddZone(zone);
+          toast.success(`Zone created: ${w}mm × ${h}mm`);
+        }
+        setDrawingPoints([]);
+      } else {
+        setDrawingPoints(newPoints);
+      }
+    } else if (activeTool === "room") {
+      // Room: multi-point polygon, need at least 3 points
+      setDrawingPoints([...drawingPoints, [snappedX, snappedY]]);
+    } else {
+      // Wall, Window, Door: 2 points
+      const newPoints = [...drawingPoints, [snappedX, snappedY] as [number, number]];
+      if (newPoints.length >= 2) {
+        if (onAddShape) {
+          const shapeType = activeTool === "wall" ? "room" : activeTool; // walls stored as room type with 2 points
+          onAddShape({
+            type: activeTool === "wall" ? "room" : activeTool,
+            points: newPoints,
+            label: activeTool === "wall" ? "Wall" : undefined,
+          });
+          toast.success(`${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} added`);
+        }
+        setDrawingPoints([]);
+      } else {
+        setDrawingPoints(newPoints);
+      }
+    }
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (activeTool === "room" && drawingPoints.length >= 3 && onAddShape) {
+      onAddShape({
+        type: "room",
+        points: drawingPoints,
+      });
+      toast.success(`Room created with ${drawingPoints.length} points`);
+      setDrawingPoints([]);
+      e.preventDefault();
     }
   };
 
@@ -491,7 +671,6 @@ export default function SpatialMap({
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     c.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, c.zoom * factor));
 
-    // Keep mouse position fixed in world coords
     c.offsetX = wxBefore - sx / c.zoom;
     c.offsetY = wyBefore + sy / c.zoom;
 
@@ -500,14 +679,90 @@ export default function SpatialMap({
 
   const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
+    if (activeTool !== "select") {
+      // Cancel current drawing
+      setDrawingPoints([]);
+      return;
+    }
     if (hoveredAgentIdx !== null && onAgentRemove) {
       onAgentRemove(hoveredAgentIdx);
       setHoveredAgentIdx(null);
     }
   };
 
+  const getCursor = (): string => {
+    if (isPanning.current) return "grabbing";
+    if (activeTool === "select") {
+      return hoveredAgentIdx !== null ? "pointer" : "crosshair";
+    }
+    return "crosshair";
+  };
+
+  const currentToolInfo = TOOLS.find((t) => t.mode === activeTool);
+
   return (
     <div ref={containerRef} className="w-full">
+      {/* Toolbar */}
+      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+        {TOOLS.map((tool) => (
+          <button
+            key={tool.mode}
+            onClick={() => { setActiveTool(tool.mode); setDrawingPoints([]); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all text-xs font-medium"
+            style={{
+              background: activeTool === tool.mode ? "var(--primary)" : "var(--card)",
+              color: activeTool === tool.mode ? "#fff" : "var(--foreground)",
+              border: `1.5px solid ${activeTool === tool.mode ? "var(--primary)" : "var(--border)"}`,
+              boxShadow: activeTool === tool.mode
+                ? "0 2px 8px rgba(29, 158, 117, 0.25)"
+                : "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
+            }}
+            title={tool.hint}
+          >
+            <span style={{ fontSize: "14px", lineHeight: 1 }}>{tool.icon}</span>
+            <span>{tool.label}</span>
+          </button>
+        ))}
+
+        <div className="flex-1" />
+
+        {/* Drawing status */}
+        {drawingPoints.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2 py-1 rounded" style={{
+              background: "var(--primary)10",
+              color: "var(--primary)",
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              {drawingPoints.length} point{drawingPoints.length > 1 ? "s" : ""}
+            </span>
+            <button
+              className="sa-btn text-xs px-2 py-1"
+              style={{ background: "#D94F4F20", color: "#D94F4F", borderColor: "#D94F4F40" }}
+              onClick={() => setDrawingPoints([])}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        <button
+          onClick={fitToContent}
+          className="sa-btn text-xs px-3 py-1"
+          title="Fit view to content"
+        >
+          Fit View
+        </button>
+      </div>
+
+      {/* Tool hint */}
+      {currentToolInfo && (
+        <div className="text-xs mb-2 px-1" style={{ color: "var(--muted-foreground)" }}>
+          {currentToolInfo.hint}
+          {activeTool !== "select" && " · Right-click or Esc to cancel"}
+        </div>
+      )}
+
       {/* Agent legend */}
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         {agentPositions.map((pos, i) => (
@@ -542,14 +797,6 @@ export default function SpatialMap({
             )}
           </div>
         ))}
-        <div className="flex-1" />
-        <button
-          onClick={fitToContent}
-          className="sa-btn text-xs px-3 py-1"
-          title="Fit view to content"
-        >
-          Fit View
-        </button>
       </div>
 
       <canvas
@@ -557,7 +804,7 @@ export default function SpatialMap({
         style={{
           width: `${canvasW}px`,
           height: `${canvasH}px`,
-          cursor: isPanning.current ? "grabbing" : hoveredAgentIdx !== null ? "pointer" : "crosshair",
+          cursor: getCursor(),
           borderRadius: "var(--radius)",
           border: "1px solid var(--border)",
           boxShadow: "4px 4px 12px rgba(0,0,0,0.06), -2px -2px 8px rgba(255,255,255,0.7)",
@@ -565,18 +812,18 @@ export default function SpatialMap({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
         onMouseLeave={() => { setHoverWorld(null); setHoveredAgentIdx(null); isPanning.current = false; }}
         onWheel={handleWheel}
         onContextMenu={handleContextMenu}
-        title="Left-click: place agent | Alt+drag or middle-drag: pan | Scroll: zoom | Right-click agent: remove"
       />
 
       {/* Controls hint */}
       <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: "#8A847A" }}>
-        <span>Click to place agent</span>
         <span>Alt+drag to pan</span>
         <span>Scroll to zoom</span>
-        <span>Right-click agent to remove</span>
+        {activeTool === "select" && <span>Click to place agent · Right-click to remove</span>}
+        {activeTool === "room" && <span>Double-click to close polygon</span>}
       </div>
     </div>
   );

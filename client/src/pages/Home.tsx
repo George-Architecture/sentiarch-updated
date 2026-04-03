@@ -503,6 +503,8 @@ export default function Home() {
             onAgentRemove={(idx) => {
               setStates((prev) => prev.map((s, i) => i === idx ? { ...s, agentPos: null } : s));
             }}
+            onAddShape={addShape}
+            onAddZone={addZone}
           />
         </div>
       </section>
