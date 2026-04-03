@@ -1,7 +1,9 @@
 // ============================================================
 // SpatialMap Component - Multi-Agent 2D Canvas
-// World coordinate system with pan + zoom
+// World coordinate system with pan + zoom (zoom to cursor)
 // Toolbar for placing walls, windows, doors, zones, waypoints
+// Object selection, drag-move, Ctrl+Z undo
+// Window/Door snap-to-wall
 // Agent route animation with path trails
 // Clean neumorphism UI with circle agents
 // ============================================================
@@ -13,6 +15,12 @@ import { toast } from "sonner";
 
 // ---- Types ----
 type ToolMode = "select" | "wall" | "window" | "door" | "room" | "zone" | "waypoint";
+
+// ---- Undo action types ----
+interface UndoAction {
+  type: "add_shape" | "add_zone" | "add_waypoint" | "move_shape" | "delete_shape" | "place_agent" | "remove_agent";
+  payload: any;
+}
 
 // ---- World / Screen Transform ----
 interface Camera {
@@ -26,6 +34,7 @@ const MAX_ZOOM = 2;
 const INITIAL_ZOOM = 0.03;
 const GRID_LEVELS = [500, 1000, 2000, 5000, 10000];
 const SNAP_GRID = 100; // mm snap
+const WALL_SNAP_DIST = 500; // mm — max distance to snap window/door to wall
 
 function getGridStep(zoom: number): number {
   for (const step of GRID_LEVELS) {
@@ -53,9 +62,51 @@ function snapToGrid(v: number): number {
   return Math.round(v / SNAP_GRID) * SNAP_GRID;
 }
 
+// ---- Geometry helpers ----
+function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.sqrt((px - (x1 + t * dx)) ** 2 + (py - (y1 + t * dy)) ** 2);
+}
+
+function projectOntoSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): [number, number] {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return [x1, y1];
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return [x1 + t * dx, y1 + t * dy];
+}
+
+/** Find the nearest wall segment to a point, returns the projected point and distance */
+function findNearestWallSnap(
+  px: number, py: number, shapes: Shape[]
+): { point: [number, number]; dist: number; wallIdx: number; segIdx: number } | null {
+  let best: { point: [number, number]; dist: number; wallIdx: number; segIdx: number } | null = null;
+
+  shapes.forEach((shape, shapeIdx) => {
+    if (shape.type !== "wall" && shape.type !== "room") return;
+    const pts = shape.points;
+    const len = shape.type === "room" ? pts.length : pts.length - 1;
+    for (let i = 0; i < len; i++) {
+      const j = (i + 1) % pts.length;
+      const d = distToSegment(px, py, pts[i][0], pts[i][1], pts[j][0], pts[j][1]);
+      if (!best || d < best.dist) {
+        const proj = projectOntoSegment(px, py, pts[i][0], pts[i][1], pts[j][0], pts[j][1]);
+        best = { point: proj, dist: d, wallIdx: shapeIdx, segIdx: i };
+      }
+    }
+  });
+
+  return best;
+}
+
 // ---- Shape styles ----
 const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string; lineWidth: number; dash: number[] }> = {
-  room: { fill: "rgba(29, 158, 117, 0.06)", stroke: "#1D9E75", label: "Room", lineWidth: 2, dash: [] },
+  room: { fill: "rgba(29, 107, 94, 0.06)", stroke: "#1D6B5E", label: "Room", lineWidth: 2, dash: [] },
   wall: { fill: "rgba(80, 80, 80, 0.08)", stroke: "#555555", label: "Wall", lineWidth: 3, dash: [] },
   window: { fill: "rgba(59, 130, 246, 0.08)", stroke: "#3B82F6", label: "Window", lineWidth: 2.5, dash: [6, 4] },
   door: { fill: "rgba(180, 120, 70, 0.08)", stroke: "#B47846", label: "Door", lineWidth: 2.5, dash: [8, 3] },
@@ -63,14 +114,49 @@ const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string
 
 // ---- Tool definitions ----
 const TOOLS: { mode: ToolMode; label: string; icon: string; hint: string }[] = [
-  { mode: "select", label: "Select", icon: "↖", hint: "Click to place agent" },
+  { mode: "select", label: "Select", icon: "↖", hint: "Click to place agent · Click shape to select · Drag to move" },
   { mode: "room", label: "Room", icon: "□", hint: "Click points to draw room polygon, double-click to close" },
   { mode: "wall", label: "Wall", icon: "▬", hint: "Click 2 points to draw wall segment" },
-  { mode: "window", label: "Window", icon: "▭", hint: "Click 2 points to draw window" },
-  { mode: "door", label: "Door", icon: "◫", hint: "Click 2 points to draw door" },
+  { mode: "window", label: "Window", icon: "▭", hint: "Click 2 points — auto-snaps to nearest wall" },
+  { mode: "door", label: "Door", icon: "◫", hint: "Click 2 points — auto-snaps to nearest wall" },
   { mode: "zone", label: "Zone", icon: "▦", hint: "Click 2 corners to define zone rectangle" },
   { mode: "waypoint", label: "Waypoint", icon: "◉", hint: "Click to place waypoint for active agent's route" },
 ];
+
+// ---- Hit testing for shape selection ----
+const HIT_THRESHOLD = 12; // pixels
+
+function hitTestShape(
+  sx: number, sy: number, shape: Shape, cam: Camera
+): boolean {
+  const pts = shape.points;
+  if (pts.length < 2) return false;
+
+  // Test distance to each segment
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, ay] = worldToScreen(pts[i][0], pts[i][1], cam);
+    const [bx, by] = worldToScreen(pts[i + 1][0], pts[i + 1][1], cam);
+    const d = distToSegmentScreen(sx, sy, ax, ay, bx, by);
+    if (d < HIT_THRESHOLD) return true;
+  }
+  // For rooms, also test closing segment
+  if (shape.type === "room" && pts.length >= 3) {
+    const [ax, ay] = worldToScreen(pts[pts.length - 1][0], pts[pts.length - 1][1], cam);
+    const [bx, by] = worldToScreen(pts[0][0], pts[0][1], cam);
+    const d = distToSegmentScreen(sx, sy, ax, ay, bx, by);
+    if (d < HIT_THRESHOLD) return true;
+  }
+  return false;
+}
+
+function distToSegmentScreen(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.sqrt((px - (x1 + t * dx)) ** 2 + (py - (y1 + t * dy)) ** 2);
+}
 
 // ---- Draw circle agent ----
 function drawAgent(
@@ -125,13 +211,12 @@ function drawAnimatedAgent(
   sx: number, sy: number,
   index: number,
   zoom: number,
-  pulse: number, // 0-1 animation phase
+  pulse: number,
 ) {
   const color = PERSONA_COLORS[index];
   const r = Math.max(5, Math.min(12, 8 / (zoom * 50)));
   const pulseR = r + 3 * Math.sin(pulse * Math.PI * 2);
 
-  // Pulse ring
   ctx.beginPath();
   ctx.arc(sx, sy, pulseR + 4, 0, Math.PI * 2);
   ctx.fillStyle = `${color.primary}10`;
@@ -140,7 +225,6 @@ function drawAnimatedAgent(
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Main circle
   ctx.beginPath();
   ctx.arc(sx, sy, r, 0, Math.PI * 2);
   ctx.fillStyle = color.primary;
@@ -149,7 +233,6 @@ function drawAnimatedAgent(
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Label
   ctx.font = `600 ${Math.max(9, r - 1)}px 'Inter', sans-serif`;
   ctx.fillStyle = color.primary;
   ctx.textAlign = "center";
@@ -167,6 +250,8 @@ export default function SpatialMap({
   onAgentRemove,
   onAddShape,
   onAddZone,
+  onUpdateShapes,
+  onDeleteShape,
   // Waypoint props
   allWaypoints = {},
   onAddWaypoint,
@@ -186,6 +271,8 @@ export default function SpatialMap({
   onAgentRemove?: (idx: number) => void;
   onAddShape?: (shape: Shape) => void;
   onAddZone?: (zone: Zone) => void;
+  onUpdateShapes?: (shapes: Shape[]) => void;
+  onDeleteShape?: (idx: number) => void;
   // Waypoint props
   allWaypoints?: Record<number, Waypoint[]>;
   onAddWaypoint?: (agentIdx: number, wp: Waypoint) => void;
@@ -214,6 +301,22 @@ export default function SpatialMap({
   const [activeTool, setActiveTool] = useState<ToolMode>("select");
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
 
+  // Selection state
+  const [selectedShapeIdx, setSelectedShapeIdx] = useState<number | null>(null);
+
+  // Drag-move state
+  const isDraggingShape = useRef(false);
+  const dragShapeIdx = useRef<number | null>(null);
+  const dragStartWorld = useRef<[number, number]>([0, 0]);
+  const dragOriginalPoints = useRef<[number, number][]>([]);
+
+  // Undo stack
+  const undoStack = useRef<UndoAction[]>([]);
+  const MAX_UNDO = 50;
+
+  // Wall snap preview (for window/door tools)
+  const [wallSnapPreview, setWallSnapPreview] = useState<{ point: [number, number]; wallIdx: number } | null>(null);
+
   // Interaction state
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
@@ -228,7 +331,7 @@ export default function SpatialMap({
   useEffect(() => {
     if (!hasAnimating) return;
     let frame: number;
-    let start = performance.now();
+    const start = performance.now();
     const animate = (now: number) => {
       const elapsed = (now - start) / 1000;
       setAnimPulse(elapsed % 1);
@@ -237,6 +340,49 @@ export default function SpatialMap({
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
   }, [hasAnimating]);
+
+  // ---- Push undo ----
+  const pushUndo = useCallback((action: UndoAction) => {
+    undoStack.current.push(action);
+    if (undoStack.current.length > MAX_UNDO) {
+      undoStack.current.shift();
+    }
+  }, []);
+
+  // ---- Undo handler ----
+  const handleUndo = useCallback(() => {
+    const action = undoStack.current.pop();
+    if (!action) return;
+
+    switch (action.type) {
+      case "add_shape":
+        // Remove the last added shape
+        if (onDeleteShape) {
+          onDeleteShape(action.payload.index);
+        }
+        break;
+      case "move_shape":
+        // Restore original points
+        if (onUpdateShapes) {
+          const restored = [...shapes];
+          restored[action.payload.index] = {
+            ...restored[action.payload.index],
+            points: action.payload.originalPoints,
+          };
+          onUpdateShapes(restored);
+        }
+        break;
+      case "delete_shape":
+        // Re-add the deleted shape
+        if (onAddShape) {
+          onAddShape(action.payload.shape);
+        }
+        break;
+      default:
+        break;
+    }
+    toast.info("Undo");
+  }, [shapes, onDeleteShape, onUpdateShapes, onAddShape]);
 
   // ---- Resize observer ----
   useEffect(() => {
@@ -256,7 +402,6 @@ export default function SpatialMap({
 
   // ---- Fit to content ----
   const fitToContent = useCallback(() => {
-    let minX = 0, minY = 0, maxX = 20000, maxY = 20000;
     const allPoints: [number, number][] = [];
     for (const s of shapes) {
       for (const p of s.points) allPoints.push(p);
@@ -265,12 +410,13 @@ export default function SpatialMap({
       allPoints.push([z.bounds.x, z.bounds.y]);
       allPoints.push([z.bounds.x + z.bounds.width, z.bounds.y + z.bounds.height]);
     }
-    // Include waypoints
     for (const wps of Object.values(allWaypoints)) {
       for (const wp of wps) {
         allPoints.push([wp.position.x, wp.position.y]);
       }
     }
+
+    let minX = 0, minY = 0, maxX = 20000, maxY = 20000;
     if (allPoints.length > 0) {
       minX = Infinity; minY = Infinity; maxX = -Infinity; maxY = -Infinity;
       for (const [px, py] of allPoints) {
@@ -301,19 +447,33 @@ export default function SpatialMap({
     fitToContent();
   }, [shapes.length, zones.length, canvasW, canvasH]);
 
-  // ---- Cancel drawing on Escape ----
+  // ---- Keyboard: Escape to cancel, Ctrl+Z to undo, Delete to remove selected ----
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setDrawingPoints([]);
+        setSelectedShapeIdx(null);
         if (activeTool !== "select") {
           setActiveTool("select");
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        handleUndo();
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedShapeIdx !== null) {
+        e.preventDefault();
+        if (onDeleteShape) {
+          pushUndo({ type: "delete_shape", payload: { shape: shapes[selectedShapeIdx], index: selectedShapeIdx } });
+          onDeleteShape(selectedShapeIdx);
+          setSelectedShapeIdx(null);
+          toast.info("Shape deleted");
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeTool]);
+  }, [activeTool, handleUndo, selectedShapeIdx, shapes, onDeleteShape, pushUndo]);
 
   // ---- Draw ----
   const draw = useCallback(() => {
@@ -388,9 +548,9 @@ export default function SpatialMap({
       const zw = zx2 - zx1;
       const zh = zy2 - zy1;
 
-      ctx.fillStyle = "rgba(29, 158, 117, 0.04)";
+      ctx.fillStyle = "rgba(29, 107, 94, 0.04)";
       ctx.fillRect(zx1, zy1, zw, zh);
-      ctx.strokeStyle = "rgba(29, 158, 117, 0.3)";
+      ctx.strokeStyle = "rgba(29, 107, 94, 0.3)";
       ctx.lineWidth = 1;
       ctx.setLineDash([6, 4]);
       ctx.strokeRect(zx1, zy1, zw, zh);
@@ -398,40 +558,36 @@ export default function SpatialMap({
 
       const zlabel = zone.label || zone.id;
       ctx.font = "500 10px 'Inter', sans-serif";
-      ctx.fillStyle = "rgba(29, 158, 117, 0.6)";
+      ctx.fillStyle = "rgba(29, 107, 94, 0.6)";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
       ctx.fillText(zlabel, zx1 + 4, zy1 + 4);
       ctx.font = "9px 'JetBrains Mono', monospace";
-      ctx.fillStyle = "rgba(29, 158, 117, 0.45)";
+      ctx.fillStyle = "rgba(29, 107, 94, 0.45)";
       ctx.fillText(`${zone.env.temperature}°C  ${zone.env.light}lx  ${zone.env.noise}dB`, zx1 + 4, zy1 + 18);
       ctx.textBaseline = "alphabetic";
     });
 
     // ---- Draw heatmap overlay ----
     if (showHeatmap && heatmapPoints.length > 0) {
-      // Draw radial gradient blobs at each heatmap point
       for (const hp of heatmapPoints) {
         const [hx, hy] = worldToScreen(hp.x, hp.y, c);
-        const radius = Math.max(30, 2000 * c.zoom); // adaptive radius
+        const radius = Math.max(30, 2000 * c.zoom);
         const intensity = Math.min(1, hp.value / 10);
-        
-        // Color: green (low stress) -> yellow -> red (high stress)
+
         let r: number, g: number, b: number;
         if (intensity < 0.4) {
-          // Green to yellow
           const t = intensity / 0.4;
           r = Math.round(29 + (230 - 29) * t);
-          g = Math.round(158 + (126 - 158) * t);
-          b = Math.round(117 + (34 - 117) * t);
+          g = Math.round(107 + (126 - 107) * t);
+          b = Math.round(94 + (34 - 94) * t);
         } else {
-          // Yellow to red
           const t = (intensity - 0.4) / 0.6;
           r = Math.round(230 + (217 - 230) * t);
           g = Math.round(126 + (79 - 126) * t);
           b = Math.round(34 + (79 - 34) * t);
         }
-        
+
         const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, radius);
         grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.35)`);
         grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.15)`);
@@ -440,8 +596,7 @@ export default function SpatialMap({
         ctx.beginPath();
         ctx.arc(hx, hy, radius, 0, Math.PI * 2);
         ctx.fill();
-        
-        // Score label at center
+
         ctx.font = "bold 11px 'JetBrains Mono', monospace";
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.9)`;
         ctx.textAlign = "center";
@@ -455,9 +610,10 @@ export default function SpatialMap({
     }
 
     // Draw shapes
-    shapes.forEach((shape) => {
+    shapes.forEach((shape, shapeIdx) => {
       if (shape.points.length < 2) return;
       const style = SHAPE_STYLES[shape.type] || SHAPE_STYLES.room;
+      const isSelected = shapeIdx === selectedShapeIdx;
 
       ctx.beginPath();
       const [sx0, sy0] = worldToScreen(shape.points[0][0], shape.points[0][1], c);
@@ -468,24 +624,38 @@ export default function SpatialMap({
       }
       if (shape.type === "room") {
         ctx.closePath();
-        ctx.fillStyle = style.fill;
+        ctx.fillStyle = isSelected ? style.fill.replace("0.06", "0.15") : style.fill;
         ctx.fill();
       }
-      ctx.strokeStyle = style.stroke;
-      ctx.lineWidth = style.lineWidth;
+      ctx.strokeStyle = isSelected ? "#FF6B35" : style.stroke;
+      ctx.lineWidth = isSelected ? style.lineWidth + 1.5 : style.lineWidth;
       ctx.setLineDash(style.dash);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Selection highlight glow
+      if (isSelected) {
+        ctx.beginPath();
+        ctx.moveTo(sx0, sy0);
+        for (let i = 1; i < shape.points.length; i++) {
+          const [px, py] = worldToScreen(shape.points[i][0], shape.points[i][1], c);
+          ctx.lineTo(px, py);
+        }
+        if (shape.type === "room") ctx.closePath();
+        ctx.strokeStyle = "rgba(255, 107, 53, 0.25)";
+        ctx.lineWidth = style.lineWidth + 6;
+        ctx.stroke();
+      }
 
       // Vertex dots
       shape.points.forEach(([wx, wy]) => {
         const [vx, vy] = worldToScreen(wx, wy, c);
         ctx.beginPath();
-        ctx.arc(vx, vy, 3, 0, Math.PI * 2);
-        ctx.fillStyle = style.stroke;
+        ctx.arc(vx, vy, isSelected ? 5 : 3, 0, Math.PI * 2);
+        ctx.fillStyle = isSelected ? "#FF6B35" : style.stroke;
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(vx, vy, 1.5, 0, Math.PI * 2);
+        ctx.arc(vx, vy, isSelected ? 2.5 : 1.5, 0, Math.PI * 2);
         ctx.fillStyle = "#FAFAF6";
         ctx.fill();
       });
@@ -497,7 +667,7 @@ export default function SpatialMap({
       const [lx, ly] = worldToScreen(cx2, cy2, c);
       ctx.font = "500 11px 'Inter', sans-serif";
       const tw = ctx.measureText(label);
-      ctx.fillStyle = "rgba(255,252,247,0.85)";
+      ctx.fillStyle = isSelected ? "rgba(255,252,247,0.95)" : "rgba(255,252,247,0.85)";
       const pad = 5;
       const rx = lx - tw.width / 2 - pad;
       const ry = ly - 8;
@@ -516,15 +686,51 @@ export default function SpatialMap({
       ctx.quadraticCurveTo(rx, ry, rx + rr, ry);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = style.stroke;
+      ctx.strokeStyle = isSelected ? "#FF6B35" : style.stroke;
       ctx.lineWidth = 1;
       ctx.stroke();
-      ctx.fillStyle = style.stroke;
+      ctx.fillStyle = isSelected ? "#FF6B35" : style.stroke;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(label, lx, ly + 1);
       ctx.textBaseline = "alphabetic";
     });
+
+    // ---- Draw wall snap preview (for window/door tools) ----
+    if (wallSnapPreview && (activeTool === "window" || activeTool === "door")) {
+      const [spx, spy] = worldToScreen(wallSnapPreview.point[0], wallSnapPreview.point[1], c);
+      // Highlight the wall being snapped to
+      const wall = shapes[wallSnapPreview.wallIdx];
+      if (wall) {
+        ctx.beginPath();
+        const [wx0, wy0] = worldToScreen(wall.points[0][0], wall.points[0][1], c);
+        ctx.moveTo(wx0, wy0);
+        for (let i = 1; i < wall.points.length; i++) {
+          const [wpx, wpy] = worldToScreen(wall.points[i][0], wall.points[i][1], c);
+          ctx.lineTo(wpx, wpy);
+        }
+        if (wall.type === "room") ctx.closePath();
+        ctx.strokeStyle = "#FF6B3580";
+        ctx.lineWidth = 4;
+        ctx.setLineDash([8, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Snap point indicator
+      ctx.beginPath();
+      ctx.arc(spx, spy, 8, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255, 107, 53, 0.2)";
+      ctx.fill();
+      ctx.strokeStyle = "#FF6B35";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(spx, spy, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#FF6B35";
+      ctx.fill();
+    }
 
     // ---- Draw path trails (history) ----
     for (const [idxStr, trail] of Object.entries(pathTrails)) {
@@ -552,7 +758,6 @@ export default function SpatialMap({
       const color = PERSONA_COLORS[idx];
       if (!wps || wps.length === 0) continue;
 
-      // Draw connecting lines between waypoints
       if (wps.length >= 2) {
         ctx.beginPath();
         const [lx0, ly0] = worldToScreen(wps[0].position.x, wps[0].position.y, c);
@@ -567,7 +772,6 @@ export default function SpatialMap({
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Arrow heads on path segments
         for (let i = 0; i < wps.length - 1; i++) {
           const [ax1, ay1] = worldToScreen(wps[i].position.x, wps[i].position.y, c);
           const [ax2, ay2] = worldToScreen(wps[i + 1].position.x, wps[i + 1].position.y, c);
@@ -585,11 +789,9 @@ export default function SpatialMap({
         }
       }
 
-      // Draw waypoint markers
       wps.forEach((wp, wpIdx) => {
         const [wpx, wpy] = worldToScreen(wp.position.x, wp.position.y, c);
 
-        // Outer ring
         ctx.beginPath();
         ctx.arc(wpx, wpy, 10, 0, Math.PI * 2);
         ctx.fillStyle = `${color.primary}15`;
@@ -598,27 +800,23 @@ export default function SpatialMap({
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Inner dot
         ctx.beginPath();
         ctx.arc(wpx, wpy, 4, 0, Math.PI * 2);
         ctx.fillStyle = color.primary;
         ctx.fill();
 
-        // Waypoint number
         ctx.font = "bold 9px 'JetBrains Mono', monospace";
         ctx.fillStyle = color.primary;
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
         ctx.fillText(`${wpIdx + 1}`, wpx, wpy - 12);
 
-        // Label
         ctx.font = "500 9px 'Inter', sans-serif";
         ctx.fillStyle = `${color.primary}90`;
         ctx.textBaseline = "top";
         ctx.fillText(wp.label, wpx, wpy + 14);
         ctx.textBaseline = "alphabetic";
 
-        // Dwell time badge
         if (wp.dwell_minutes > 0) {
           const dwellTxt = `${wp.dwell_minutes}min`;
           const dtw = ctx.measureText(dwellTxt);
@@ -636,7 +834,7 @@ export default function SpatialMap({
       });
     }
 
-    // Draw in-progress drawing (current tool)
+    // Draw in-progress drawing
     if (drawingPoints.length > 0 && activeTool !== "select" && activeTool !== "waypoint") {
       const toolType = activeTool === "zone" ? "zone" : activeTool;
       const style = SHAPE_STYLES[toolType] || SHAPE_STYLES.room;
@@ -650,9 +848,9 @@ export default function SpatialMap({
         const maxYz = Math.max(p0[1], p1[1]);
         const [zx1, zy1] = worldToScreen(minXz, maxYz, c);
         const [zx2, zy2] = worldToScreen(maxXz, minYz, c);
-        ctx.fillStyle = "rgba(29, 158, 117, 0.08)";
+        ctx.fillStyle = "rgba(29, 107, 94, 0.08)";
         ctx.fillRect(zx1, zy1, zx2 - zx1, zy2 - zy1);
-        ctx.strokeStyle = "rgba(29, 158, 117, 0.5)";
+        ctx.strokeStyle = "rgba(29, 107, 94, 0.5)";
         ctx.lineWidth = 1.5;
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(zx1, zy1, zx2 - zx1, zy2 - zy1);
@@ -666,8 +864,13 @@ export default function SpatialMap({
           ctx.lineTo(px, py);
         }
         if (hoverWorld) {
-          const [hx, hy] = worldToScreen(snapToGrid(hoverWorld.x), snapToGrid(hoverWorld.y), c);
-          ctx.lineTo(hx, hy);
+          let hx2: number, hy2: number;
+          if ((activeTool === "window" || activeTool === "door") && wallSnapPreview) {
+            [hx2, hy2] = worldToScreen(wallSnapPreview.point[0], wallSnapPreview.point[1], c);
+          } else {
+            [hx2, hy2] = worldToScreen(snapToGrid(hoverWorld.x), snapToGrid(hoverWorld.y), c);
+          }
+          ctx.lineTo(hx2, hy2);
         }
         ctx.strokeStyle = style.stroke;
         ctx.lineWidth = 2;
@@ -692,7 +895,7 @@ export default function SpatialMap({
     // ---- Draw agents (static positions) ----
     const drawOrder = agentPositions
       .map((pos, i) => ({ pos, i }))
-      .filter((a) => a.pos !== null && !animatingAgents[a.i]) // don't draw static if animating
+      .filter((a) => a.pos !== null && !animatingAgents[a.i])
       .sort((a, b) => (a.i === activeAgentIdx ? 1 : 0) - (b.i === activeAgentIdx ? 1 : 0));
 
     drawOrder.forEach(({ pos, i }) => {
@@ -708,7 +911,7 @@ export default function SpatialMap({
       drawAnimatedAgent(ctx, ax, ay, idx, c.zoom, animPulse);
     }
 
-    // Hover crosshair (only in select/waypoint mode)
+    // Hover crosshair
     if (hoverWorld && (activeTool === "select" || activeTool === "waypoint")) {
       const color = activeTool === "waypoint" ? "#E67E22" : PERSONA_COLORS[activeAgentIdx].primary;
       const [hx, hy] = worldToScreen(hoverWorld.x, hoverWorld.y, c);
@@ -735,8 +938,15 @@ export default function SpatialMap({
 
     // Coordinate tooltip for drawing tools
     if (hoverWorld && activeTool !== "select" && activeTool !== "waypoint") {
-      const snapped = { x: snapToGrid(hoverWorld.x), y: snapToGrid(hoverWorld.y) };
-      const [hx, hy] = worldToScreen(snapped.x, snapped.y, c);
+      let displayX: number, displayY: number;
+      if ((activeTool === "window" || activeTool === "door") && wallSnapPreview) {
+        displayX = Math.round(wallSnapPreview.point[0]);
+        displayY = Math.round(wallSnapPreview.point[1]);
+      } else {
+        displayX = snapToGrid(hoverWorld.x);
+        displayY = snapToGrid(hoverWorld.y);
+      }
+      const [hx, hy] = worldToScreen(displayX, displayY, c);
 
       ctx.beginPath();
       ctx.arc(hx, hy, 5, 0, Math.PI * 2);
@@ -745,7 +955,8 @@ export default function SpatialMap({
       ctx.stroke();
 
       ctx.font = "11px 'JetBrains Mono', monospace";
-      const txt = `(${snapped.x}, ${snapped.y})`;
+      const snapLabel = (activeTool === "window" || activeTool === "door") && wallSnapPreview ? " [SNAP]" : "";
+      const txt = `(${displayX}, ${displayY})${snapLabel}`;
       const tw2 = ctx.measureText(txt);
       const tx = Math.min(hx + 12, canvasW - tw2.width - 10);
       const ty = Math.max(hy - 12, 18);
@@ -757,7 +968,7 @@ export default function SpatialMap({
       ctx.textAlign = "left";
       ctx.fillText(txt, tx, ty);
     }
-  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam, drawingPoints, activeTool, allWaypoints, animatingAgents, pathTrails, animPulse, heatmapPoints, showHeatmap]);
+  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam, drawingPoints, activeTool, allWaypoints, animatingAgents, pathTrails, animPulse, heatmapPoints, showHeatmap, selectedShapeIdx, wallSnapPreview]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -781,10 +992,44 @@ export default function SpatialMap({
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      // Pan
       isPanning.current = true;
       dragMoved.current = false;
       panStart.current = { x: e.clientX, y: e.clientY };
       e.preventDefault();
+    } else if (e.button === 0 && activeTool === "select") {
+      dragMoved.current = false;
+
+      // Check if clicking on a selected shape to start drag
+      if (selectedShapeIdx !== null) {
+        const [sx, sy] = getMouseScreen(e);
+        if (hitTestShape(sx, sy, shapes[selectedShapeIdx], camRef.current)) {
+          // Start dragging the selected shape
+          isDraggingShape.current = true;
+          dragShapeIdx.current = selectedShapeIdx;
+          const [wx, wy] = getMouseWorld(e);
+          dragStartWorld.current = [wx, wy];
+          dragOriginalPoints.current = shapes[selectedShapeIdx].points.map(p => [...p] as [number, number]);
+          e.preventDefault();
+          return;
+        }
+      }
+
+      // Check if clicking on any shape to select it
+      const [sx, sy] = getMouseScreen(e);
+      for (let i = shapes.length - 1; i >= 0; i--) {
+        if (hitTestShape(sx, sy, shapes[i], camRef.current)) {
+          setSelectedShapeIdx(i);
+          // Start drag immediately
+          isDraggingShape.current = true;
+          dragShapeIdx.current = i;
+          const [wx, wy] = getMouseWorld(e);
+          dragStartWorld.current = [wx, wy];
+          dragOriginalPoints.current = shapes[i].points.map(p => [...p] as [number, number]);
+          e.preventDefault();
+          return;
+        }
+      }
     } else if (e.button === 0) {
       dragMoved.current = false;
     }
@@ -806,8 +1051,40 @@ export default function SpatialMap({
       return;
     }
 
+    // Dragging a shape
+    if (isDraggingShape.current && dragShapeIdx.current !== null && onUpdateShapes) {
+      const [wx, wy] = getMouseWorld(e);
+      const dxW = snapToGrid(wx - dragStartWorld.current[0]);
+      const dyW = snapToGrid(wy - dragStartWorld.current[1]);
+      if (Math.abs(dxW) > 0 || Math.abs(dyW) > 0) {
+        dragMoved.current = true;
+        const newShapes = [...shapes];
+        const newPoints = dragOriginalPoints.current.map(
+          ([px, py]) => [px + dxW, py + dyW] as [number, number]
+        );
+        newShapes[dragShapeIdx.current] = {
+          ...newShapes[dragShapeIdx.current],
+          points: newPoints,
+        };
+        onUpdateShapes(newShapes);
+      }
+      return;
+    }
+
     const [wx, wy] = getMouseWorld(e);
     setHoverWorld({ x: snapToGrid(wx), y: snapToGrid(wy) });
+
+    // Wall snap preview for window/door tools
+    if (activeTool === "window" || activeTool === "door") {
+      const snap = findNearestWallSnap(wx, wy, shapes);
+      if (snap && snap.dist <= WALL_SNAP_DIST) {
+        setWallSnapPreview({ point: snap.point, wallIdx: snap.wallIdx });
+      } else {
+        setWallSnapPreview(null);
+      }
+    } else {
+      setWallSnapPreview(null);
+    }
 
     // Check hover over agents (only in select mode)
     if (activeTool === "select") {
@@ -831,6 +1108,25 @@ export default function SpatialMap({
       isPanning.current = false;
       return;
     }
+
+    // End shape drag
+    if (isDraggingShape.current && dragShapeIdx.current !== null) {
+      isDraggingShape.current = false;
+      if (dragMoved.current) {
+        // Push undo for the move
+        pushUndo({
+          type: "move_shape",
+          payload: {
+            index: dragShapeIdx.current,
+            originalPoints: dragOriginalPoints.current,
+          },
+        });
+        toast.success("Shape moved");
+      }
+      dragShapeIdx.current = null;
+      if (dragMoved.current) return; // Don't process as click if we dragged
+    }
+
     if (e.button !== 0 || e.altKey || dragMoved.current) return;
 
     const [wx, wy] = getMouseWorld(e);
@@ -838,9 +1134,27 @@ export default function SpatialMap({
     const snappedY = snapToGrid(wy);
 
     if (activeTool === "select") {
-      onAgentPlace({ x: snappedX, y: snappedY });
+      // Check if clicking on a shape
+      const [sx, sy] = getMouseScreen(e);
+      let clickedShape = false;
+      for (let i = shapes.length - 1; i >= 0; i--) {
+        if (hitTestShape(sx, sy, shapes[i], camRef.current)) {
+          setSelectedShapeIdx(i);
+          clickedShape = true;
+          break;
+        }
+      }
+
+      if (!clickedShape) {
+        // Deselect if clicking on empty space
+        if (selectedShapeIdx !== null) {
+          setSelectedShapeIdx(null);
+        } else {
+          // Place agent only if nothing is selected and clicking empty space
+          onAgentPlace({ x: snappedX, y: snappedY });
+        }
+      }
     } else if (activeTool === "waypoint") {
-      // Place waypoint for active agent
       if (onAddWaypoint) {
         const existingWps = allWaypoints[activeAgentIdx] || [];
         const wpNum = existingWps.length + 1;
@@ -851,6 +1165,7 @@ export default function SpatialMap({
           dwell_minutes: 5,
         };
         onAddWaypoint(activeAgentIdx, wp);
+        pushUndo({ type: "add_waypoint", payload: { agentIdx: activeAgentIdx, wp } });
         toast.success(`Waypoint ${wpNum} placed for P${activeAgentIdx + 1}`);
       }
     } else if (activeTool === "zone") {
@@ -872,6 +1187,7 @@ export default function SpatialMap({
             env: { ...defaultZoneEnv },
           };
           onAddZone(zone);
+          pushUndo({ type: "add_zone", payload: { zone } });
           toast.success(`Zone created: ${w}mm × ${h}mm`);
         }
         setDrawingPoints([]);
@@ -880,14 +1196,46 @@ export default function SpatialMap({
       }
     } else if (activeTool === "room") {
       setDrawingPoints([...drawingPoints, [snappedX, snappedY]]);
+    } else if (activeTool === "window" || activeTool === "door") {
+      // Window/Door: snap to wall
+      let pointToAdd: [number, number];
+      if (wallSnapPreview) {
+        pointToAdd = [Math.round(wallSnapPreview.point[0]), Math.round(wallSnapPreview.point[1])];
+      } else {
+        // No wall nearby — still allow placement but warn
+        pointToAdd = [snappedX, snappedY];
+      }
+
+      const newPoints = [...drawingPoints, pointToAdd];
+      if (newPoints.length >= 2) {
+        if (onAddShape) {
+          const newShape: Shape = {
+            type: activeTool,
+            points: newPoints,
+          };
+          onAddShape(newShape);
+          pushUndo({ type: "add_shape", payload: { shape: newShape, index: shapes.length } });
+          if (!wallSnapPreview) {
+            toast.warning(`${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} placed (not snapped to wall)`);
+          } else {
+            toast.success(`${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} snapped to wall`);
+          }
+        }
+        setDrawingPoints([]);
+      } else {
+        setDrawingPoints(newPoints);
+      }
     } else {
+      // Wall
       const newPoints = [...drawingPoints, [snappedX, snappedY] as [number, number]];
       if (newPoints.length >= 2) {
         if (onAddShape) {
-          onAddShape({
-            type: activeTool as "wall" | "window" | "door",
+          const newShape: Shape = {
+            type: activeTool as "wall",
             points: newPoints,
-          });
+          };
+          onAddShape(newShape);
+          pushUndo({ type: "add_shape", payload: { shape: newShape, index: shapes.length } });
           toast.success(`${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} added`);
         }
         setDrawingPoints([]);
@@ -899,16 +1247,19 @@ export default function SpatialMap({
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (activeTool === "room" && drawingPoints.length >= 3 && onAddShape) {
-      onAddShape({
+      const newShape: Shape = {
         type: "room",
         points: drawingPoints,
-      });
+      };
+      onAddShape(newShape);
+      pushUndo({ type: "add_shape", payload: { shape: newShape, index: shapes.length } });
       toast.success(`Room created with ${drawingPoints.length} points`);
       setDrawingPoints([]);
       e.preventDefault();
     }
   };
 
+  // ---- Zoom to cursor (fixed) ----
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const canvas = canvasRef.current!;
@@ -917,11 +1268,15 @@ export default function SpatialMap({
     const sy = (e.clientY - rect.top) * (canvasH / rect.height);
 
     const c = camRef.current;
+
+    // Get world position under cursor BEFORE zoom
     const [wxBefore, wyBefore] = screenToWorld(sx, sy, c);
 
+    // Apply zoom factor
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     c.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, c.zoom * factor));
 
+    // Adjust offset so the world position under cursor stays at the same screen position
     c.offsetX = wxBefore - sx / c.zoom;
     c.offsetY = wyBefore + sy / c.zoom;
 
@@ -934,6 +1289,16 @@ export default function SpatialMap({
       setDrawingPoints([]);
       return;
     }
+
+    // Delete selected shape on right-click
+    if (selectedShapeIdx !== null && onDeleteShape) {
+      pushUndo({ type: "delete_shape", payload: { shape: shapes[selectedShapeIdx], index: selectedShapeIdx } });
+      onDeleteShape(selectedShapeIdx);
+      setSelectedShapeIdx(null);
+      toast.info("Shape deleted");
+      return;
+    }
+
     if (hoveredAgentIdx !== null && onAgentRemove) {
       onAgentRemove(hoveredAgentIdx);
       setHoveredAgentIdx(null);
@@ -942,8 +1307,23 @@ export default function SpatialMap({
 
   const getCursor = (): string => {
     if (isPanning.current) return "grabbing";
+    if (isDraggingShape.current) return "move";
     if (activeTool === "select") {
-      return hoveredAgentIdx !== null ? "pointer" : "crosshair";
+      if (hoveredAgentIdx !== null) return "pointer";
+      // Check if hovering over a shape
+      if (hoverWorld) {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          // Use approximate screen coords from hover
+          const [sx, sy] = worldToScreen(hoverWorld.x, hoverWorld.y, camRef.current);
+          for (let i = shapes.length - 1; i >= 0; i--) {
+            if (hitTestShape(sx, sy, shapes[i], camRef.current)) {
+              return selectedShapeIdx === i ? "move" : "pointer";
+            }
+          }
+        }
+      }
+      return "crosshair";
     }
     return "crosshair";
   };
@@ -957,15 +1337,23 @@ export default function SpatialMap({
         {TOOLS.map((tool) => (
           <button
             key={tool.mode}
-            onClick={() => { setActiveTool(tool.mode); setDrawingPoints([]); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all text-xs font-medium"
+            onClick={() => { setActiveTool(tool.mode); setDrawingPoints([]); setSelectedShapeIdx(null); }}
+            className="sa-tool-btn"
             style={{
               background: activeTool === tool.mode ? "var(--primary)" : "var(--card)",
               color: activeTool === tool.mode ? "#fff" : "var(--foreground)",
               border: `1.5px solid ${activeTool === tool.mode ? "var(--primary)" : "var(--border)"}`,
               boxShadow: activeTool === tool.mode
-                ? "0 2px 8px rgba(29, 158, 117, 0.25)"
-                : "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
+                ? "0 2px 8px rgba(29, 107, 94, 0.3), inset 0 1px 0 rgba(255,255,255,0.15)"
+                : "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8), inset 0 1px 0 rgba(255,255,255,0.6)",
+              padding: "6px 12px",
+              borderRadius: "8px",
+              fontSize: "12px",
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              transition: "all 0.15s ease",
             }}
             title={tool.hint}
           >
@@ -976,11 +1364,30 @@ export default function SpatialMap({
 
         <div className="flex-1" />
 
+        {/* Undo button */}
+        <button
+          onClick={handleUndo}
+          className="sa-tool-btn"
+          style={{
+            background: "var(--card)",
+            color: "var(--muted-foreground)",
+            border: "1.5px solid var(--border)",
+            boxShadow: "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8)",
+            padding: "6px 10px",
+            borderRadius: "8px",
+            fontSize: "12px",
+            fontWeight: 500,
+          }}
+          title="Undo (Ctrl+Z)"
+        >
+          ↩ Undo
+        </button>
+
         {/* Drawing status */}
         {drawingPoints.length > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-xs px-2 py-1 rounded" style={{
-              background: "var(--primary)10",
+              background: "var(--primary-light)",
               color: "var(--primary)",
               fontFamily: "'JetBrains Mono', monospace",
             }}>
@@ -996,9 +1403,53 @@ export default function SpatialMap({
           </div>
         )}
 
+        {/* Selected shape info */}
+        {selectedShapeIdx !== null && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2 py-1 rounded" style={{
+              background: "#FF6B3515",
+              color: "#FF6B35",
+              fontFamily: "'JetBrains Mono', monospace",
+              border: "1px solid #FF6B3530",
+            }}>
+              Selected: {shapes[selectedShapeIdx]?.label || shapes[selectedShapeIdx]?.type}
+            </span>
+            <button
+              className="sa-btn text-xs px-2 py-1"
+              style={{ background: "#D94F4F20", color: "#D94F4F", borderColor: "#D94F4F40" }}
+              onClick={() => {
+                if (onDeleteShape && selectedShapeIdx !== null) {
+                  pushUndo({ type: "delete_shape", payload: { shape: shapes[selectedShapeIdx], index: selectedShapeIdx } });
+                  onDeleteShape(selectedShapeIdx);
+                  setSelectedShapeIdx(null);
+                  toast.info("Shape deleted");
+                }
+              }}
+            >
+              Delete
+            </button>
+            <button
+              className="sa-btn text-xs px-2 py-1"
+              onClick={() => setSelectedShapeIdx(null)}
+            >
+              Deselect
+            </button>
+          </div>
+        )}
+
         <button
           onClick={fitToContent}
-          className="sa-btn text-xs px-3 py-1"
+          className="sa-tool-btn"
+          style={{
+            background: "var(--card)",
+            color: "var(--foreground)",
+            border: "1.5px solid var(--border)",
+            boxShadow: "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8)",
+            padding: "6px 12px",
+            borderRadius: "8px",
+            fontSize: "12px",
+            fontWeight: 500,
+          }}
           title="Fit view to content"
         >
           Fit View
@@ -1010,6 +1461,7 @@ export default function SpatialMap({
         <div className="text-xs mb-2 px-1" style={{ color: "var(--muted-foreground)" }}>
           {currentToolInfo.hint}
           {activeTool !== "select" && activeTool !== "waypoint" && " · Right-click or Esc to cancel"}
+          {activeTool === "select" && " · Ctrl+Z to undo · Delete key to remove selected"}
         </div>
       )}
 
@@ -1059,15 +1511,23 @@ export default function SpatialMap({
           width: `${canvasW}px`,
           height: `${canvasH}px`,
           cursor: getCursor(),
-          borderRadius: "var(--radius)",
-          border: "1px solid var(--border)",
-          boxShadow: "4px 4px 12px rgba(0,0,0,0.06), -2px -2px 8px rgba(255,255,255,0.7)",
+          borderRadius: "12px",
+          border: "1.5px solid var(--border)",
+          boxShadow: "4px 4px 14px rgba(0,0,0,0.07), -2px -2px 8px rgba(255,255,255,0.8), inset 0 1px 0 rgba(255,255,255,0.5)",
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onDoubleClick={handleDoubleClick}
-        onMouseLeave={() => { setHoverWorld(null); setHoveredAgentIdx(null); isPanning.current = false; }}
+        onMouseLeave={() => {
+          setHoverWorld(null);
+          setHoveredAgentIdx(null);
+          isPanning.current = false;
+          if (isDraggingShape.current) {
+            isDraggingShape.current = false;
+            dragShapeIdx.current = null;
+          }
+        }}
         onWheel={handleWheel}
         onContextMenu={handleContextMenu}
       />
@@ -1075,10 +1535,11 @@ export default function SpatialMap({
       {/* Controls hint */}
       <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: "#8A847A" }}>
         <span>Alt+drag to pan</span>
-        <span>Scroll to zoom</span>
-        {activeTool === "select" && <span>Click to place agent · Right-click to remove</span>}
+        <span>Scroll to zoom (to cursor)</span>
+        {activeTool === "select" && <span>Click shape to select · Drag to move · Del to delete · Click empty to place agent</span>}
         {activeTool === "room" && <span>Double-click to close polygon</span>}
         {activeTool === "waypoint" && <span>Click to place waypoint for P{activeAgentIdx + 1}</span>}
+        {(activeTool === "window" || activeTool === "door") && <span>Auto-snaps to nearest wall (within 500mm)</span>}
       </div>
     </div>
   );

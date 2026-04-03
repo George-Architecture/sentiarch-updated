@@ -29,7 +29,7 @@
   --color-ring: var(--ring);
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  /* Keep legacy aliases so existing className references don't break */
+  /* Legacy aliases */
   --font-pixel: 'Inter', sans-serif;
   --font-pixel-data: 'JetBrains Mono', monospace;
   --font-pixel-ui: 'Inter', sans-serif;
@@ -45,26 +45,34 @@
   --card-foreground: #2D2A26;
   --popover: #FFFCF7;
   --popover-foreground: #2D2A26;
-  /* Teal accent */
-  --primary: #1D9E75;
+  /* Deep teal accent */
+  --primary: #1D6B5E;
   --primary-foreground: #FFFFFF;
+  --primary-light: #2A8F7E;
+  --primary-glow: rgba(29, 107, 94, 0.15);
   --secondary: #E8E2D8;
   --secondary-foreground: #2D2A26;
   --muted: #EDE8DF;
   --muted-foreground: #8A847A;
-  --accent: #1D9E75;
+  --accent: #1D6B5E;
   --accent-foreground: #FFFFFF;
-  --destructive: #D94F4F;
+  --destructive: #C44040;
   --destructive-foreground: #FFFFFF;
-  --border: #DDD7CC;
-  --input: #DDD7CC;
-  --ring: #1D9E75;
+  --border: #D5CFBF;
+  --border-strong: #C0B9A8;
+  --input: #D5CFBF;
+  --ring: #1D6B5E;
   --sidebar: #F5F0E8;
   --sidebar-foreground: #2D2A26;
   --sidebar-accent: #EDE8DF;
   --sidebar-accent-foreground: #2D2A26;
-  --sidebar-border: #DDD7CC;
-  --sidebar-ring: #1D9E75;
+  --sidebar-border: #D5CFBF;
+  --sidebar-ring: #1D6B5E;
+  /* Shadow tokens */
+  --shadow-raised: 3px 3px 8px rgba(0, 0, 0, 0.08), -2px -2px 6px rgba(255, 255, 255, 0.75);
+  --shadow-card: 4px 4px 14px rgba(0, 0, 0, 0.07), -3px -3px 10px rgba(255, 255, 255, 0.8);
+  --shadow-inset: inset 2px 2px 5px rgba(0, 0, 0, 0.08), inset -1px -1px 3px rgba(255, 255, 255, 0.5);
+  --shadow-btn-hover: 1px 1px 4px rgba(0, 0, 0, 0.1), -1px -1px 3px rgba(255, 255, 255, 0.6);
 }
 
 @layer base {
@@ -119,7 +127,7 @@
     }
   }
 
-  /* Legacy font class aliases — now map to new fonts */
+  /* Legacy font class aliases */
   .font-pixel {
     font-family: var(--font-sans);
     font-weight: 600;
@@ -135,54 +143,81 @@
     font-family: var(--font-sans);
   }
 
-  /* Neumorphism card */
+  /* ---- Neumorphism Card ---- */
   .sa-card {
     background: var(--card);
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border);
-    box-shadow:
-      4px 4px 12px rgba(0, 0, 0, 0.06),
-      -2px -2px 8px rgba(255, 255, 255, 0.7);
+    box-shadow: var(--shadow-card);
+    padding: 20px;
+    transition: box-shadow 0.2s ease;
+  }
+  .sa-card:hover {
+    box-shadow: 5px 5px 16px rgba(0, 0, 0, 0.08), -3px -3px 12px rgba(255, 255, 255, 0.85);
+  }
+
+  /* ---- Inset Card (pressed / input area) ---- */
+  .sa-card-inset {
+    background: var(--muted);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-inset);
     padding: 16px;
   }
 
-  /* Primary button */
+  /* ---- Raised Button ---- */
   .sa-btn {
     font-family: var(--font-sans);
     font-weight: 600;
     font-size: 13px;
     letter-spacing: 0.3px;
-    padding: 8px 16px;
+    padding: 8px 18px;
     border-radius: var(--radius-md);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     background: var(--card);
     color: var(--foreground);
-    box-shadow:
-      2px 2px 6px rgba(0, 0, 0, 0.06),
-      -1px -1px 4px rgba(255, 255, 255, 0.7);
-    transition: all 0.2s ease;
+    box-shadow: var(--shadow-raised);
+    transition: all 0.15s ease;
     cursor: pointer;
+    user-select: none;
   }
   .sa-btn:hover {
-    box-shadow:
-      1px 1px 3px rgba(0, 0, 0, 0.08),
-      -1px -1px 2px rgba(255, 255, 255, 0.5);
+    box-shadow: var(--shadow-btn-hover);
     transform: translateY(1px);
   }
   .sa-btn:active {
-    box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-inset);
     transform: translateY(1px);
   }
   .sa-btn-primary {
     background: var(--primary);
     color: var(--primary-foreground);
-    border-color: var(--primary);
+    border-color: #175A4F;
+    box-shadow: 3px 3px 8px rgba(29, 107, 94, 0.2), -2px -2px 6px rgba(255, 255, 255, 0.5);
   }
   .sa-btn-primary:hover {
-    background: #178A66;
+    background: var(--primary-light);
+    box-shadow: 1px 1px 4px rgba(29, 107, 94, 0.25), -1px -1px 3px rgba(255, 255, 255, 0.4);
+  }
+  .sa-btn-primary:active {
+    background: #175A4F;
+    box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.15);
+  }
+  .sa-btn-danger {
+    background: var(--destructive);
+    color: var(--destructive-foreground);
+    border-color: #A33535;
+    box-shadow: 3px 3px 8px rgba(196, 64, 64, 0.15), -2px -2px 6px rgba(255, 255, 255, 0.5);
+  }
+  .sa-btn-danger:hover {
+    background: #B33838;
+  }
+  .sa-btn-danger:active {
+    background: #A33535;
+    box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.15);
   }
 
-  /* Tag / badge */
+  /* ---- Tag / Badge ---- */
   .sa-tag {
     font-family: var(--font-sans);
     font-size: 11px;
@@ -195,48 +230,187 @@
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     background: var(--card);
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.04);
   }
 
-  /* Section panel — legacy alias */
+  /* ---- Section Header Tag ---- */
+  .sa-section-tag {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--primary);
+    background: var(--primary-glow);
+    color: var(--primary);
+    box-shadow: 2px 2px 6px rgba(29, 107, 94, 0.08);
+  }
+
+  /* ---- Panel (inner section) ---- */
+  .sa-panel {
+    background: var(--card);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-raised);
+    padding: 14px;
+  }
+
+  /* ---- Data Row ---- */
+  .sa-data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s ease;
+  }
+  .sa-data-row:hover {
+    background: var(--muted);
+  }
+  .sa-data-row-label {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+  .sa-data-row-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+
+  /* ---- Slider Track ---- */
+  .sa-slider-track {
+    position: relative;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--muted);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-inset);
+    cursor: pointer;
+    user-select: none;
+  }
+  .sa-slider-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.1s ease;
+  }
+  .sa-slider-thumb {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 2px solid var(--primary);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    cursor: grab;
+    transition: box-shadow 0.15s ease, transform 0.1s ease;
+  }
+  .sa-slider-thumb:hover {
+    box-shadow: 0 2px 8px rgba(29, 107, 94, 0.25);
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  .sa-slider-thumb:active {
+    cursor: grabbing;
+    box-shadow: 0 0 0 3px var(--primary-glow);
+  }
+
+  /* ---- Input Field ---- */
+  .sa-input {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    box-shadow: var(--shadow-inset);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .sa-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+  }
+
+  /* ---- Toolbar Button ---- */
+  .sa-tool-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    box-shadow: var(--shadow-raised);
+    transition: all 0.15s ease;
+    cursor: pointer;
+    user-select: none;
+  }
+  .sa-tool-btn:hover {
+    box-shadow: var(--shadow-btn-hover);
+    transform: translateY(1px);
+  }
+  .sa-tool-btn:active {
+    box-shadow: var(--shadow-inset);
+    transform: translateY(1px);
+  }
+  .sa-tool-btn-active {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: #175A4F;
+    box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(29, 107, 94, 0.2);
+  }
+  .sa-tool-btn-active:hover {
+    background: var(--primary-light);
+    transform: none;
+    box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(29, 107, 94, 0.2);
+  }
+
+  /* ---- Legacy aliases ---- */
   .pixel-panel {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow:
-      4px 4px 12px rgba(0, 0, 0, 0.06),
-      -2px -2px 8px rgba(255, 255, 255, 0.7);
-    padding: 16px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    padding: 20px;
   }
-
-  /* Legacy pixel-btn alias */
   .pixel-btn {
     font-family: var(--font-sans);
     font-weight: 600;
     font-size: 12px;
-    letter-spacing: 0.3px;
     padding: 8px 14px;
     border-radius: var(--radius-md);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     background: var(--card);
     color: var(--foreground);
-    box-shadow:
-      2px 2px 6px rgba(0, 0, 0, 0.06),
-      -1px -1px 4px rgba(255, 255, 255, 0.7);
-    transition: all 0.2s ease;
+    box-shadow: var(--shadow-raised);
+    transition: all 0.15s ease;
     cursor: pointer;
   }
   .pixel-btn:hover {
-    box-shadow:
-      1px 1px 3px rgba(0, 0, 0, 0.08),
-      -1px -1px 2px rgba(255, 255, 255, 0.5);
+    box-shadow: var(--shadow-btn-hover);
     transform: translateY(1px);
   }
   .pixel-btn:active {
-    box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-inset);
     transform: translateY(1px);
   }
-
-  /* Legacy pixel-tag alias */
   .pixel-tag {
     font-family: var(--font-sans);
     font-size: 11px;

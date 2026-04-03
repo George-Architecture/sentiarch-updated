@@ -1,7 +1,6 @@
 // ============================================================
 // SliderField Component - Draggable slider for parameter adjustment
-// Design: Pixel Architecture Art
-// Feature #3: Slider bars for ENVIRONMENT params + Met/Clo
+// Design: Academic Instrument Dashboard (Neumorphism)
 // ============================================================
 
 import { useState, useRef, useCallback, useEffect } from "react";
@@ -25,15 +24,13 @@ export default function SliderField({
   step,
   suffix,
   onChange,
-  color = "#3D6B4F",
+  color = "#1D6B5E",
 }: SliderFieldProps) {
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(value));
   const trackRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Keep draft in sync when value changes externally
   useEffect(() => {
     if (!editing) setDraft(String(value));
   }, [value, editing]);
@@ -41,7 +38,6 @@ export default function SliderField({
   const clamp = useCallback(
     (v: number) => {
       const clamped = Math.min(max, Math.max(min, v));
-      // Round to step precision
       const decimals = String(step).includes(".") ? String(step).split(".")[1].length : 0;
       return parseFloat(clamped.toFixed(decimals));
     },
@@ -56,7 +52,6 @@ export default function SliderField({
       if (!rect) return;
       const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
       const raw = min + ratio * (max - min);
-      // Snap to step
       const snapped = clamp(Math.round(raw / step) * step);
       onChange(snapped);
     },
@@ -74,13 +69,8 @@ export default function SliderField({
 
   useEffect(() => {
     if (!dragging) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      updateFromPosition(e.clientX);
-    };
-    const handleMouseUp = () => {
-      setDragging(false);
-    };
-
+    const handleMouseMove = (e: MouseEvent) => updateFromPosition(e.clientX);
+    const handleMouseUp = () => setDragging(false);
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
@@ -89,7 +79,6 @@ export default function SliderField({
     };
   }, [dragging, updateFromPosition]);
 
-  // Touch support
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
       setDragging(true);
@@ -100,14 +89,8 @@ export default function SliderField({
 
   useEffect(() => {
     if (!dragging) return;
-
-    const handleTouchMove = (e: TouchEvent) => {
-      updateFromPosition(e.touches[0].clientX);
-    };
-    const handleTouchEnd = () => {
-      setDragging(false);
-    };
-
+    const handleTouchMove = (e: TouchEvent) => updateFromPosition(e.touches[0].clientX);
+    const handleTouchEnd = () => setDragging(false);
     window.addEventListener("touchmove", handleTouchMove, { passive: true });
     window.addEventListener("touchend", handleTouchEnd);
     return () => {
@@ -119,68 +102,46 @@ export default function SliderField({
   const commitEdit = () => {
     setEditing(false);
     const parsed = parseFloat(draft);
-    if (!isNaN(parsed)) {
-      onChange(clamp(parsed));
-    }
+    if (!isNaN(parsed)) onChange(clamp(parsed));
   };
 
   return (
-    <div className="py-1.5 px-1">
+    <div className="py-1.5">
       {/* Label + Value row */}
-      <div className="flex justify-between items-center mb-1">
-        <span
-          className="font-pixel-data text-lg"
-          style={{ color: "#3A2A1A" }}
-        >
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
           {label}
         </span>
         {editing ? (
           <input
-            ref={inputRef}
             type="number"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={(e) => {
               if (e.key === "Enter") commitEdit();
-              if (e.key === "Escape") {
-                setEditing(false);
-                setDraft(String(value));
-              }
+              if (e.key === "Escape") { setEditing(false); setDraft(String(value)); }
             }}
             step={step}
             min={min}
             max={max}
-            className="font-pixel-data text-lg px-1 py-0 outline-none text-right"
-            style={{
-              background: "#F5ECD8",
-              color: "#3A2A1A",
-              border: "2px solid #3D6B4F",
-              width: 70,
-            }}
+            className="sa-input text-right"
+            style={{ width: 80, fontSize: "12px", padding: "3px 6px" }}
             autoFocus
           />
         ) : (
           <span
-            className="font-pixel-data text-lg cursor-pointer px-1 hover:outline hover:outline-2 hover:outline-dashed"
+            className="text-sm cursor-pointer px-2 py-0.5 rounded-md transition-colors"
             style={{
-              color: "#3A2A1A",
-              fontWeight: "bold",
-              outlineColor: "#3D6B4F",
+              fontFamily: "'JetBrains Mono', monospace",
+              fontWeight: 600,
+              color: "var(--foreground)",
             }}
-            onClick={() => {
-              setDraft(String(value));
-              setEditing(true);
-            }}
+            onClick={() => { setDraft(String(value)); setEditing(true); }}
             title="Click to edit"
           >
             {value}
-            {suffix && (
-              <span style={{ color: "#5A4A3A", fontWeight: "normal" }}>
-                {" "}
-                {suffix}
-              </span>
-            )}
+            {suffix && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 2 }}>{suffix}</span>}
           </span>
         )}
       </div>
@@ -188,52 +149,38 @@ export default function SliderField({
       {/* Slider track */}
       <div
         ref={trackRef}
-        className="relative h-5 select-none"
-        style={{
-          background: "#F2E8D5",
-          border: "2px solid #6B4C3B",
-          cursor: "pointer",
-        }}
+        className="sa-slider-track"
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
         {/* Fill bar */}
         <div
-          className="absolute top-0 left-0 h-full"
+          className="sa-slider-fill"
           style={{
             width: `${pct}%`,
-            background: color,
-            opacity: 0.7,
+            background: `linear-gradient(90deg, ${color}90, ${color})`,
             transition: dragging ? "none" : "width 0.15s ease",
           }}
         />
 
         {/* Thumb */}
         <div
-          className="absolute top-0 h-full"
+          className="sa-slider-thumb"
           style={{
             left: `${pct}%`,
-            transform: "translateX(-50%)",
-            width: 10,
-            background: "#6B4C3B",
-            border: "1px solid #F2E8D5",
-            cursor: "grab",
+            borderColor: color,
           }}
         />
+      </div>
 
-        {/* Min/Max labels */}
-        <div
-          className="absolute bottom-full left-0 font-pixel text-[7px]"
-          style={{ color: "#4A3A2A", transform: "translateY(-1px)" }}
-        >
+      {/* Min/Max labels */}
+      <div className="flex justify-between mt-1">
+        <span style={{ fontSize: "9px", color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
           {min}
-        </div>
-        <div
-          className="absolute bottom-full right-0 font-pixel text-[7px]"
-          style={{ color: "#4A3A2A", transform: "translateY(-1px)" }}
-        >
+        </span>
+        <span style={{ fontSize: "9px", color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
           {max}
-        </div>
+        </span>
       </div>
     </div>
   );

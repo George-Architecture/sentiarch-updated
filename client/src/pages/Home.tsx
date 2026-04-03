@@ -172,6 +172,15 @@ export default function Home() {
     setShapes((s) => [...s, shape]);
   }, []);
 
+  // Shape update/delete for drag-move and selection delete
+  const updateShapes = useCallback((newShapes: Shape[]) => {
+    setShapes(newShapes);
+  }, []);
+
+  const deleteShape = useCallback((idx: number) => {
+    setShapes((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
   // Zone management
   const addZone = useCallback((zone: Zone) => {
     setZones((z) => [...z, zone]);
@@ -844,6 +853,8 @@ export default function Home() {
             }}
             onAddShape={addShape}
             onAddZone={addZone}
+            onUpdateShapes={updateShapes}
+            onDeleteShape={deleteShape}
             allWaypoints={allWaypoints}
             onAddWaypoint={addWaypoint}
             onRemoveWaypoint={removeWaypoint}
