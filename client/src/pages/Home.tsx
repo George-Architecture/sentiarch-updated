@@ -91,15 +91,17 @@ export default function Home() {
     });
   }, [states]);
 
-  // When zones change, update environment for all placed agents
+  // When zones or shapes change, update environment for all placed agents
   useEffect(() => {
     setStates((prev) => prev.map((s) => {
       if (!s.agentPos) return s;
-      const zoneEnv = getEnvAtPosition(s.agentPos.x, s.agentPos.y, zones);
+      const zoneEnv = getEnvAtPosition(s.agentPos.x, s.agentPos.y, zones, shapes);
       const newEnv = zoneEnvToEnvironment(zoneEnv);
-      return { ...s, persona: { ...s.persona, environment: newEnv } };
+      // Also recompute spatial metrics when shapes change
+      const spatial = computeSpatialFromAgent(s.agentPos, shapes, s.persona.spatial);
+      return { ...s, persona: { ...s.persona, environment: newEnv, spatial } };
     }));
-  }, [zones]);
+  }, [zones, shapes]);
 
   // Recompute PMV/PPD + perceptual load when persona changes
   useEffect(() => {
@@ -162,8 +164,8 @@ export default function Home() {
       const next = [...prev];
       const cell = posToCell(pos.x, pos.y);
       const spatial = computeSpatialFromAgent(pos, shapes, next[idx].persona.spatial);
-      // Derive environment from zone at this position
-      const zoneEnv = getEnvAtPosition(pos.x, pos.y, zones);
+      // Derive environment from zone at this position (with window influence)
+      const zoneEnv = getEnvAtPosition(pos.x, pos.y, zones, shapes);
       const newEnv = zoneEnvToEnvironment(zoneEnv);
       next[idx] = {
         ...next[idx],

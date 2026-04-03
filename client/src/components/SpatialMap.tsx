@@ -53,11 +53,11 @@ function snapToGrid(v: number): number {
 }
 
 // ---- Shape styles ----
-const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string }> = {
-  room: { fill: "rgba(29, 158, 117, 0.06)", stroke: "#1D9E75", label: "Room" },
-  wall: { fill: "rgba(80, 80, 80, 0.08)", stroke: "#555555", label: "Wall" },
-  window: { fill: "rgba(59, 130, 246, 0.08)", stroke: "#3B82F6", label: "Window" },
-  door: { fill: "rgba(180, 120, 70, 0.08)", stroke: "#B47846", label: "Door" },
+const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string; lineWidth: number; dash: number[] }> = {
+  room: { fill: "rgba(29, 158, 117, 0.06)", stroke: "#1D9E75", label: "Room", lineWidth: 2, dash: [] },
+  wall: { fill: "rgba(80, 80, 80, 0.08)", stroke: "#555555", label: "Wall", lineWidth: 3, dash: [] },
+  window: { fill: "rgba(59, 130, 246, 0.08)", stroke: "#3B82F6", label: "Window", lineWidth: 2.5, dash: [6, 4] },
+  door: { fill: "rgba(180, 120, 70, 0.08)", stroke: "#B47846", label: "Door", lineWidth: 2.5, dash: [8, 3] },
 };
 
 // ---- Tool definitions ----
@@ -342,8 +342,8 @@ export default function SpatialMap({
         ctx.fill();
       }
       ctx.strokeStyle = style.stroke;
-      ctx.lineWidth = shape.type === "room" ? 2 : 2.5;
-      ctx.setLineDash(shape.type === "window" ? [6, 4] : shape.type === "door" ? [8, 3] : []);
+      ctx.lineWidth = style.lineWidth;
+      ctx.setLineDash(style.dash);
       ctx.stroke();
       ctx.setLineDash([]);
 
@@ -631,11 +631,9 @@ export default function SpatialMap({
       const newPoints = [...drawingPoints, [snappedX, snappedY] as [number, number]];
       if (newPoints.length >= 2) {
         if (onAddShape) {
-          const shapeType = activeTool === "wall" ? "room" : activeTool; // walls stored as room type with 2 points
           onAddShape({
-            type: activeTool === "wall" ? "room" : activeTool,
+            type: activeTool as "wall" | "window" | "door",
             points: newPoints,
-            label: activeTool === "wall" ? "Wall" : undefined,
           });
           toast.success(`${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} added`);
         }

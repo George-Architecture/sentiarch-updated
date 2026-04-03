@@ -70,9 +70,32 @@ export interface ComputedOutputs {
 }
 
 export interface Shape {
-  type: "room" | "window" | "door";
+  type: "room" | "wall" | "window" | "door";
   points: [number, number][];
   label?: string;
+}
+
+// ---- Geometry Helpers (used by zone env + spatial calculations) ----
+function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.sqrt((px - (x1 + t * dx)) ** 2 + (py - (y1 + t * dy)) ** 2);
+}
+
+function lineIntersect(
+  ax: number, ay: number, bx: number, by: number,
+  cx: number, cy: number, dx: number, dy: number
+): boolean {
+  const dxAB = bx - ax, dyAB = by - ay;
+  const dxCD = dx - cx, dyCD = dy - cy;
+  const denom = dxAB * dyCD - dyAB * dxCD;
+  if (Math.abs(denom) < 1e-10) return false;
+  const t = ((cx - ax) * dyCD - (cy - ay) * dxCD) / denom;
+  const u = ((cx - ax) * dyAB - (cy - ay) * dxAB) / denom;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
 }
 
 // ---- Zone Environment Data ----
@@ -135,14 +158,128 @@ function lerpEnv(a: ZoneEnv, b: ZoneEnv, t: number): ZoneEnv {
  */
 const BLEND_MARGIN = 500; // mm — interpolation margin near zone edges
 
-export function getEnvAtPosition(px: number, py: number, zones: Zone[]): ZoneEnv {
+/**
+ * Compute window influence on environment at a given position.
+ * Windows boost light (lux) and air_velocity based on proximity.
+ * Uses inverse-square-like falloff with a max influence radius.
+ */
+const WINDOW_INFLUENCE_RADIUS = 5000; // mm — max distance a window affects env
+const WINDOW_LIGHT_BOOST = 400; // lux — max additional light from a window at distance 0
+const WINDOW_AIR_BOOST = 0.15; // m/s — max additional air velocity from a window at distance 0
+
+export function computeWindowInfluence(
+  px: number, py: number, shapes: Shape[]
+): { lightBoost: number; airBoost: number } {
+  const windows = shapes.filter(s => s.type === "window");
+  if (windows.length === 0) return { lightBoost: 0, airBoost: 0 };
+
+  let totalLightBoost = 0;
+  let totalAirBoost = 0;
+
+  for (const win of windows) {
+    // Find closest distance from point to window segment
+    let minDist = Infinity;
+    for (let i = 0; i < win.points.length - 1; i++) {
+      const d = distToSegment(
+        px, py,
+        win.points[i][0], win.points[i][1],
+        win.points[i + 1][0], win.points[i + 1][1]
+      );
+      if (d < minDist) minDist = d;
+    }
+    // Single point window
+    if (win.points.length === 1) {
+      minDist = Math.sqrt((px - win.points[0][0]) ** 2 + (py - win.points[0][1]) ** 2);
+    }
+
+    if (minDist <= WINDOW_INFLUENCE_RADIUS) {
+      // Smooth falloff: 1 at distance 0, 0 at WINDOW_INFLUENCE_RADIUS
+      const t = 1 - minDist / WINDOW_INFLUENCE_RADIUS;
+      const falloff = t * t; // quadratic falloff for natural light decay
+      totalLightBoost += WINDOW_LIGHT_BOOST * falloff;
+      totalAirBoost += WINDOW_AIR_BOOST * falloff;
+    }
+  }
+
+  return {
+    lightBoost: Math.round(totalLightBoost),
+    airBoost: Math.round(totalAirBoost * 100) / 100,
+  };
+}
+
+/**
+ * Extract collision boundaries from wall and room shapes.
+ * Returns an array of line segments that agents cannot cross.
+ */
+export interface CollisionSegment {
+  x1: number; y1: number;
+  x2: number; y2: number;
+  type: "wall" | "room";
+}
+
+export function getCollisionBoundaries(shapes: Shape[]): CollisionSegment[] {
+  const segments: CollisionSegment[] = [];
+
+  for (const shape of shapes) {
+    if (shape.type === "wall") {
+      // Wall: each consecutive pair of points is a collision segment
+      for (let i = 0; i < shape.points.length - 1; i++) {
+        segments.push({
+          x1: shape.points[i][0], y1: shape.points[i][1],
+          x2: shape.points[i + 1][0], y2: shape.points[i + 1][1],
+          type: "wall",
+        });
+      }
+    } else if (shape.type === "room") {
+      // Room polygon edges are also collision boundaries
+      for (let i = 0; i < shape.points.length; i++) {
+        const j = (i + 1) % shape.points.length;
+        segments.push({
+          x1: shape.points[i][0], y1: shape.points[i][1],
+          x2: shape.points[j][0], y2: shape.points[j][1],
+          type: "room",
+        });
+      }
+    }
+  }
+
+  return segments;
+}
+
+/**
+ * Check if a line segment from A to B crosses any collision boundary.
+ * Used for pathfinding to ensure agents don't walk through walls.
+ */
+export function doesPathCrossWall(
+  ax: number, ay: number, bx: number, by: number, shapes: Shape[]
+): boolean {
+  const boundaries = getCollisionBoundaries(shapes);
+  for (const seg of boundaries) {
+    if (lineIntersect(ax, ay, bx, by, seg.x1, seg.y1, seg.x2, seg.y2)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get environment parameters at a world position.
+ * Now also considers window influence on light and air velocity.
+ */
+export function getEnvAtPosition(px: number, py: number, zones: Zone[], shapes?: Shape[]): ZoneEnv {
   if (zones.length === 0) return { ...defaultZoneEnv };
 
   // Check which zones contain this point
   const containingZones = zones.filter(z => isPointInZone(px, py, z.bounds));
 
   if (containingZones.length === 1) {
-    return { ...containingZones[0].env };
+    const env = { ...containingZones[0].env };
+    if (shapes && shapes.length > 0) {
+      const { lightBoost, airBoost } = computeWindowInfluence(px, py, shapes);
+      env.light += lightBoost;
+      env.air_velocity += airBoost;
+    }
+    return env;
   }
 
   if (containingZones.length > 1) {
@@ -161,6 +298,11 @@ export function getEnvAtPosition(px: number, py: number, zones: Zone[]): ZoneEnv
     avg.light /= n;
     avg.noise /= n;
     avg.air_velocity /= n;
+    if (shapes && shapes.length > 0) {
+      const { lightBoost, airBoost } = computeWindowInfluence(px, py, shapes);
+      avg.light += lightBoost;
+      avg.air_velocity += airBoost;
+    }
     return avg;
   }
 
@@ -183,10 +325,23 @@ export function getEnvAtPosition(px: number, py: number, zones: Zone[]): ZoneEnv
   if (closestZone && closestDist <= BLEND_MARGIN) {
     // Interpolate: closer to zone → more zone-like
     const t = 1 - closestDist / BLEND_MARGIN; // 1 at edge, 0 at margin
-    return lerpEnv(defaultZoneEnv, closestZone.env, t);
+    const blended = lerpEnv(defaultZoneEnv, closestZone.env, t);
+    if (shapes && shapes.length > 0) {
+      const { lightBoost, airBoost } = computeWindowInfluence(px, py, shapes);
+      blended.light += lightBoost;
+      blended.air_velocity += airBoost;
+    }
+    return blended;
   }
 
-  return { ...defaultZoneEnv };
+  // Apply window influence
+  const baseEnv = { ...defaultZoneEnv };
+  if (shapes && shapes.length > 0) {
+    const { lightBoost, airBoost } = computeWindowInfluence(px, py, shapes);
+    baseEnv.light += lightBoost;
+    baseEnv.air_velocity += airBoost;
+  }
+  return baseEnv;
 }
 
 /** Convert ZoneEnv to EnvironmentData (field name mapping) */
@@ -441,24 +596,20 @@ export function computePerceptualLoad(persona: PersonaData, computed: ComputedOu
 }
 
 // ---- Spatial Calculations ----
-function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
-  const dx = x2 - x1, dy = y2 - y1;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
-  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  return Math.sqrt((px - (x1 + t * dx)) ** 2 + (py - (y1 + t * dy)) ** 2);
-}
 
 export function distToShapeType(ax: number, ay: number, shapes: Shape[], type: string): number {
   let minDist = Infinity;
-  const filtered = shapes.filter((s) => s.type === type);
+  // For wall distance, also include actual wall shapes
+  const types = type === "room" ? ["room", "wall"] : [type];
+  const filtered = shapes.filter((s) => types.includes(s.type));
   if (filtered.length === 0) return -1; // -1 = no shape of this type drawn
   for (const shape of filtered) {
     const pts = shape.points;
+    const isPolygon = shape.type === "room" && pts.length > 2;
     for (let i = 0; i < pts.length; i++) {
       const j = (i + 1) % pts.length;
-      if (type !== "room" && j === 0 && pts.length > 2) continue;
+      // For non-polygon shapes, don't wrap around
+      if (!isPolygon && j === 0 && pts.length > 1) continue;
       const d = distToSegment(ax, ay, pts[i][0], pts[i][1], pts[j][0], pts[j][1]);
       if (d < minDist) minDist = d;
     }
@@ -466,22 +617,10 @@ export function distToShapeType(ax: number, ay: number, shapes: Shape[], type: s
   return minDist === Infinity ? -1 : Math.round(minDist / 100) / 10;
 }
 
-function lineIntersect(
-  ax: number, ay: number, bx: number, by: number,
-  cx: number, cy: number, dx: number, dy: number
-): boolean {
-  const dxAB = bx - ax, dyAB = by - ay;
-  const dxCD = dx - cx, dyCD = dy - cy;
-  const denom = dxAB * dyCD - dyAB * dxCD;
-  if (Math.abs(denom) < 1e-10) return false;
-  const t = ((cx - ax) * dyCD - (cy - ay) * dxCD) / denom;
-  const u = ((cx - ax) * dyAB - (cy - ay) * dxAB) / denom;
-  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
-}
-
 export function computeEnclosure(ax: number, ay: number, shapes: Shape[]): number {
   const rooms = shapes.filter((s) => s.type === "room");
-  if (rooms.length === 0) return 0;
+  const walls = shapes.filter((s) => s.type === "wall");
+  if (rooms.length === 0 && walls.length === 0) return 0;
   const rays = 16;
   let hits = 0;
   const reach = 10000;
@@ -489,15 +628,31 @@ export function computeEnclosure(ax: number, ay: number, shapes: Shape[]): numbe
     const angle = (i / rays) * Math.PI * 2;
     const ex = ax + Math.cos(angle) * reach;
     const ey = ay + Math.sin(angle) * reach;
+    let rayHit = false;
+    // Check room polygon edges
     for (const room of rooms) {
+      if (rayHit) break;
       const pts = room.points;
       for (let j = 0; j < pts.length; j++) {
         const k = (j + 1) % pts.length;
         if (lineIntersect(ax, ay, ex, ey, pts[j][0], pts[j][1], pts[k][0], pts[k][1])) {
-          hits++; break;
+          rayHit = true; break;
         }
       }
     }
+    // Check wall segments
+    if (!rayHit) {
+      for (const wall of walls) {
+        if (rayHit) break;
+        const pts = wall.points;
+        for (let j = 0; j < pts.length - 1; j++) {
+          if (lineIntersect(ax, ay, ex, ey, pts[j][0], pts[j][1], pts[j + 1][0], pts[j + 1][1])) {
+            rayHit = true; break;
+          }
+        }
+      }
+    }
+    if (rayHit) hits++;
   }
   return Math.round((hits / rays) * 100) / 100;
 }
