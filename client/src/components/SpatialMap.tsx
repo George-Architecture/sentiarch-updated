@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useRef, useCallback, useEffect, useState } from "react";
-import type { Shape, AgentPosition } from "@/lib/store";
+import type { Shape, AgentPosition, Zone } from "@/lib/store";
 import { PERSONA_COLORS } from "@/lib/store";
 
 // ---- World / Screen Transform ----
@@ -104,12 +104,14 @@ function drawAgent(
 
 export default function SpatialMap({
   shapes,
+  zones = [],
   agentPositions,
   activeAgentIdx,
   onAgentPlace,
   onAgentRemove,
 }: {
   shapes: Shape[];
+  zones?: Zone[];
   agentPositions: (AgentPosition | null)[];
   activeAgentIdx: number;
   onAgentPlace: (pos: AgentPosition) => void;
@@ -256,6 +258,41 @@ export default function SpatialMap({
     ctx.fillText("O", ox + 4, oy - 4);
     ctx.textBaseline = "alphabetic";
 
+    // Draw zones
+    zones.forEach((zone) => {
+      const b = zone.bounds;
+      const [zx1, zy1] = worldToScreen(b.x, b.y + b.height, c);
+      const [zx2, zy2] = worldToScreen(b.x + b.width, b.y, c);
+      const zw = zx2 - zx1;
+      const zh = zy2 - zy1;
+
+      // Zone fill
+      ctx.fillStyle = "rgba(29, 158, 117, 0.04)";
+      ctx.fillRect(zx1, zy1, zw, zh);
+
+      // Zone border
+      ctx.strokeStyle = "rgba(29, 158, 117, 0.3)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(zx1, zy1, zw, zh);
+      ctx.setLineDash([]);
+
+      // Zone label
+      const zlabel = zone.label || zone.id;
+      ctx.font = "500 10px 'Inter', sans-serif";
+      ctx.fillStyle = "rgba(29, 158, 117, 0.6)";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(zlabel, zx1 + 4, zy1 + 4);
+
+      // Zone env summary
+      ctx.font = "9px 'JetBrains Mono', monospace";
+      ctx.fillStyle = "rgba(29, 158, 117, 0.45)";
+      const envTxt = `${zone.env.temperature}°C  ${zone.env.light}lx  ${zone.env.noise}dB`;
+      ctx.fillText(envTxt, zx1 + 4, zy1 + 18);
+      ctx.textBaseline = "alphabetic";
+    });
+
     // Draw shapes
     shapes.forEach((shape) => {
       if (shape.points.length < 2) return;
@@ -364,7 +401,7 @@ export default function SpatialMap({
       ctx.textAlign = "left";
       ctx.fillText(txt, tx, ty);
     }
-  }, [shapes, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam]);
+  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam]);
 
   useEffect(() => { draw(); }, [draw]);
 

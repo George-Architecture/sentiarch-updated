@@ -75,6 +75,131 @@ export interface Shape {
   label?: string;
 }
 
+// ---- Zone Environment Data ----
+export interface ZoneBounds {
+  x: number;      // top-left x in world coords (mm)
+  y: number;      // top-left y in world coords (mm)
+  width: number;  // width in world coords (mm)
+  height: number; // height in world coords (mm)
+}
+
+export interface ZoneEnv {
+  temperature: number;   // °C
+  humidity: number;      // %
+  light: number;         // lux
+  noise: number;         // dB
+  air_velocity: number;  // m/s
+}
+
+export interface Zone {
+  id: string;
+  label?: string;
+  bounds: ZoneBounds;
+  env: ZoneEnv;
+}
+
+export const defaultZoneEnv: ZoneEnv = {
+  temperature: 24,
+  humidity: 55,
+  light: 300,
+  noise: 55,
+  air_velocity: 0.1,
+};
+
+/** Check if a point (world coords) is inside a zone's bounds */
+function isPointInZone(px: number, py: number, z: ZoneBounds): boolean {
+  return px >= z.x && px <= z.x + z.width && py >= z.y && py <= z.y + z.height;
+}
+
+/**
+ * Bilinear interpolation between two ZoneEnv values.
+ * t = 0 → returns a, t = 1 → returns b
+ */
+function lerpEnv(a: ZoneEnv, b: ZoneEnv, t: number): ZoneEnv {
+  const cl = Math.max(0, Math.min(1, t));
+  return {
+    temperature: a.temperature + (b.temperature - a.temperature) * cl,
+    humidity: a.humidity + (b.humidity - a.humidity) * cl,
+    light: a.light + (b.light - a.light) * cl,
+    noise: a.noise + (b.noise - a.noise) * cl,
+    air_velocity: a.air_velocity + (b.air_velocity - a.air_velocity) * cl,
+  };
+}
+
+/**
+ * Get environment parameters at a world position.
+ * - If inside exactly one zone → return that zone's env
+ * - If inside multiple overlapping zones → average them
+ * - If outside all zones but within BLEND_MARGIN of a zone edge → interpolate
+ * - If outside all zones → return default env
+ */
+const BLEND_MARGIN = 500; // mm — interpolation margin near zone edges
+
+export function getEnvAtPosition(px: number, py: number, zones: Zone[]): ZoneEnv {
+  if (zones.length === 0) return { ...defaultZoneEnv };
+
+  // Check which zones contain this point
+  const containingZones = zones.filter(z => isPointInZone(px, py, z.bounds));
+
+  if (containingZones.length === 1) {
+    return { ...containingZones[0].env };
+  }
+
+  if (containingZones.length > 1) {
+    // Average overlapping zones
+    const avg: ZoneEnv = { temperature: 0, humidity: 0, light: 0, noise: 0, air_velocity: 0 };
+    for (const z of containingZones) {
+      avg.temperature += z.env.temperature;
+      avg.humidity += z.env.humidity;
+      avg.light += z.env.light;
+      avg.noise += z.env.noise;
+      avg.air_velocity += z.env.air_velocity;
+    }
+    const n = containingZones.length;
+    avg.temperature /= n;
+    avg.humidity /= n;
+    avg.light /= n;
+    avg.noise /= n;
+    avg.air_velocity /= n;
+    return avg;
+  }
+
+  // Not inside any zone — check proximity for blending
+  let closestZone: Zone | null = null;
+  let closestDist = Infinity;
+
+  for (const z of zones) {
+    const b = z.bounds;
+    // Clamp point to zone bounds to find nearest edge point
+    const cx = Math.max(b.x, Math.min(px, b.x + b.width));
+    const cy = Math.max(b.y, Math.min(py, b.y + b.height));
+    const dist = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closestZone = z;
+    }
+  }
+
+  if (closestZone && closestDist <= BLEND_MARGIN) {
+    // Interpolate: closer to zone → more zone-like
+    const t = 1 - closestDist / BLEND_MARGIN; // 1 at edge, 0 at margin
+    return lerpEnv(defaultZoneEnv, closestZone.env, t);
+  }
+
+  return { ...defaultZoneEnv };
+}
+
+/** Convert ZoneEnv to EnvironmentData (field name mapping) */
+export function zoneEnvToEnvironment(ze: ZoneEnv): EnvironmentData {
+  return {
+    lux: Math.round(ze.light),
+    dB: Math.round(ze.noise * 10) / 10,
+    air_temp: Math.round(ze.temperature * 10) / 10,
+    humidity: Math.round(ze.humidity * 10) / 10,
+    air_velocity: Math.round(ze.air_velocity * 100) / 100,
+  };
+}
+
 export interface AgentPosition {
   x: number;
   y: number;
@@ -451,14 +576,16 @@ export function posToCell(x: number, y: number, cellSize = 1000): [number, numbe
 
 // ---- LocalStorage Persistence ----
 // Version bump forces all clients to reset to new default personas
-const STORE_VERSION = "v2";
+const STORE_VERSION = "v3";
 const SHAPES_KEY = `thesis_spatial_shapes_${STORE_VERSION}`;
 const MULTI_AGENT_KEY = `thesis_multi_agent_${STORE_VERSION}`;
+const ZONES_KEY = `thesis_zones_${STORE_VERSION}`;
 
 // Clear any old versioned keys on load
 if (typeof window !== "undefined") {
   ["thesis_spatial_shapes", "thesis_multi_agent",
-   "thesis_spatial_shapes_v1", "thesis_multi_agent_v1"].forEach((k) => {
+   "thesis_spatial_shapes_v1", "thesis_multi_agent_v1",
+   "thesis_spatial_shapes_v2", "thesis_multi_agent_v2"].forEach((k) => {
     try { localStorage.removeItem(k); } catch {}
   });
 }
@@ -468,6 +595,12 @@ export function saveShapes(shapes: Shape[]) {
 }
 export function loadShapes(): Shape[] {
   try { const s = localStorage.getItem(SHAPES_KEY); return s ? JSON.parse(s) : []; } catch { return []; }
+}
+export function saveZones(zones: Zone[]) {
+  try { localStorage.setItem(ZONES_KEY, JSON.stringify(zones)); } catch {}
+}
+export function loadZones(): Zone[] {
+  try { const s = localStorage.getItem(ZONES_KEY); return s ? JSON.parse(s) : []; } catch { return []; }
 }
 export function saveMultiAgent(data: { personas: PersonaData[]; positions: (AgentPosition | null)[] }) {
   try { localStorage.setItem(MULTI_AGENT_KEY, JSON.stringify(data)); } catch {}

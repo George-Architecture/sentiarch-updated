@@ -1,10 +1,11 @@
 // ============================================================
-// CoordinateInput Component - Rhino/GH coordinate data entry
-// Design: Pixel Architecture Art
+// CoordinateInput Component - Rhino/GH coordinate data entry + Zone Editor
+// Design: Neumorphism-lite warm beige
 // ============================================================
 
 import { useState } from "react";
-import type { Shape } from "@/lib/store";
+import type { Shape, Zone, ZoneEnv } from "@/lib/store";
+import { defaultZoneEnv } from "@/lib/store";
 import { toast } from "sonner";
 
 const ROOM_EXAMPLE = `0. {5000, 0}
@@ -27,16 +28,208 @@ function parseCoordinates(text: string): [number, number][] {
   return points;
 }
 
+// ---- Zone Editor Sub-Component ----
+function ZoneEditor({
+  zones,
+  onAddZone,
+  onUpdateZone,
+  onRemoveZone,
+}: {
+  zones: Zone[];
+  onAddZone: (zone: Zone) => void;
+  onUpdateZone: (id: string, updates: Partial<Zone>) => void;
+  onRemoveZone: (id: string) => void;
+}) {
+  const [newLabel, setNewLabel] = useState("");
+  const [newBounds, setNewBounds] = useState({ x: "0", y: "0", width: "5000", height: "5000" });
+  const [newEnv, setNewEnv] = useState<ZoneEnv>({ ...defaultZoneEnv });
+
+  const handleAddZone = () => {
+    const bounds = {
+      x: parseFloat(newBounds.x) || 0,
+      y: parseFloat(newBounds.y) || 0,
+      width: parseFloat(newBounds.width) || 5000,
+      height: parseFloat(newBounds.height) || 5000,
+    };
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      toast.error("Zone width and height must be positive");
+      return;
+    }
+    const zone: Zone = {
+      id: `zone_${Date.now()}`,
+      label: newLabel || `Zone ${zones.length + 1}`,
+      bounds,
+      env: { ...newEnv },
+    };
+    onAddZone(zone);
+    setNewLabel("");
+    toast.success(`Zone "${zone.label}" added`);
+  };
+
+  const envFields: { key: keyof ZoneEnv; label: string; unit: string; min: number; max: number; step: number }[] = [
+    { key: "temperature", label: "Temp", unit: "°C", min: 10, max: 40, step: 0.5 },
+    { key: "humidity", label: "RH", unit: "%", min: 0, max: 100, step: 1 },
+    { key: "light", label: "Lux", unit: "lx", min: 0, max: 2000, step: 10 },
+    { key: "noise", label: "Noise", unit: "dB", min: 0, max: 120, step: 1 },
+    { key: "air_velocity", label: "Air V.", unit: "m/s", min: 0, max: 2, step: 0.01 },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="text-xs font-semibold tracking-wider" style={{ color: "var(--muted-foreground)" }}>
+        ZONE ENVIRONMENT EDITOR
+      </div>
+
+      {/* Existing Zones */}
+      {zones.length > 0 && (
+        <div className="space-y-2">
+          {zones.map((z) => (
+            <div key={z.id} className="sa-card p-3" style={{ background: "var(--background)" }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                  {z.label || z.id}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
+                    ({z.bounds.x}, {z.bounds.y}) {z.bounds.width}×{z.bounds.height}mm
+                  </span>
+                  <button
+                    className="text-xs px-2 py-1 rounded"
+                    style={{ background: "#D94F4F20", color: "#D94F4F", border: "1px solid #D94F4F40" }}
+                    onClick={() => onRemoveZone(z.id)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {envFields.map((f) => (
+                  <div key={f.key} className="text-center">
+                    <div className="text-[10px] mb-1" style={{ color: "var(--muted-foreground)" }}>{f.label}</div>
+                    <input
+                      type="number"
+                      value={z.env[f.key]}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val)) {
+                          onUpdateZone(z.id, { env: { ...z.env, [f.key]: val } });
+                        }
+                      }}
+                      className="w-full text-center text-xs p-1 rounded"
+                      style={{
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        color: "var(--foreground)",
+                        fontFamily: "'JetBrains Mono', monospace",
+                      }}
+                      min={f.min}
+                      max={f.max}
+                      step={f.step}
+                    />
+                    <div className="text-[9px] mt-0.5" style={{ color: "var(--muted-foreground)" }}>{f.unit}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add New Zone */}
+      <div className="p-3 rounded-lg" style={{ background: "var(--background)", border: "1px dashed var(--border)" }}>
+        <div className="text-xs font-semibold mb-3" style={{ color: "var(--muted-foreground)" }}>
+          ADD NEW ZONE
+        </div>
+
+        <div className="grid grid-cols-5 gap-2 mb-3">
+          <div className="col-span-1">
+            <label className="text-[10px] block mb-1" style={{ color: "var(--muted-foreground)" }}>Label</label>
+            <input
+              type="text"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="Zone A"
+              className="w-full text-xs p-1.5 rounded"
+              style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+            />
+          </div>
+          {(["x", "y", "width", "height"] as const).map((k) => (
+            <div key={k}>
+              <label className="text-[10px] block mb-1" style={{ color: "var(--muted-foreground)" }}>
+                {k === "x" ? "X (mm)" : k === "y" ? "Y (mm)" : k === "width" ? "W (mm)" : "H (mm)"}
+              </label>
+              <input
+                type="number"
+                value={newBounds[k]}
+                onChange={(e) => setNewBounds({ ...newBounds, [k]: e.target.value })}
+                className="w-full text-xs p-1.5 rounded"
+                style={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-5 gap-2 mb-3">
+          {envFields.map((f) => (
+            <div key={f.key}>
+              <label className="text-[10px] block mb-1" style={{ color: "var(--muted-foreground)" }}>
+                {f.label} ({f.unit})
+              </label>
+              <input
+                type="number"
+                value={newEnv[f.key]}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) setNewEnv({ ...newEnv, [f.key]: val });
+                }}
+                className="w-full text-xs p-1.5 rounded"
+                style={{
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
+                min={f.min}
+                max={f.max}
+                step={f.step}
+              />
+            </div>
+          ))}
+        </div>
+
+        <button className="sa-btn sa-btn-primary w-full text-xs py-2" onClick={handleAddZone}>
+          + Add Zone
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Main Component ----
 export default function CoordinateInput({
   onAddShape,
   onClearAll,
+  zones = [],
+  onAddZone,
+  onUpdateZone,
+  onRemoveZone,
 }: {
   onAddShape: (shape: Shape) => void;
   onClearAll: () => void;
+  zones?: Zone[];
+  onAddZone?: (zone: Zone) => void;
+  onUpdateZone?: (id: string, updates: Partial<Zone>) => void;
+  onRemoveZone?: (id: string) => void;
 }) {
   const [text, setText] = useState("");
   const [shapeType, setShapeType] = useState<"room" | "window" | "door">("room");
   const [label, setLabel] = useState("");
+  const [activeSection, setActiveSection] = useState<"shapes" | "zones">("shapes");
 
   const handleAdd = () => {
     const points = parseCoordinates(text);
@@ -51,79 +244,123 @@ export default function CoordinateInput({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="font-pixel text-[9px]" style={{ color: "#6B4C3B", letterSpacing: "1px" }}>
-          RHINO/GH COORDINATE DATA
-        </span>
-        <div className="flex gap-2">
-          <button className="pixel-btn" style={{ fontSize: "8px", padding: "4px 8px" }}
-            onClick={() => setText(ROOM_EXAMPLE)}>
-            ROOM EXAMPLE
-          </button>
-          <button className="pixel-btn" style={{ fontSize: "8px", padding: "4px 8px" }}
-            onClick={() => setText(WINDOW_EXAMPLE)}>
-            WINDOW EXAMPLE
-          </button>
-        </div>
+    <div className="space-y-4">
+      {/* Section Tabs */}
+      <div className="flex gap-2 mb-4">
+        <button
+          className="sa-btn text-xs"
+          style={{
+            background: activeSection === "shapes" ? "var(--primary)" : "var(--card)",
+            color: activeSection === "shapes" ? "#fff" : "var(--foreground)",
+          }}
+          onClick={() => setActiveSection("shapes")}
+        >
+          Shapes / Coordinates
+        </button>
+        <button
+          className="sa-btn text-xs"
+          style={{
+            background: activeSection === "zones" ? "var(--primary)" : "var(--card)",
+            color: activeSection === "zones" ? "#fff" : "var(--foreground)",
+          }}
+          onClick={() => setActiveSection("zones")}
+        >
+          Zone Environment
+        </button>
       </div>
 
-      <div className="font-pixel text-[7px] mb-1" style={{ color: "#A89B8C", letterSpacing: "0.5px" }}>
-        FORMAT: INDEX. {"{X, Y}"} — ONE POINT PER LINE — LAST POINT CONNECTS BACK TO FIRST (ROOM)
-      </div>
+      {/* Shapes Section */}
+      {activeSection === "shapes" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold tracking-wider" style={{ color: "var(--muted-foreground)" }}>
+              RHINO/GH COORDINATE DATA
+            </span>
+            <div className="flex gap-2">
+              <button className="sa-btn text-xs" onClick={() => setText(ROOM_EXAMPLE)}>
+                ROOM EXAMPLE
+              </button>
+              <button className="sa-btn text-xs" onClick={() => setText(WINDOW_EXAMPLE)}>
+                WINDOW EXAMPLE
+              </button>
+            </div>
+          </div>
 
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={`Paste Rhino/GH coordinates...\n0. {5000, 0}\n1. {5000, 5000}\n2. {0, 5000}\n3. {0, 0}\n\nPoints connect in order. Rooms close automatically.`}
-        className="w-full h-32 font-pixel-data text-base p-3 resize-none"
-        style={{
-          background: "#F5ECD8",
-          border: "2px solid #3D6B4F",
-          color: "#6B4C3B",
-          outline: "none",
-        }}
-      />
+          <div className="text-[10px] mb-1" style={{ color: "var(--muted-foreground)", letterSpacing: "0.5px" }}>
+            FORMAT: INDEX. {"{X, Y}"} — ONE POINT PER LINE — LAST POINT CONNECTS BACK TO FIRST (ROOM)
+          </div>
 
-      <div className="flex items-center gap-3">
-        <span className="font-pixel text-[9px]" style={{ color: "#A89B8C" }}>SHAPE TYPE</span>
-        {(["room", "window", "door"] as const).map((t) => (
-          <button
-            key={t}
-            className="pixel-btn"
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={`Paste Rhino/GH coordinates...\n0. {5000, 0}\n1. {5000, 5000}\n2. {0, 5000}\n3. {0, 0}\n\nPoints connect in order. Rooms close automatically.`}
+            className="w-full h-32 text-sm p-3 resize-none rounded-lg"
             style={{
-              fontSize: "8px",
-              padding: "4px 10px",
-              background: shapeType === t ? "#3D6B4F" : "#EDE3D0",
-              color: shapeType === t ? "#F2E8D5" : "#6B4C3B",
+              background: "var(--background)",
+              border: "1px solid var(--border)",
+              color: "var(--foreground)",
+              fontFamily: "'JetBrains Mono', monospace",
+              boxShadow: "inset 2px 2px 4px rgba(0,0,0,0.04)",
             }}
-            onClick={() => setShapeType(t)}
-          >
-            {t.toUpperCase()}
-          </button>
-        ))}
-      </div>
+          />
 
-      <div className="flex items-center gap-3">
-        <span className="font-pixel text-[9px]" style={{ color: "#A89B8C" }}>LABEL (OPTIONAL)</span>
-        <input
-          type="text"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="e.g. Room A"
-          className="font-pixel-data text-base px-2 py-1 flex-1"
-          style={{ background: "#F5ECD8", border: "2px solid #6B4C3B", color: "#6B4C3B", outline: "none" }}
+          <div className="flex items-center gap-3">
+            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>SHAPE TYPE</span>
+            {(["room", "window", "door"] as const).map((t) => (
+              <button
+                key={t}
+                className="sa-btn text-xs"
+                style={{
+                  background: shapeType === t ? "var(--primary)" : "var(--card)",
+                  color: shapeType === t ? "#fff" : "var(--foreground)",
+                }}
+                onClick={() => setShapeType(t)}
+              >
+                {t.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>LABEL (OPTIONAL)</span>
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="e.g. Room A"
+              className="text-sm px-3 py-1.5 flex-1 rounded-lg"
+              style={{
+                background: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+              }}
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button className="sa-btn sa-btn-primary flex-1 text-xs" onClick={handleAdd}>
+              + ADD SHAPE
+            </button>
+            <button
+              className="sa-btn text-xs"
+              style={{ background: "#D94F4F20", color: "#D94F4F", borderColor: "#D94F4F40" }}
+              onClick={onClearAll}
+            >
+              CLEAR ALL
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Zones Section */}
+      {activeSection === "zones" && onAddZone && onUpdateZone && onRemoveZone && (
+        <ZoneEditor
+          zones={zones}
+          onAddZone={onAddZone}
+          onUpdateZone={onUpdateZone}
+          onRemoveZone={onRemoveZone}
         />
-      </div>
-
-      <div className="flex gap-3">
-        <button className="pixel-btn flex-1" style={{ background: "#3D6B4F" }} onClick={handleAdd}>
-          + ADD SHAPE
-        </button>
-        <button className="pixel-btn" style={{ background: "#B85C38" }} onClick={onClearAll}>
-          CLEAR ALL
-        </button>
-      </div>
+      )}
     </div>
   );
 }

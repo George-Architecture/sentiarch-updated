@@ -18,6 +18,7 @@ import {
   type Shape,
   type AgentPosition,
   type PersonaState,
+  type Zone,
   defaultPersonas,
   defaultExperience,
   defaultAccumulatedState,
@@ -31,9 +32,13 @@ import {
   loadShapes,
   saveMultiAgent,
   loadMultiAgent,
+  saveZones,
+  loadZones,
   getLLMConfig,
   callLLM,
   isAgentCoreChange,
+  getEnvAtPosition,
+  zoneEnvToEnvironment,
   PERSONA_COLORS,
 } from "@/lib/store";
 
@@ -67,6 +72,7 @@ export default function Home() {
   });
 
   const [shapes, setShapes] = useState<Shape[]>(() => loadShapes());
+  const [zones, setZones] = useState<Zone[]>(() => loadZones());
   const [activeTab, setActiveTab] = useState(0);
   const [simChecked, setSimChecked] = useState([true, true, true]);
   const [running, setRunning] = useState(false);
@@ -77,12 +83,23 @@ export default function Home() {
 
   // Persist
   useEffect(() => { saveShapes(shapes); }, [shapes]);
+  useEffect(() => { saveZones(zones); }, [zones]);
   useEffect(() => {
     saveMultiAgent({
       personas: states.map((s) => s.persona),
       positions: states.map((s) => s.agentPos),
     });
   }, [states]);
+
+  // When zones change, update environment for all placed agents
+  useEffect(() => {
+    setStates((prev) => prev.map((s) => {
+      if (!s.agentPos) return s;
+      const zoneEnv = getEnvAtPosition(s.agentPos.x, s.agentPos.y, zones);
+      const newEnv = zoneEnvToEnvironment(zoneEnv);
+      return { ...s, persona: { ...s.persona, environment: newEnv } };
+    }));
+  }, [zones]);
 
   // Recompute PMV/PPD + perceptual load when persona changes
   useEffect(() => {
@@ -119,26 +136,48 @@ export default function Home() {
     setShapes((s) => [...s, shape]);
   }, []);
 
+  // Zone management
+  const addZone = useCallback((zone: Zone) => {
+    setZones((z) => [...z, zone]);
+  }, []);
+
+  const updateZone = useCallback((id: string, updates: Partial<Zone>) => {
+    setZones((prev) => prev.map((z) => z.id === id ? { ...z, ...updates } : z));
+  }, []);
+
+  const removeZone = useCallback((id: string) => {
+    setZones((prev) => prev.filter((z) => z.id !== id));
+  }, []);
+
   const clearAll = useCallback(() => {
     setShapes([]);
+    setZones([]);
     setStates((prev) => prev.map((s) => ({ ...s, agentPos: null })));
     toast.info("Map cleared");
   }, []);
 
-  // Agent placement on spatial map
+  // Agent placement on spatial map — now also derives environment from zones
   const placeAgent = useCallback((idx: number, pos: AgentPosition) => {
     setStates((prev) => {
       const next = [...prev];
       const cell = posToCell(pos.x, pos.y);
       const spatial = computeSpatialFromAgent(pos, shapes, next[idx].persona.spatial);
+      // Derive environment from zone at this position
+      const zoneEnv = getEnvAtPosition(pos.x, pos.y, zones);
+      const newEnv = zoneEnvToEnvironment(zoneEnv);
       next[idx] = {
         ...next[idx],
         agentPos: pos,
-        persona: { ...next[idx].persona, position: { ...next[idx].persona.position, cell }, spatial },
+        persona: {
+          ...next[idx].persona,
+          position: { ...next[idx].persona.position, cell },
+          spatial,
+          environment: newEnv,
+        },
       };
       return next;
     });
-  }, [shapes]);
+  }, [shapes, zones]);
 
   // Update persona with baseline reset logic
   const updatePersona = useCallback((idx: number, newPersona: PersonaData) => {
@@ -457,6 +496,7 @@ export default function Home() {
 
           <SpatialMap
             shapes={shapes}
+            zones={zones}
             agentPositions={agentPositions}
             activeAgentIdx={activeTab}
             onAgentPlace={(pos) => placeAgent(activeTab, pos)}
@@ -482,7 +522,14 @@ export default function Home() {
             <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
           </div>
           <div className="sa-card">
-            <CoordinateInput onAddShape={addShape} onClearAll={clearAll} />
+            <CoordinateInput
+              onAddShape={addShape}
+              onClearAll={clearAll}
+              zones={zones}
+              onAddZone={addZone}
+              onUpdateZone={updateZone}
+              onRemoveZone={removeZone}
+            />
           </div>
         </div>
       </section>
