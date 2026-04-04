@@ -33,7 +33,6 @@ function AgentAvatar({ persona, color, size = 180 }: {
 }) {
   const { age, mobility, vision } = persona.agent;
 
-  // Determine preset
   let preset: "young" | "middle" | "elderly" | "wheelchair" | "blind" = "young";
   if (vision === "severe_impairment") preset = "blind";
   else if (mobility === "wheelchair") preset = "wheelchair";
@@ -47,7 +46,6 @@ function AgentAvatar({ persona, color, size = 180 }: {
 
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Background circle */}
       <circle cx={cx} cy={h / 2} r={w * 0.42} fill={`${color}12`} stroke={`${color}30`} strokeWidth={1} />
 
       {preset === "young" && (
@@ -392,7 +390,6 @@ function FormulaModal() {
         </DialogHeader>
 
         <div className="space-y-5 mt-2">
-          {/* PMV */}
           <div>
             <h4 className="text-sm font-bold mb-2" style={{ color: "var(--primary)" }}>
               PMV — Predicted Mean Vote (ISO 7730 Fanger)
@@ -417,7 +414,6 @@ function FormulaModal() {
             </div>
           </div>
 
-          {/* PPD */}
           <div>
             <h4 className="text-sm font-bold mb-2" style={{ color: "var(--primary)" }}>
               PPD — Predicted Percentage Dissatisfied
@@ -433,7 +429,6 @@ function FormulaModal() {
             </div>
           </div>
 
-          {/* Enclosure */}
           <div>
             <h4 className="text-sm font-bold mb-2" style={{ color: "#D4A017" }}>
               Enclosure Ratio — Ray Casting Method
@@ -451,7 +446,6 @@ function FormulaModal() {
             </div>
           </div>
 
-          {/* Effective Lux */}
           <div>
             <h4 className="text-sm font-bold mb-2" style={{ color: "#D4A017" }}>
               Effective Lux — Vision-Adjusted Illuminance
@@ -470,7 +464,6 @@ function FormulaModal() {
             </div>
           </div>
 
-          {/* Perceived dB */}
           <div>
             <h4 className="text-sm font-bold mb-2" style={{ color: "#C44040" }}>
               Perceived dB — Hearing-Adjusted Noise
@@ -585,19 +578,22 @@ export default function PersonaMindMap({
 
   return (
     <div className="w-full">
-      {/* ============ STRICT CSS GRID: 3 columns ============ */}
+      {/* ============================================================ */}
+      {/* MAIN GRID: 3 columns × 4 rows                               */}
+      {/* Col 1 (280px): Persona | Avatar | Env.Satisfaction          */}
+      {/* Col 2 (1fr):   Agent   | Agent  | Perceptual Load           */}
+      {/* Col 3 (280px): Spatial | Position | Computed                */}
+      {/* Row 4:         —       | Environment (col 2–3)              */}
+      {/* ============================================================ */}
       <div style={{
         display: "grid",
         gridTemplateColumns: "280px 1fr 280px",
         gridTemplateRows: "auto auto auto auto",
         gap: "12px",
+        alignItems: "start",
       }}>
 
-        {/* ================================================================ */}
-        {/* ROW 1-3: LEFT COLUMN                                            */}
-        {/* ================================================================ */}
-
-        {/* -- R1 Left: PERSONA card (small) -- */}
+        {/* ── R1 LEFT: PERSONA ── */}
         <div style={{ gridColumn: "1", gridRow: "1" }}>
           <SectionTag label="PERSONA" icon="●" color={accentColor} />
           <Panel>
@@ -645,15 +641,15 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* -- R2 Left: Agent Image card (large) -- */}
+        {/* ── R2 LEFT: AVATAR ── */}
         <div style={{ gridColumn: "1", gridRow: "2" }}>
           <Panel className="flex items-center justify-center" style={{ minHeight: 200 }}>
             <AgentAvatar persona={persona} color={accentColor} size={180} />
           </Panel>
         </div>
 
-        {/* -- R3-4 Left: Env. Satisfaction card (large) -- */}
-        <div style={{ gridColumn: "1", gridRow: "3 / 5" }}>
+        {/* ── R3 LEFT: ENV. SATISFACTION ── */}
+        <div style={{ gridColumn: "1", gridRow: "3" }}>
           <SectionTag label="ENV. SATISFACTION" icon="◌" color="#1D6B5E" />
           <Panel>
             <p className="text-xs italic mb-2" style={{ color: "var(--foreground)", lineHeight: 1.6, fontSize: "11px" }}>
@@ -683,7 +679,6 @@ export default function PersonaMindMap({
                 {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
               </span>
             </div>
-
             {ruleTriggers.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1 mb-2">
                 {ruleTriggers.map((t) => (
@@ -691,23 +686,16 @@ export default function PersonaMindMap({
                 ))}
               </div>
             )}
-
             <InterventionArrow />
           </Panel>
         </div>
 
-        {/* ================================================================ */}
-        {/* ROW 1-2: CENTER COLUMN                                          */}
-        {/* ================================================================ */}
-
-        {/* -- R1 Center: AGENT card (large, spans rows 1-2) -- */}
+        {/* ── R1–2 CENTER: AGENT (no duplicate fields, no height calc) ── */}
         <div style={{ gridColumn: "2", gridRow: "1 / 3" }}>
           <SectionTag label="AGENT" icon="◆" color={accentColor} />
-          <Panel style={{
-            borderTop: `3px solid ${accentColor}`,
-            height: "calc(100% - 28px)",
-          }}>
-            <div className="flex items-center gap-3 mb-3">
+          <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
                 style={{ background: accentColor, color: "#fff" }}>
                 {agent.id.replace("persona_", "P")}
@@ -719,81 +707,100 @@ export default function PersonaMindMap({
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-1.5 mt-2">
+
+            {/* Summary stat tiles */}
+            <div className="grid grid-cols-3 gap-2">
               {[
                 { label: "Met", value: agent.metabolic_rate.toFixed(1) },
                 { label: "Clo", value: agent.clothing_insulation.toFixed(1) },
-                { label: "Vision", value: agent.vision === "normal" ? "OK" : agent.vision === "mild_impairment" ? "Mild" : "Severe" },
+                {
+                  label: "Vision",
+                  value: agent.vision === "normal" ? "OK"
+                    : agent.vision === "mild_impairment" ? "Mild" : "Severe",
+                },
               ].map((item) => (
-                <div key={item.label} className="p-1.5 text-center rounded" style={{
-                  background: "var(--muted)", border: "1px solid var(--border)", fontSize: "10px",
+                <div key={item.label} className="p-2 text-center rounded-lg" style={{
+                  background: "var(--muted)", border: "1px solid var(--border)",
                 }}>
-                  <div style={{ color: "var(--muted-foreground)", fontWeight: 600 }}>{item.label}</div>
-                  <div style={{ color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: "12px" }}>{item.value}</div>
+                  <div style={{ color: "var(--muted-foreground)", fontWeight: 600, fontSize: "10px" }}>{item.label}</div>
+                  <div style={{
+                    color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace",
+                    fontWeight: 700, fontSize: "14px", marginTop: 2,
+                  }}>{item.value}</div>
                 </div>
               ))}
             </div>
 
-            {/* Editable fields inside Agent card */}
-            <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-              <DataRow label="Name">
-                <EditableField value={agent.id} onChange={(v) => updateAgent("id", v)} type="text" />
-              </DataRow>
-              <DataRow label="Gender">
-                <EditableField value={agent.gender} onChange={(v) => updateAgent("gender", v)} type="select"
-                  options={[{ value: "female", label: "Female" }, { value: "male", label: "Male" }]} />
-              </DataRow>
-              <DataRow label="Mobility">
-                <EditableField value={agent.mobility} onChange={(v) => updateAgent("mobility", v)} type="select"
-                  options={[
-                    { value: "normal", label: "Normal" }, { value: "walker", label: "Walker" },
-                    { value: "wheelchair", label: "Wheelchair" }, { value: "cane", label: "Cane" },
-                  ]} />
-              </DataRow>
-              <DataRow label="MBTI">
-                <EditableField value={agent.mbti} onChange={(v) => updateAgent("mbti", v)} type="select" options={mbtiOptions} />
-              </DataRow>
+            {/* Comfort badge */}
+            <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
+                  Current Respond
+                </span>
+                <div className="flex items-center gap-2">
+                  {hasSimulated ? (
+                    <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{
+                      background: getComfortColor(experience.comfort_score).bg,
+                      color: getComfortColor(experience.comfort_score).text,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {experience.comfort_score}/10
+                    </span>
+                  ) : (
+                    <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                      Waiting for calculation... Click "Calculate Current Respond" to generate experience narrative.
+                    </span>
+                  )}
+                  <span className="text-xs px-2 py-1 rounded-lg" style={{
+                    background: "var(--muted)", border: "1px solid var(--border)",
+                    color: getTrendInfo(experience.trend).color, fontSize: "10px",
+                  }}>
+                    {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
+                  </span>
+                </div>
+              </div>
             </div>
           </Panel>
         </div>
 
-        {/* -- R3 Center: Perceptual Load card (medium) -- */}
+        {/* ── R3 CENTER: PERCEPTUAL LOAD ── */}
         <div style={{ gridColumn: "2", gridRow: "3" }}>
           <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
           <Panel>
             <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
-            <LoadBar label="Visual" value={accumulatedState.visual_strain} prevValue={prevAccumulatedState?.visual_strain} />
-            <LoadBar label="Noise" value={accumulatedState.noise_stress} prevValue={prevAccumulatedState?.noise_stress} />
-            <LoadBar label="Social" value={accumulatedState.social_overload} prevValue={prevAccumulatedState?.social_overload} />
-            <LoadBar label="Fatigue" value={accumulatedState.fatigue} prevValue={prevAccumulatedState?.fatigue} />
+            <LoadBar label="Visual"  value={accumulatedState.visual_strain}      prevValue={prevAccumulatedState?.visual_strain} />
+            <LoadBar label="Noise"   value={accumulatedState.noise_stress}       prevValue={prevAccumulatedState?.noise_stress} />
+            <LoadBar label="Social"  value={accumulatedState.social_overload}    prevValue={prevAccumulatedState?.social_overload} />
+            <LoadBar label="Fatigue" value={accumulatedState.fatigue}            prevValue={prevAccumulatedState?.fatigue} />
             <LoadBar label="Wayfind." value={accumulatedState.wayfinding_anxiety} prevValue={prevAccumulatedState?.wayfinding_anxiety} />
           </Panel>
         </div>
 
-        {/* ================================================================ */}
-        {/* ROW 1-3: RIGHT COLUMN                                           */}
-        {/* ================================================================ */}
-
-        {/* -- R1 Right: Spatial card (small) -- */}
+        {/* ── R1 RIGHT: SPATIAL ── */}
         <div style={{ gridColumn: "3", gridRow: "1" }}>
           <SectionTag label="SPATIAL" icon="□" color="#D4A017" />
           <Panel>
-            <StaticRow label="→ Wall" value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : spatial.dist_to_wall}
+            <StaticRow label="→ Wall"
+              value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : spatial.dist_to_wall}
               unit={!agentPlaced || spatial.dist_to_wall < 0 ? undefined : "m"} />
-            <StaticRow label="→ Window" value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : spatial.dist_to_window}
+            <StaticRow label="→ Window"
+              value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : spatial.dist_to_window}
               unit={!agentPlaced || spatial.dist_to_window < 0 ? undefined : "m"} />
-            <StaticRow label="→ Exit" value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : spatial.dist_to_exit}
+            <StaticRow label="→ Exit"
+              value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : spatial.dist_to_exit}
               unit={!agentPlaced || spatial.dist_to_exit < 0 ? undefined : "m"} />
             <DataRow label="Ceiling">
               <EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" />
             </DataRow>
             <StaticRow label="Enclosure" value={!agentPlaced ? "—" : spatial.enclosure_ratio} />
             <StaticRow label="Vis. Agents" value={!agentPlaced ? "—" : spatial.visible_agents} />
-            <div className="mt-1 text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>Auto-calculated from map</div>
+            <div className="mt-1 text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
+              Auto-calculated from map
+            </div>
           </Panel>
         </div>
 
-        {/* -- R2 Right: Position card (small) -- */}
+        {/* ── R2 RIGHT: POSITION ── */}
         <div style={{ gridColumn: "3", gridRow: "2" }}>
           <SectionTag label="POSITION" icon="◇" color="#D4A017" />
           <Panel>
@@ -807,21 +814,27 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* -- R3 Right: Computed card (medium) -- */}
+        {/* ── R3 RIGHT: COMPUTED ── */}
         <div style={{ gridColumn: "3", gridRow: "3" }}>
           <SectionTag label="COMPUTED" icon="⊕" color="#1D6B5E" />
           <Panel>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: "PMV", value: computedOutputs.PMV, tooltip: "Predicted Mean Vote (ISO 7730)" },
-                { label: "PPD", value: `${computedOutputs.PPD}%`, tooltip: "Predicted Percentage Dissatisfied" },
+                { label: "PMV",     value: computedOutputs.PMV,           tooltip: "Predicted Mean Vote (ISO 7730)" },
+                { label: "PPD",     value: `${computedOutputs.PPD}%`,     tooltip: "Predicted Percentage Dissatisfied" },
                 { label: "Eff. Lux", value: computedOutputs.effective_lux, tooltip: "Vision-adjusted illuminance" },
-                { label: "Pr. dB", value: computedOutputs.perceived_dB, tooltip: "Hearing-adjusted noise" },
+                { label: "Pr. dB",  value: computedOutputs.perceived_dB,  tooltip: "Hearing-adjusted noise" },
               ].map((item) => (
                 <div key={item.label} className="p-2 text-center rounded-lg" title={item.tooltip}
                   style={{ background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)" }}>
-                  <div className="font-semibold" style={{ color: "var(--muted-foreground)", letterSpacing: "0.5px", fontSize: "10px" }}>{item.label}</div>
-                  <div className="font-bold mt-0.5" style={{ color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace", fontSize: "18px" }}>{item.value}</div>
+                  <div className="font-semibold" style={{ color: "var(--muted-foreground)", letterSpacing: "0.5px", fontSize: "10px" }}>
+                    {item.label}
+                  </div>
+                  <div className="font-bold mt-0.5" style={{
+                    color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace", fontSize: "18px",
+                  }}>
+                    {item.value}
+                  </div>
                 </div>
               ))}
             </div>
@@ -829,27 +842,23 @@ export default function PersonaMindMap({
             <div className="mt-2 text-xs text-center" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
               PMV/PPD: ISO 7730 Fanger Model
             </div>
-
-            {/* Show Formula Button */}
             <FormulaModal />
           </Panel>
         </div>
 
-        {/* ================================================================ */}
-        {/* ROW 4: ENVIRONMENT card — spans center + right (col 2-3)        */}
-        {/* ================================================================ */}
+        {/* ── R4 BOTTOM: ENVIRONMENT (col 2–3) ── */}
         <div style={{ gridColumn: "2 / 4", gridRow: "4" }}>
           <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
           <Panel>
             {!agentPlaced && (
-              <div className="text-xs text-center py-4 px-2 rounded-lg mb-2" style={{
+              <div className="text-xs text-center py-4 px-2 rounded-lg mb-3" style={{
                 background: "#FFF8E1", border: "1px solid #E8D48A", color: "#8A6D00",
               }}>
                 Agent not placed on map — showing default values
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-              {/* Left side: sliders */}
+              {/* Sliders */}
               <div>
                 <SliderField label="Light (Lux)" value={environment.lux} min={0} max={2000} step={10}
                   onChange={(v) => updateEnv("lux", String(v))} color="#D4A017" />
@@ -862,20 +871,25 @@ export default function PersonaMindMap({
                 <SliderField label="Air Velocity" value={environment.air_velocity} min={0} max={2} step={0.01} suffix="m/s"
                   onChange={(v) => updateEnv("air_velocity", String(v))} color="#2E8B6A" />
               </div>
-              {/* Right side: summary tiles */}
+              {/* Summary tiles */}
               <div>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { label: "Light", value: `${environment.lux}`, unit: "lux", color: "#D4A017" },
-                    { label: "Noise", value: `${environment.dB}`, unit: "dB", color: "#C44040" },
-                    { label: "Temp", value: `${environment.air_temp}`, unit: "°C", color: "#1D6B5E" },
-                    { label: "Humidity", value: `${environment.humidity}`, unit: "%", color: "#4A90B8" },
+                    { label: "Light",    value: `${environment.lux}`,       unit: "lux", color: "#D4A017" },
+                    { label: "Noise",    value: `${environment.dB}`,        unit: "dB",  color: "#C44040" },
+                    { label: "Temp",     value: `${environment.air_temp}`,  unit: "°C",  color: "#1D6B5E" },
+                    { label: "Humidity", value: `${environment.humidity}`,  unit: "%",   color: "#4A90B8" },
                   ].map((item) => (
                     <div key={item.label} className="p-2 text-center rounded-lg" style={{
                       background: "var(--muted)", border: "1px solid var(--border)",
                     }}>
-                      <div style={{ color: item.color, fontSize: "9px", fontWeight: 700, letterSpacing: "0.5px" }}>{item.label}</div>
-                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: "16px", color: "var(--foreground)" }}>
+                      <div style={{ color: item.color, fontSize: "9px", fontWeight: 700, letterSpacing: "0.5px" }}>
+                        {item.label}
+                      </div>
+                      <div style={{
+                        fontFamily: "'JetBrains Mono', monospace", fontWeight: 700,
+                        fontSize: "16px", color: "var(--foreground)",
+                      }}>
                         {item.value}
                         <span style={{ fontSize: "10px", color: "var(--muted-foreground)", marginLeft: 2 }}>{item.unit}</span>
                       </div>
@@ -889,6 +903,7 @@ export default function PersonaMindMap({
             </div>
           </Panel>
         </div>
+
       </div>
     </div>
   );
