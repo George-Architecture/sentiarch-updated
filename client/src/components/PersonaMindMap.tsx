@@ -577,24 +577,24 @@ export default function PersonaMindMap({
   const accentColor = personaColor?.primary || "var(--primary)";
 
   return (
-    <div className="w-full">
+    <div className="w-full" style={{ maxWidth: "900px", margin: "0 auto" }}>
       {/* ============================================================ */}
-      {/* MAIN GRID: 3 columns × 4 rows                               */}
-      {/* Col 1 (280px): Persona | Avatar | Env.Satisfaction          */}
-      {/* Col 2 (1fr):   Agent   | Agent  | Perceptual Load           */}
-      {/* Col 3 (280px): Spatial | Position | Computed                */}
-      {/* Row 4:         —       | Environment (col 2–3)              */}
+      {/* MAIN GRID: 3 columns × 5 rows (square layout)               */}
+      {/* Col 1: Persona | Avatar | ENV.Satisfaction                  */}
+      {/* Col 2: Agent   | Perceptual Load | Environment              */}
+      {/* Col 3: Spatial | Position | Computed                        */}
       {/* ============================================================ */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "260px 1fr 260px",
-        gridTemplateRows: "auto auto auto auto",
+        gridTemplateColumns: "1fr 1fr 1fr",
+        gridTemplateRows: "auto auto auto auto auto",
         gap: "12px",
-        alignItems: "start",
+        alignItems: "stretch",
+        aspectRatio: "1 / 1",
       }}>
 
         {/* ── R1 LEFT: PERSONA ── */}
-        <div style={{ gridColumn: "1", gridRow: "1" }}>
+        <div style={{ gridColumn: "1", gridRow: "1", overflow: "auto" }}>
           <SectionTag label="PERSONA" icon="●" color={accentColor} />
           <Panel>
             <DataRow label="Name">
@@ -641,15 +641,15 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── R2 LEFT: AVATAR ── */}
-        <div style={{ gridColumn: "1", gridRow: "2" }}>
+        {/* ── R2-3 LEFT: AVATAR ── */}
+        <div style={{ gridColumn: "1", gridRow: "2 / 4" }}>
           <Panel className="flex items-center justify-center" style={{ minHeight: 200 }}>
             <AgentAvatar persona={persona} color={accentColor} size={180} />
           </Panel>
         </div>
 
-        {/* ── R3 LEFT: ENV. SATISFACTION ── */}
-        <div style={{ gridColumn: "1", gridRow: "3" }}>
+        {/* ── R4-5 LEFT: ENV. SATISFACTION ── */}
+        <div style={{ gridColumn: "1", gridRow: "4 / 6" }}>
           <SectionTag label="ENV. SATISFACTION" icon="◌" color="#1D6B5E" />
           <Panel>
             <p className="text-xs italic mb-2" style={{ color: "var(--foreground)", lineHeight: 1.6, fontSize: "11px" }}>
@@ -690,7 +690,7 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── R1–2 CENTER: AGENT ── */}
+        {/* ── R1-2 CENTER: AGENT ── */}
         <div style={{ gridColumn: "2", gridRow: "1 / 3" }}>
           <SectionTag label="AGENT" icon="◆" color={accentColor} />
           <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
@@ -763,8 +763,8 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── R3 CENTER: PERCEPTUAL LOAD ── */}
-        <div style={{ gridColumn: "2", gridRow: "3" }}>
+        {/* ── R3-4 CENTER: PERCEPTUAL LOAD ── */}
+        <div style={{ gridColumn: "2", gridRow: "3 / 5" }}>
           <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
           <Panel>
             <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
@@ -814,8 +814,8 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── R3 RIGHT: COMPUTED ── */}
-        <div style={{ gridColumn: "3", gridRow: "3" }}>
+        {/* ── R3-4 RIGHT: COMPUTED ── */}
+        <div style={{ gridColumn: "3", gridRow: "3 / 5" }}>
           <SectionTag label="COMPUTED" icon="⊕" color="#1D6B5E" />
           <Panel>
             <div className="grid grid-cols-2 gap-2">
@@ -846,8 +846,8 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── R4 BOTTOM: ENVIRONMENT (col 2–3) ── */}
-        <div style={{ gridColumn: "2 / 4", gridRow: "4" }}>
+        {/* ── R5 BOTTOM: ENVIRONMENT (col 2–3) ── */}
+        <div style={{ gridColumn: "2 / 4", gridRow: "5" }}>
           <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
           <Panel>
             {!agentPlaced && (
