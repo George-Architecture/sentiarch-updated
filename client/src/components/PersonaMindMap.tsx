@@ -1,24 +1,12 @@
 // ============================================================
-// PersonaMindMap — Three-Layer Radial Mind Map
-//
-// Layer 1 (center): Persona node
-// Layer 2 (ring):   Category label nodes with SVG lines to center
-// Layer 3 (outer):  Data leaf nodes with SVG lines to category
-//
-// Features: floating idle animation, drag-to-move + spring-back,
-//           SVG connector lines, clean white/earth-tone style
+// PersonaMindMap Component — Strict CSS Grid Layout
+// Left (280px): Persona + Agent Image + Env. Satisfaction
+// Center (flex grow): Agent + Perceptual Load
+// Right (280px): Spatial + Position + Computed
+// Bottom (center+right span): Environment
 // ============================================================
 
-import {
-  useState,
-  useRef,
-  useEffect,
-  useCallback,
-  useMemo,
-  type ReactNode,
-  type PointerEvent as RPointerEvent,
-  type CSSProperties,
-} from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import type {
   PersonaData,
   ExperienceData,
@@ -34,118 +22,133 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-/* ================================================================
-   Constants & Styles
-   ================================================================ */
+// ================================================================
+// SVG Agent Avatars
+// ================================================================
 
-const MONO: CSSProperties = { fontFamily: "'JetBrains Mono', 'Fira Code', monospace", fontWeight: 700 };
-const COLORS = {
-  agent: "#8B5E3C",
-  position: "#D4A017",
-  environment: "#1D6B5E",
-  spatial: "#4A7B9D",
-  computed: "#6B5B95",
-  experience: "#C44040",
-  perceptual: "#B8860B",
-};
-
-/* ================================================================
-   CSS Keyframes (injected once)
-   ================================================================ */
-
-const FLOAT_CSS = `
-@keyframes mm-float {
-  0%, 100% { transform: translate(0px, 0px); }
-  25% { transform: translate(1.5px, -2.5px); }
-  50% { transform: translate(-1px, 1.5px); }
-  75% { transform: translate(0.5px, -1px); }
-}
-`;
-
-let cssInjected = false;
-function injectCSS() {
-  if (cssInjected) return;
-  cssInjected = true;
-  const s = document.createElement("style");
-  s.textContent = FLOAT_CSS;
-  document.head.appendChild(s);
-}
-
-/* ================================================================
-   FloatingBlock — idle float + drag + spring-back
-   ================================================================ */
-
-function FloatingBlock({
-  children, floatDelay = 0, style = {}, className = "",
-}: {
-  children: ReactNode;
-  floatDelay?: number;
-  style?: CSSProperties;
-  className?: string;
+function AgentAvatar({ persona, color, size = 180 }: {
+  persona: PersonaData;
+  color: string;
+  size?: number;
 }) {
-  const elRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ active: boolean; sx: number; sy: number; ox: number; oy: number } | null>(null);
-  const [off, setOff] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const [returning, setReturning] = useState(false);
+  const { age, mobility, vision } = persona.agent;
 
-  const onDown = useCallback((e: RPointerEvent<HTMLDivElement>) => {
-    const tag = (e.target as HTMLElement).tagName;
-    if (["INPUT", "SELECT", "BUTTON", "TEXTAREA", "A"].includes(tag)) return;
-    if ((e.target as HTMLElement).closest("button, input, select, textarea, a, .no-drag")) return;
-    e.preventDefault();
-    elRef.current?.setPointerCapture(e.pointerId);
-    drag.current = { active: true, sx: e.clientX, sy: e.clientY, ox: off.x, oy: off.y };
-    setDragging(true);
-    setReturning(false);
-  }, [off]);
+  let preset: "young" | "middle" | "elderly" | "wheelchair" | "blind" = "young";
+  if (vision === "severe_impairment") preset = "blind";
+  else if (mobility === "wheelchair") preset = "wheelchair";
+  else if (age >= 60 || mobility === "walker" || mobility === "cane") preset = "elderly";
+  else if (age >= 40) preset = "middle";
 
-  const onMove = useCallback((e: RPointerEvent<HTMLDivElement>) => {
-    if (!drag.current?.active) return;
-    setOff({ x: drag.current.ox + e.clientX - drag.current.sx, y: drag.current.oy + e.clientY - drag.current.sy });
-  }, []);
-
-  const onUp = useCallback(() => {
-    if (!drag.current?.active) return;
-    drag.current.active = false;
-    drag.current = null;
-    setDragging(false);
-    setReturning(true);
-    setOff({ x: 0, y: 0 });
-    setTimeout(() => setReturning(false), 600);
-  }, []);
+  const w = size;
+  const h = size;
+  const cx = w / 2;
+  const strokeW = 2.5;
 
   return (
-    <div
-      ref={elRef}
-      className={className}
-      onPointerDown={onDown}
-      onPointerMove={onMove}
-      onPointerUp={onUp}
-      onPointerCancel={onUp}
-      style={{
-        ...style,
-        transform: `translate(${off.x}px, ${off.y}px)`,
-        transition: dragging ? "none" : returning ? "transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)" : "none",
-        animation: dragging || returning ? "none" : `mm-float ${3 + (floatDelay % 3)}s ease-in-out ${floatDelay * 0.4}s infinite`,
-        cursor: dragging ? "grabbing" : "grab",
-        userSelect: "none",
-        touchAction: "none",
-        willChange: "transform",
-        zIndex: dragging ? 100 : style.zIndex ?? 2,
-      }}
-    >
-      {children}
-    </div>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx={cx} cy={h / 2} r={w * 0.42} fill={`${color}12`} stroke={`${color}30`} strokeWidth={1} />
+
+      {preset === "young" && (
+        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx={cx} cy={h * 0.22} r={16} fill={`${color}20`} />
+          <line x1={cx} y1={h * 0.31} x2={cx} y2={h * 0.55} />
+          <line x1={cx} y1={h * 0.38} x2={cx - 22} y2={h * 0.50} />
+          <line x1={cx} y1={h * 0.38} x2={cx + 22} y2={h * 0.50} />
+          <line x1={cx} y1={h * 0.55} x2={cx - 16} y2={h * 0.75} />
+          <line x1={cx} y1={h * 0.55} x2={cx + 16} y2={h * 0.75} />
+          <line x1={cx - 16} y1={h * 0.75} x2={cx - 22} y2={h * 0.76} />
+          <line x1={cx + 16} y1={h * 0.75} x2={cx + 22} y2={h * 0.76} />
+          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
+            Young Adult
+          </text>
+        </g>
+      )}
+
+      {preset === "middle" && (
+        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx={cx} cy={h * 0.22} r={16} fill={`${color}20`} />
+          <line x1={cx} y1={h * 0.31} x2={cx} y2={h * 0.56} />
+          <line x1={cx} y1={h * 0.37} x2={cx - 20} y2={h * 0.52} />
+          <line x1={cx} y1={h * 0.37} x2={cx + 20} y2={h * 0.52} />
+          <rect x={cx + 16} y={h * 0.50} width={12} height={10} rx={2} fill="none" />
+          <line x1={cx} y1={h * 0.56} x2={cx - 14} y2={h * 0.75} />
+          <line x1={cx} y1={h * 0.56} x2={cx + 14} y2={h * 0.75} />
+          <line x1={cx - 14} y1={h * 0.75} x2={cx - 20} y2={h * 0.76} />
+          <line x1={cx + 14} y1={h * 0.75} x2={cx + 20} y2={h * 0.76} />
+          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
+            Middle-aged
+          </text>
+        </g>
+      )}
+
+      {preset === "elderly" && (
+        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx={cx - 4} cy={h * 0.22} r={15} fill={`${color}20`} />
+          <path d={`M${cx - 4} ${h * 0.30} Q${cx - 2} ${h * 0.42} ${cx - 6} ${h * 0.55}`} fill="none" />
+          <line x1={cx - 6} y1={h * 0.38} x2={cx - 24} y2={h * 0.50} />
+          <line x1={cx - 24} y1={h * 0.48} x2={cx - 26} y2={h * 0.76} strokeWidth={3} />
+          <line x1={cx - 4} y1={h * 0.38} x2={cx + 14} y2={h * 0.48} />
+          <line x1={cx - 6} y1={h * 0.55} x2={cx - 16} y2={h * 0.75} />
+          <line x1={cx - 6} y1={h * 0.55} x2={cx + 8} y2={h * 0.75} />
+          <line x1={cx - 16} y1={h * 0.75} x2={cx - 22} y2={h * 0.76} />
+          <line x1={cx + 8} y1={h * 0.75} x2={cx + 14} y2={h * 0.76} />
+          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
+            Elderly
+          </text>
+        </g>
+      )}
+
+      {preset === "wheelchair" && (
+        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx={cx} cy={h * 0.20} r={15} fill={`${color}20`} />
+          <line x1={cx} y1={h * 0.28} x2={cx} y2={h * 0.48} />
+          <line x1={cx} y1={h * 0.36} x2={cx - 20} y2={h * 0.42} />
+          <line x1={cx} y1={h * 0.36} x2={cx + 20} y2={h * 0.42} />
+          <line x1={cx} y1={h * 0.48} x2={cx - 8} y2={h * 0.58} />
+          <line x1={cx - 8} y1={h * 0.58} x2={cx - 6} y2={h * 0.66} />
+          <line x1={cx + 18} y1={h * 0.30} x2={cx + 18} y2={h * 0.60} />
+          <line x1={cx - 10} y1={h * 0.48} x2={cx + 18} y2={h * 0.48} />
+          <circle cx={cx + 12} cy={h * 0.62} r={14} fill="none" />
+          <circle cx={cx - 14} cy={h * 0.66} r={6} fill="none" />
+          <line x1={cx - 14} y1={h * 0.60} x2={cx - 6} y2={h * 0.66} />
+          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
+            Wheelchair
+          </text>
+        </g>
+      )}
+
+      {preset === "blind" && (
+        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx={cx} cy={h * 0.22} r={16} fill={`${color}20`} />
+          <line x1={cx - 10} y1={h * 0.21} x2={cx + 10} y2={h * 0.21} strokeWidth={3} />
+          <line x1={cx} y1={h * 0.31} x2={cx} y2={h * 0.55} />
+          <line x1={cx} y1={h * 0.38} x2={cx - 16} y2={h * 0.48} />
+          <line x1={cx - 16} y1={h * 0.48} x2={cx - 34} y2={h * 0.76} strokeWidth={3} />
+          <line x1={cx} y1={h * 0.38} x2={cx + 18} y2={h * 0.48} />
+          <line x1={cx} y1={h * 0.55} x2={cx - 14} y2={h * 0.75} />
+          <line x1={cx} y1={h * 0.55} x2={cx + 14} y2={h * 0.75} />
+          <line x1={cx - 14} y1={h * 0.75} x2={cx - 20} y2={h * 0.76} />
+          <line x1={cx + 14} y1={h * 0.75} x2={cx + 20} y2={h * 0.76} />
+          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
+            Visually Impaired
+          </text>
+        </g>
+      )}
+    </svg>
   );
 }
 
-/* ================================================================
-   Inline Editable Field
-   ================================================================ */
+// ================================================================
+// Inline Editable Field
+// ================================================================
 
 function EditableField({
-  value, onChange, type = "text", suffix, options, highlight,
+  value,
+  onChange,
+  type = "text",
+  suffix,
+  options,
+  highlight,
 }: {
   value: string | number;
   onChange: (val: string) => void;
@@ -165,205 +168,357 @@ function EditableField({
     }
   }, [editing]);
 
-  const commit = () => { setEditing(false); if (draft !== String(value)) onChange(draft); };
+  const commit = () => {
+    setEditing(false);
+    if (draft !== String(value)) onChange(draft);
+  };
 
   if (editing) {
     if (type === "select" && options) {
       return (
-        <select ref={ref as any} value={draft}
+        <select
+          ref={ref as React.RefObject<HTMLSelectElement>}
+          value={draft}
           onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); setEditing(false); }}
-          onBlur={() => setEditing(false)} className="sa-input"
-          style={{ minWidth: 70, fontSize: "11px", padding: "2px 4px" }}>
-          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          onBlur={() => setEditing(false)}
+          className="sa-input"
+          style={{ minWidth: 80, fontSize: "12px" }}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
         </select>
       );
     }
     return (
-      <input ref={ref as any}
+      <input
+        ref={ref as React.RefObject<HTMLInputElement>}
         type={type === "time" ? "time" : type === "number" ? "number" : "text"}
-        value={draft} onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-        step={type === "number" ? "any" : undefined} className="sa-input text-right"
-        style={{ width: type === "time" ? 80 : Math.max(50, String(value).length * 9 + 20), fontSize: "11px", padding: "2px 4px" }} />
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+        step={type === "number" ? "any" : undefined}
+        className="sa-input text-right"
+        style={{
+          width: type === "time" ? 90 : Math.max(60, String(value).length * 10 + 30),
+          fontSize: "12px",
+        }}
+      />
     );
   }
 
   return (
-    <span onClick={() => { setDraft(String(value)); setEditing(true); }}
-      className="cursor-pointer px-0.5 rounded transition-all hover:bg-[var(--muted)]"
-      style={{ ...MONO, fontSize: "11px", color: highlight ? "#C44040" : "var(--foreground)" }}
-      title="Click to edit">
-      {value}{suffix && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 2, fontSize: "10px" }}>{suffix}</span>}
+    <span
+      onClick={() => { setDraft(String(value)); setEditing(true); }}
+      className="cursor-pointer px-2 py-0.5 rounded-md transition-all hover:bg-[var(--muted)]"
+      style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: "12px",
+        fontWeight: 600,
+        color: highlight ? "var(--destructive)" : "var(--foreground)",
+      }}
+      title="Click to edit"
+    >
+      {value}
+      {suffix && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 3 }}>{suffix}</span>}
     </span>
   );
 }
 
-/* ================================================================
-   Small Sub-Components
-   ================================================================ */
+// ================================================================
+// Reusable Sub-Components
+// ================================================================
 
 function DataRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px solid var(--border)" }}>
-      <span style={{ color: "var(--muted-foreground)", fontSize: "10px", fontWeight: 500 }}>{label}</span>
-      <div style={{ display: "flex", alignItems: "center" }}>{children}</div>
+    <div className="flex items-center justify-between py-1.5 px-1" style={{ borderBottom: "1px solid var(--border)" }}>
+      <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)", letterSpacing: "0.3px" }}>{label}</span>
+      <div className="flex items-center">{children}</div>
     </div>
   );
 }
 
-function StaticRow({ label, value, unit, highlight }: { label: string; value: string | number; unit?: string; highlight?: boolean }) {
+function StaticRow({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px solid var(--border)" }}>
-      <span style={{ color: "var(--muted-foreground)", fontSize: "10px", fontWeight: 500 }}>{label}</span>
-      <span style={{ ...MONO, fontSize: "11px", color: highlight ? "#C44040" : "var(--foreground)" }}>
-        {value}{unit && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 2, fontSize: "10px" }}>{unit}</span>}
+    <div className="flex items-center justify-between py-1.5 px-1" style={{ borderBottom: "1px solid var(--border)" }}>
+      <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>{label}</span>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", fontWeight: 600, color: "var(--foreground)" }}>
+        {value}
+        {unit && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 3 }}>{unit}</span>}
       </span>
     </div>
   );
 }
 
-function LoadBar({ label, value, prevValue, note }: { label: string; value: number; prevValue?: number | null; note?: string }) {
-  const color = value <= 0.3 ? "#2E8B6A" : value <= 0.6 ? "#D4A017" : "#C44040";
+function LoadBar({ label, value, prevValue }: { label: string; value: number; prevValue?: number }) {
+  const getColor = (v: number) => {
+    if (v <= 0.3) return "#2E8B6A";
+    if (v <= 0.6) return "#D4A017";
+    return "#C44040";
+  };
+  const color = getColor(value);
   const hasPrev = prevValue != null && prevValue !== 0;
   const delta = hasPrev ? value - (prevValue ?? 0) : 0;
-  const improved = hasPrev && delta < -0.05;
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0" }}>
-      <span style={{ color: "var(--muted-foreground)", fontSize: "10px", fontWeight: 500, width: 48, flexShrink: 0 }}>{label}</span>
-      <div style={{ flex: 1, height: 5, background: "var(--muted)", borderRadius: 3, position: "relative", minWidth: 60 }}>
-        <div style={{ position: "absolute", top: 0, left: 0, height: "100%", width: `${Math.min(value * 100, 100)}%`, background: color, borderRadius: 3, transition: "width 0.5s ease" }} />
+    <div className="flex items-center gap-2 py-1">
+      <span className="text-xs font-medium w-14 shrink-0" style={{ color: "var(--muted-foreground)", fontSize: "10px" }}>{label}</span>
+      <div className="flex-1 relative" style={{ height: 5, background: "var(--muted)", borderRadius: 3 }}>
+        <div style={{
+          position: "absolute", top: 0, left: 0, height: "100%",
+          width: `${value * 100}%`, background: color,
+          borderRadius: 3, transition: "width 0.5s ease",
+        }} />
       </div>
-      <span style={{ ...MONO, fontSize: "10px", width: 24, textAlign: "right", flexShrink: 0 }}>{value.toFixed(1)}</span>
-      {improved && (
-        <>
-          <span style={{ fontSize: "9px", color: "var(--muted-foreground)" }}>→</span>
-          <span style={{ ...MONO, fontSize: "10px", color: "#2E8B6A" }}>{(value + delta).toFixed(1)}</span>
-        </>
+      <span className="text-xs w-6 text-right shrink-0" style={{
+        fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "var(--foreground)", fontSize: "10px",
+      }}>
+        {value.toFixed(1)}
+      </span>
+      {hasPrev && Math.abs(delta) >= 0.01 && (
+        <span className="text-xs w-8 text-right shrink-0" style={{
+          fontWeight: 600, color: delta > 0 ? "#C44040" : "#2E8B6A", fontSize: "10px",
+        }}>
+          {delta > 0 ? "+" : ""}{delta.toFixed(1)}
+        </span>
       )}
-      {note && <span style={{ fontSize: "8px", color: "#D4A017", fontStyle: "italic" }}>{note}</span>}
     </div>
   );
 }
 
-function SectionTag({ label, icon, color }: { label: string; icon: string; color: string }) {
+function SectionTag({ label, icon, color }: { label: string; icon: string; color?: string }) {
+  const c = color || "var(--primary)";
   return (
-    <div style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      padding: "3px 10px", borderRadius: 20,
-      fontSize: "9px", fontWeight: 700, letterSpacing: "1.2px",
-      textTransform: "uppercase" as const,
-      color, border: `1.5px solid ${color}`, background: `${color}0D`,
-      whiteSpace: "nowrap",
-    }}>
-      <span style={{ fontSize: "9px" }}>{icon}</span> {label}
+    <div
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-2 rounded-md"
+      style={{
+        fontFamily: "'Inter', sans-serif",
+        fontSize: "10px",
+        fontWeight: 700,
+        letterSpacing: "1.2px",
+        textTransform: "uppercase" as const,
+        color: c,
+        border: `1.5px solid ${c}`,
+        background: `${c}10`,
+      }}
+    >
+      <span style={{ fontSize: "11px" }}>{icon}</span> {label}
     </div>
   );
 }
 
-/* ================================================================
-   Formula Modal
-   ================================================================ */
+function Panel({ children, className = "", style = {} }: { children: ReactNode; className?: string; style?: React.CSSProperties }) {
+  return (
+    <div className={`sa-panel ${className}`} style={{ padding: "12px", ...style }}>
+      {children}
+    </div>
+  );
+}
+
+// ================================================================
+// Design Intervention Arrow Mock-up
+// ================================================================
+
+function InterventionArrow() {
+  return (
+    <div className="mt-3 pt-3" style={{ borderTop: "1px dashed var(--border)" }}>
+      <div className="text-xs font-semibold tracking-wider mb-2" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
+        DESIGN INTERVENTION
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 p-2 text-center rounded-lg" style={{
+          background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)",
+        }}>
+          <div className="text-xs font-medium" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>BEFORE</div>
+          <div className="text-lg font-bold" style={{ color: "#C44040", fontFamily: "'JetBrains Mono', monospace" }}>4</div>
+          <div className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>Comfort</div>
+        </div>
+        <div className="flex flex-col items-center gap-1 px-1">
+          <span className="font-semibold px-1.5 py-0.5 rounded" style={{
+            background: "var(--primary)", color: "var(--primary-foreground)", fontSize: "8px", letterSpacing: "0.5px",
+          }}>+WINDOW</span>
+          <svg width="30" height="10" viewBox="0 0 30 10">
+            <defs><marker id="ah2" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+              <polygon points="0 0, 6 2.5, 0 5" fill="var(--primary)" />
+            </marker></defs>
+            <line x1="2" y1="5" x2="24" y2="5" stroke="var(--primary)" strokeWidth="1.5" markerEnd="url(#ah2)" />
+          </svg>
+          <span className="font-semibold px-1.5 py-0.5 rounded" style={{
+            background: "var(--primary)", color: "var(--primary-foreground)", fontSize: "8px", letterSpacing: "0.5px",
+          }}>+LIGHT</span>
+        </div>
+        <div className="flex-1 p-2 text-center rounded-lg" style={{
+          background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)",
+        }}>
+          <div className="text-xs font-medium" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>AFTER</div>
+          <div className="text-lg font-bold" style={{ color: "#2E8B6A", fontFamily: "'JetBrains Mono', monospace" }}>7</div>
+          <div className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>Comfort</div>
+        </div>
+      </div>
+      <div className="text-xs mt-1.5 text-center" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
+        Mock-up: Intervention Feedback Loop
+      </div>
+    </div>
+  );
+}
+
+// ================================================================
+// Show Formula Modal
+// ================================================================
 
 function FormulaModal() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <button className="sa-btn" style={{
-          fontSize: "10px", padding: "4px 10px", width: "100%", marginTop: 6,
-          background: "var(--primary)", color: "var(--primary-foreground)", border: "none",
+        <button className="sa-btn w-full mt-2" style={{
+          fontSize: "11px", padding: "8px 12px",
+          background: "var(--primary)", color: "var(--primary-foreground)",
+          border: "none",
         }}>
           Show Formulas
         </button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)", maxHeight: "80vh", overflowY: "auto" }}>
-        <DialogHeader><DialogTitle>Computation Formulas</DialogTitle></DialogHeader>
-        <div className="space-y-4 mt-2">
-          {[
-            { title: "PMV (ISO 7730 Fanger)", color: "var(--primary)", lines: ["PMV = [0.303 × exp(-0.036 × M) + 0.028] × L"] },
-            { title: "PPD", color: "var(--primary)", lines: ["PPD = 100 − 95 × exp(−0.03353 × PMV⁴ − 0.2179 × PMV²)"] },
-            { title: "Effective Lux", color: "#D4A017", lines: ["Eff.Lux = base_lux + Σ(window × decay)", "Vision: normal ×1.0 | mild ×0.5 | severe ×0.15"] },
-            { title: "Perceived dB", color: "#C44040", lines: ["Pr.dB = base_dB × hearing_factor", "normal ×1.0 | impaired ×0.6 | deaf ×0.1"] },
-          ].map((f) => (
-            <div key={f.title}>
-              <h4 style={{ fontSize: "13px", fontWeight: 700, color: f.color, marginBottom: 4 }}>{f.title}</h4>
-              <div style={{ padding: 8, background: "var(--muted)", border: "1px solid var(--border)", borderRadius: 6, ...MONO, fontSize: "11px", lineHeight: 1.8 }}>
-                {f.lines.map((l, i) => <div key={i}>{l}</div>)}
+      <DialogContent className="sm:max-w-2xl" style={{
+        background: "var(--card)", border: "1px solid var(--border)",
+        maxHeight: "80vh", overflowY: "auto",
+      }}>
+        <DialogHeader>
+          <DialogTitle style={{ fontFamily: "'Inter', sans-serif", color: "var(--foreground)" }}>
+            Computation Formulas
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 mt-2">
+          <div>
+            <h4 className="text-sm font-bold mb-2" style={{ color: "var(--primary)" }}>
+              PMV — Predicted Mean Vote (ISO 7730 Fanger)
+            </h4>
+            <div className="p-3 rounded-lg" style={{
+              background: "var(--muted)", border: "1px solid var(--border)",
+              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
+            }}>
+              <div>PMV = f(M, W, I<sub>cl</sub>, f<sub>cl</sub>, t<sub>a</sub>, t<sub>r</sub>, v<sub>ar</sub>, p<sub>a</sub>)</div>
+              <div className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                PMV = [0.303 × exp(-0.036 × M) + 0.028] × L
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                where L = internal heat production - heat loss
+              </div>
+              <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                M = metabolic rate (W/m²) &nbsp;|&nbsp; W = external work (≈0)<br />
+                I<sub>cl</sub> = clothing insulation (clo) &nbsp;|&nbsp; f<sub>cl</sub> = clothing area factor<br />
+                t<sub>a</sub> = air temperature (°C) &nbsp;|&nbsp; t<sub>r</sub> = mean radiant temp (°C)<br />
+                v<sub>ar</sub> = relative air velocity (m/s) &nbsp;|&nbsp; p<sub>a</sub> = water vapour pressure (Pa)
               </div>
             </div>
-          ))}
+          </div>
+
+          <div>
+            <h4 className="text-sm font-bold mb-2" style={{ color: "var(--primary)" }}>
+              PPD — Predicted Percentage Dissatisfied
+            </h4>
+            <div className="p-3 rounded-lg" style={{
+              background: "var(--muted)", border: "1px solid var(--border)",
+              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
+            }}>
+              <div>PPD = 100 - 95 × exp(-0.03353 × PMV⁴ - 0.2179 × PMV²)</div>
+              <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                Range: 5% (PMV=0, neutral) → 100% (extreme discomfort)
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-bold mb-2" style={{ color: "#D4A017" }}>
+              Enclosure Ratio — Ray Casting Method
+            </h4>
+            <div className="p-3 rounded-lg" style={{
+              background: "var(--muted)", border: "1px solid var(--border)",
+              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
+            }}>
+              <div>Enclosure = 1 - (open_rays / total_rays)</div>
+              <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                16 rays cast from agent position at 22.5° intervals<br />
+                Each ray checks intersection with walls and room boundaries<br />
+                Max ray distance: 10,000mm (10m)
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-bold mb-2" style={{ color: "#D4A017" }}>
+              Effective Lux — Vision-Adjusted Illuminance
+            </h4>
+            <div className="p-3 rounded-lg" style={{
+              background: "var(--muted)", border: "1px solid var(--border)",
+              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
+            }}>
+              <div>Eff.Lux = base_lux + Σ(window_influence × distance_decay)</div>
+              <div className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                Window influence: max +400 lux, quadratic decay over 5000mm
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                Vision adjustment: normal ×1.0 | mild ×0.5 | severe ×0.15
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-bold mb-2" style={{ color: "#C44040" }}>
+              Perceived dB — Hearing-Adjusted Noise
+            </h4>
+            <div className="p-3 rounded-lg" style={{
+              background: "var(--muted)", border: "1px solid var(--border)",
+              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
+            }}>
+              <div>Pr.dB = base_dB × hearing_factor</div>
+              <div className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                Hearing factor: normal ×1.0 | impaired ×0.6 | deaf ×0.1
+              </div>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-/* ================================================================
-   SVG Connector Lines
-   ================================================================ */
+// ================================================================
+// PMV Warnings
+// ================================================================
 
-interface NodePos { id: string; x: number; y: number; w: number; h: number }
-
-function ConnectorLines({ nodes, links }: { nodes: Map<string, NodePos>; links: [string, string][] }) {
+function PMVWarnings({ computedOutputs }: { computedOutputs: ComputedOutputs }) {
+  const warnings = computedOutputs.pmv_warnings || [];
+  if (warnings.length === 0) return null;
   return (
-    <svg style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 0 }}>
-      {links.map(([from, to], i) => {
-        const a = nodes.get(from);
-        const b = nodes.get(to);
-        if (!a || !b) return null;
-        const x1 = a.x + a.w / 2;
-        const y1 = a.y + a.h / 2;
-        const x2 = b.x + b.w / 2;
-        const y2 = b.y + b.h / 2;
-        return (
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2}
-            stroke="var(--border)" strokeWidth={1.2} strokeDasharray="4 3" opacity={0.6} />
-        );
-      })}
-    </svg>
+    <div className="mt-2 px-2 py-2 rounded-lg" style={{
+      background: "#FFF8E1", border: "1px solid #E8D48A", fontSize: "10px",
+    }}>
+      <div className="font-semibold mb-0.5" style={{ color: "#8A6D00", letterSpacing: "0.5px" }}>PMV Notes</div>
+      {warnings.map((w, i) => (
+        <div key={i} style={{ color: "#6B5500", lineHeight: 1.5 }}>{w}</div>
+      ))}
+    </div>
   );
 }
 
-/* ================================================================
-   useNodeRef — track node position for SVG lines
-   ================================================================ */
-
-function useNodeTracker() {
-  const nodesRef = useRef<Map<string, NodePos>>(new Map());
-  const [nodes, setNodes] = useState<Map<string, NodePos>>(new Map());
-
-  const registerRef = useCallback((id: string) => {
-    return (el: HTMLDivElement | null) => {
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const parent = el.offsetParent as HTMLElement;
-      if (!parent) return;
-      const parentRect = parent.getBoundingClientRect();
-      const pos = {
-        id,
-        x: rect.left - parentRect.left,
-        y: rect.top - parentRect.top,
-        w: rect.width,
-        h: rect.height,
-      };
-      nodesRef.current.set(id, pos);
-    };
-  }, []);
-
-  const refresh = useCallback(() => {
-    setNodes(new Map(nodesRef.current));
-  }, []);
-
-  return { nodes, registerRef, refresh };
-}
-
-/* ================================================================
-   Main Component
-   ================================================================ */
+// ================================================================
+// Main Component
+// ================================================================
 
 export default function PersonaMindMap({
-  persona, experience, accumulatedState, computedOutputs, ruleTriggers,
-  prevExperience, prevAccumulatedState, onPersonaChange,
-  hasSimulated = true, personaColor, agentPlaced = false,
+  persona,
+  experience,
+  accumulatedState,
+  computedOutputs,
+  ruleTriggers,
+  prevExperience,
+  prevAccumulatedState,
+  onPersonaChange,
+  hasSimulated = true,
+  personaColor,
+  agentPlaced = false,
 }: {
   persona: PersonaData;
   experience: ExperienceData;
@@ -378,122 +533,76 @@ export default function PersonaMindMap({
   agentPlaced?: boolean;
 }) {
   const { agent, position, environment, spatial } = persona;
-  const accent = personaColor?.primary || "#8B5E3C";
 
-  useEffect(() => { injectCSS(); }, []);
-
-  // Node tracking for SVG lines
-  const { nodes, registerRef, refresh } = useNodeTracker();
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const timer = setTimeout(refresh, 100);
-    return () => clearTimeout(timer);
-  });
-
-  // Update helpers
   const updateAgent = useCallback((key: string, val: string) => {
     const parsed = ["age", "metabolic_rate", "clothing_insulation"].includes(key) ? parseFloat(val) || 0 : val;
     onPersonaChange({ ...persona, agent: { ...persona.agent, [key]: parsed } });
   }, [persona, onPersonaChange]);
+
   const updatePosition = useCallback((key: string, val: string) => {
     const parsed = ["duration_in_cell"].includes(key) ? parseInt(val) || 0 : val;
     onPersonaChange({ ...persona, position: { ...persona.position, [key]: parsed } });
   }, [persona, onPersonaChange]);
+
   const updateEnv = useCallback((key: string, val: string) => {
     onPersonaChange({ ...persona, environment: { ...persona.environment, [key]: parseFloat(val) || 0 } });
   }, [persona, onPersonaChange]);
+
   const updateSpatial = useCallback((key: string, val: string) => {
     onPersonaChange({ ...persona, spatial: { ...persona.spatial, [key]: parseFloat(val) || 0 } });
   }, [persona, onPersonaChange]);
 
-  // Derived
   const comfortDelta = hasSimulated && prevExperience && prevExperience.comfort_score > 0
     ? experience.comfort_score - prevExperience.comfort_score : null;
-  const trendInfo = experience.trend === "declining" ? { icon: "▽", label: "DECLINING", color: "#C44040" }
-    : experience.trend === "rising" ? { icon: "△", label: "IMPROVING", color: "#2E8B6A" }
-    : { icon: "—", label: "STABLE", color: "var(--muted-foreground)" };
-  const comfortColor = experience.comfort_score === 0 ? "var(--muted-foreground)" : experience.comfort_score <= 3 ? "#C44040" : experience.comfort_score <= 5 ? "#D4A017" : "#2E8B6A";
 
-  const mbtiOptions = useMemo(() =>
-    ["ISTJ","ISFJ","INFJ","INTJ","ISTP","ISFP","INFP","INTP","ESTP","ESFP","ENFP","ENTP","ESTJ","ESFJ","ENFJ","ENTJ"].map((m) => ({ value: m, label: m })),
-  []);
+  const mbtiOptions = [
+    "ISTJ","ISFJ","INFJ","INTJ","ISTP","ISFP","INFP","INTP",
+    "ESTP","ESFP","ENFP","ENTP","ESTJ","ESFJ","ENFJ","ENTJ",
+  ].map((m) => ({ value: m, label: m }));
 
-  const visionLabel = agent.vision === "normal" ? "normal" : agent.vision === "mild_impairment" ? "mild imp." : "severe imp.";
-
-  // SVG links: center → categories, categories → leaves (simplified: we draw center→category lines)
-  const links: [string, string][] = [
-    ["persona", "cat-agent"],
-    ["persona", "cat-position"],
-    ["persona", "cat-environment"],
-    ["persona", "cat-spatial"],
-    ["persona", "cat-computed"],
-    ["persona", "cat-experience"],
-    ["persona", "cat-perceptual"],
-  ];
-
-  // Card style
-  const cardS: CSSProperties = {
-    background: "var(--card)", border: "1px solid var(--border)",
-    borderRadius: 8, padding: "8px 10px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+  const getComfortColor = (score: number) => {
+    if (score === 0) return { bg: "var(--muted)", text: "var(--muted-foreground)" };
+    if (score <= 3) return { bg: "#C44040", text: "#FFFFFF" };
+    if (score <= 5) return { bg: "#D4A017", text: "#FFFFFF" };
+    if (score <= 7) return { bg: "#2A8F7E", text: "#FFFFFF" };
+    return { bg: "#1D6B5E", text: "#FFFFFF" };
   };
 
-  /* ── Layout: 7 columns grid ──
-     The mind map is laid out as a CSS grid with 7 columns.
-     Center persona spans the middle.
-     Categories + leaves are placed around it.
+  const getTrendInfo = (trend: string) => {
+    if (trend === "declining") return { icon: "▼", label: "Declining", color: "#C44040" };
+    if (trend === "rising") return { icon: "▲", label: "Improving", color: "#1D6B5E" };
+    return { icon: "—", label: "Stable", color: "var(--muted-foreground)" };
+  };
 
-     Col:  1       2       3     4(center)  5       6       7
-     Row1:        [AGENT leaves]           [POSITION leaves]
-     Row2:  [AGENT tag]                    [POSITION tag]
-     Row3:                    [PERSONA]
-     Row4:  [EXPERIENCE tag]               [ENVIRONMENT tag]
-     Row5:  [EXPERIENCE leaves]            [ENV leaves]
-     Row6:        [PERCEPT tag]            [SPATIAL tag]
-     Row7:  [PERCEPT leaves]               [SPATIAL leaves]
-     Row8:              [COMPUTED tag]
-     Row9:              [COMPUTED leaves]
-  */
+  const accentColor = personaColor?.primary || "var(--primary)";
 
   return (
-    <div style={{ width: "100%", position: "relative", fontFamily: "'Inter', sans-serif" }}>
+    <div className="w-full">
+      {/* ============================================================ */}
+      {/* MAIN GRID: 3 columns × 4 rows                               */}
+      {/* Col 1 (280px): Persona | Avatar | Env.Satisfaction          */}
+      {/* Col 2 (1fr):   Agent   | Agent  | Perceptual Load           */}
+      {/* Col 3 (280px): Spatial | Position | Computed                */}
+      {/* Row 4:         —       | Environment (col 2–3)              */}
+      {/* ============================================================ */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "280px 1fr 280px",
+        gridTemplateRows: "auto auto auto auto",
+        gap: "12px",
+        alignItems: "start",
+      }}>
 
-      {/* ── HEADER ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-        <div>
-          <h1 style={{ fontSize: "20px", fontWeight: 800, letterSpacing: "-0.5px", margin: 0, color: "var(--foreground)" }}>
-            Occupant Perception Map
-          </h1>
-          <div style={{ fontSize: "9px", fontWeight: 600, letterSpacing: "1.5px", color: "var(--muted-foreground)", textTransform: "uppercase", marginTop: 2 }}>
-            AGENT-BASED ENVIRONMENTAL EXPERIENCE MODEL
-          </div>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ ...MONO, fontSize: "10px", color: "var(--muted-foreground)" }}>
-            CELL [{position.cell[0]}, {position.cell[1]}] · {position.timestamp} · {position.duration_in_cell} min
-          </div>
-          <div style={{ ...MONO, fontSize: "11px", color: comfortColor, marginTop: 2 }}>
-            COMFORT {experience.comfort_score}/10 {trendInfo.icon} {trendInfo.label}
-          </div>
-        </div>
-      </div>
-
-      {/* ── MIND MAP CONTAINER ── */}
-      <div ref={containerRef} style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1fr 0.6fr 1.2fr 0.6fr 1fr 1fr", gridTemplateRows: "auto auto auto auto auto auto auto auto auto", gap: "8px 10px", alignItems: "start", minHeight: 600 }}>
-
-        {/* SVG connector lines */}
-        <ConnectorLines nodes={nodes} links={links} />
-
-        {/* ════════════════════════════════════════════
-            ROW 1-2: AGENT (top-left)
-            ════════════════════════════════════════════ */}
-
-        {/* Agent leaves — row 1, col 1-3 */}
-        <FloatingBlock floatDelay={1} style={{ gridColumn: "1 / 4", gridRow: "1" }}>
-          <div style={cardS}>
-            <DataRow label="ID"><EditableField value={agent.id} onChange={(v) => updateAgent("id", v)} type="text" /></DataRow>
-            <DataRow label="Age"><EditableField value={agent.age} onChange={(v) => updateAgent("age", v)} type="number" /></DataRow>
+        {/* ── R1 LEFT: PERSONA ── */}
+        <div style={{ gridColumn: "1", gridRow: "1" }}>
+          <SectionTag label="PERSONA" icon="●" color={accentColor} />
+          <Panel>
+            <DataRow label="Name">
+              <EditableField value={agent.id} onChange={(v) => updateAgent("id", v)} type="text" />
+            </DataRow>
+            <DataRow label="Age">
+              <EditableField value={agent.age} onChange={(v) => updateAgent("age", v)} type="number" />
+            </DataRow>
             <DataRow label="Gender">
               <EditableField value={agent.gender} onChange={(v) => updateAgent("gender", v)} type="select"
                 options={[{ value: "female", label: "Female" }, { value: "male", label: "Male" }]} />
@@ -503,269 +612,298 @@ export default function PersonaMindMap({
             </DataRow>
             <DataRow label="Mobility">
               <EditableField value={agent.mobility} onChange={(v) => updateAgent("mobility", v)} type="select"
-                options={[{ value: "normal", label: "Normal" }, { value: "walker", label: "Walker" }, { value: "wheelchair", label: "Wheelchair" }, { value: "cane", label: "Cane" }]} />
+                options={[
+                  { value: "normal", label: "Normal" }, { value: "walker", label: "Walker" },
+                  { value: "wheelchair", label: "Wheelchair" }, { value: "cane", label: "Cane" },
+                ]} />
             </DataRow>
             <DataRow label="Hearing">
               <EditableField value={agent.hearing} onChange={(v) => updateAgent("hearing", v)} type="select"
-                options={[{ value: "normal", label: "normal" }, { value: "impaired", label: "impaired" }, { value: "deaf", label: "deaf" }]}
-                highlight={agent.hearing !== "normal"} />
+                options={[
+                  { value: "normal", label: "Normal" }, { value: "impaired", label: "Impaired" },
+                  { value: "deaf", label: "Deaf" },
+                ]} />
             </DataRow>
             <DataRow label="Vision">
-              <EditableField value={visionLabel} onChange={(v) => {
-                const map: Record<string, string> = { "normal": "normal", "mild imp.": "mild_impairment", "severe imp.": "severe_impairment" };
-                updateAgent("vision", map[v] || v);
-              }} type="select"
-                options={[{ value: "normal", label: "normal" }, { value: "mild imp.", label: "mild imp." }, { value: "severe imp.", label: "severe imp." }]}
-                highlight={agent.vision !== "normal"} />
+              <EditableField value={agent.vision} onChange={(v) => updateAgent("vision", v)} type="select"
+                options={[
+                  { value: "normal", label: "Normal" },
+                  { value: "mild_impairment", label: "Mild Impairment" },
+                  { value: "severe_impairment", label: "Severe Impairment" },
+                ]} />
             </DataRow>
-            <div className="no-drag" style={{ marginTop: 4 }}>
-              <SliderField label="Met" value={agent.metabolic_rate} min={0.8} max={4} step={0.05}
-                onChange={(v) => updateAgent("metabolic_rate", String(v))} color={COLORS.agent} />
-              <SliderField label="Clo" value={agent.clothing_insulation} min={0} max={2} step={0.05}
-                onChange={(v) => updateAgent("clothing_insulation", String(v))} color={COLORS.agent} />
+            <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+              <SliderField label="Met Rate" value={agent.metabolic_rate} min={0.8} max={4} step={0.05}
+                onChange={(v) => updateAgent("metabolic_rate", String(v))} color={accentColor} />
+              <SliderField label="Clothing (Clo)" value={agent.clothing_insulation} min={0} max={2} step={0.05}
+                onChange={(v) => updateAgent("clothing_insulation", String(v))} color={accentColor} />
             </div>
-          </div>
-        </FloatingBlock>
-
-        {/* Agent tag — row 2, col 2 */}
-        <div ref={registerRef("cat-agent")} style={{ gridColumn: "2", gridRow: "2", display: "flex", justifyContent: "center", alignItems: "center" }}>
-          <FloatingBlock floatDelay={1.5}>
-            <SectionTag label="AGENT" icon="◎" color={COLORS.agent} />
-          </FloatingBlock>
+          </Panel>
         </div>
 
-        {/* ════════════════════════════════════════════
-            ROW 1-2: POSITION (top-right)
-            ════════════════════════════════════════════ */}
-
-        {/* Position leaves — row 1, col 5-7 */}
-        <FloatingBlock floatDelay={2} style={{ gridColumn: "5 / 8", gridRow: "1" }}>
-          <div style={cardS}>
-            <DataRow label="Cell"><span style={MONO}>[{position.cell[0]}, {position.cell[1]}]</span></DataRow>
-            <DataRow label="Time"><EditableField value={position.timestamp} onChange={(v) => updatePosition("timestamp", v)} type="time" /></DataRow>
-            <DataRow label="Dur."><EditableField value={position.duration_in_cell} onChange={(v) => updatePosition("duration_in_cell", v)} suffix="min" /></DataRow>
-          </div>
-        </FloatingBlock>
-
-        {/* Position tag — row 2, col 6 */}
-        <div ref={registerRef("cat-position")} style={{ gridColumn: "6", gridRow: "2", display: "flex", justifyContent: "center", alignItems: "center" }}>
-          <FloatingBlock floatDelay={2.5}>
-            <SectionTag label="POSITION" icon="◇" color={COLORS.position} />
-          </FloatingBlock>
+        {/* ── R2 LEFT: AVATAR ── */}
+        <div style={{ gridColumn: "1", gridRow: "2" }}>
+          <Panel className="flex items-center justify-center" style={{ minHeight: 200 }}>
+            <AgentAvatar persona={persona} color={accentColor} size={180} />
+          </Panel>
         </div>
 
-        {/* ════════════════════════════════════════════
-            ROW 3: PERSONA (center)
-            ════════════════════════════════════════════ */}
-
-        <div ref={registerRef("persona")} style={{ gridColumn: "3 / 6", gridRow: "3", display: "flex", justifyContent: "center", padding: "16px 0" }}>
-          <FloatingBlock floatDelay={0} style={{ zIndex: 10 }}>
-            <div style={{
-              width: 180, height: 180, borderRadius: "50%",
-              background: `linear-gradient(135deg, ${accent}15, ${accent}28)`,
-              border: `2.5px solid ${accent}60`,
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              boxShadow: `0 0 50px ${accent}12, 0 4px 24px rgba(0,0,0,0.06)`,
-            }}>
-              <div style={{ fontSize: "8px", fontWeight: 700, letterSpacing: "2.5px", color: accent, textTransform: "uppercase", marginBottom: 6 }}>PERSONA</div>
-              <div style={{ ...MONO, fontSize: "18px", color: "var(--foreground)" }}>{agent.id}</div>
-              <div style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: 6 }}>
-                {agent.age}{agent.gender === "female" ? "F" : "M"} · {agent.mobility} · {agent.mbti}
-              </div>
-            </div>
-          </FloatingBlock>
-        </div>
-
-        {/* ════════════════════════════════════════════
-            ROW 4-5: EXPERIENCE (left)
-            ════════════════════════════════════════════ */}
-
-        {/* Experience tag — row 4, col 1 */}
-        <div ref={registerRef("cat-experience")} style={{ gridColumn: "1 / 3", gridRow: "4", display: "flex", justifyContent: "center", alignItems: "center" }}>
-          <FloatingBlock floatDelay={5}>
-            <SectionTag label="ENV. SATISFACTION" icon="◌" color={COLORS.experience} />
-          </FloatingBlock>
-        </div>
-
-        {/* Experience leaves — row 5, col 1-3 */}
-        <FloatingBlock floatDelay={5.5} style={{ gridColumn: "1 / 4", gridRow: "5" }}>
-          <div style={cardS}>
-            <p style={{ fontSize: "11px", fontStyle: "italic", color: "var(--foreground)", lineHeight: 1.6, margin: "0 0 8px", borderLeft: `2px solid ${COLORS.experience}40`, paddingLeft: 8 }}>
+        {/* ── R3 LEFT: ENV. SATISFACTION ── */}
+        <div style={{ gridColumn: "1", gridRow: "3" }}>
+          <SectionTag label="ENV. SATISFACTION" icon="◌" color="#1D6B5E" />
+          <Panel>
+            <p className="text-xs italic mb-2" style={{ color: "var(--foreground)", lineHeight: 1.6, fontSize: "11px" }}>
               "{experience.summary}"
             </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-              <span style={{ ...MONO, fontSize: "10px", border: `1.5px solid ${comfortColor}`, color: comfortColor, padding: "2px 8px", borderRadius: 4 }}>
-                Comfort {experience.comfort_score}
+            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+              <span className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{
+                background: getComfortColor(experience.comfort_score).bg,
+                color: getComfortColor(experience.comfort_score).text,
+                boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+                letterSpacing: "0.5px", fontSize: "10px",
+              }}>
+                COMFORT {experience.comfort_score}/10
               </span>
-              <span style={{ fontSize: "10px", fontWeight: 700, color: trendInfo.color }}>
-                {trendInfo.icon} {trendInfo.label}
+              {comfortDelta !== null && Math.abs(comfortDelta) >= 0.1 && (
+                <span className="text-xs font-bold px-2 py-1.5 rounded-lg" style={{
+                  background: comfortDelta > 0 ? "#1D6B5E" : "#C44040",
+                  color: "#FFFFFF", boxShadow: "0 2px 6px rgba(0,0,0,0.12)", fontSize: "10px",
+                }}>
+                  {comfortDelta > 0 ? "+" : ""}{comfortDelta.toFixed(1)}
+                </span>
+              )}
+              <span className="text-xs font-semibold px-2 py-1.5 rounded-lg" style={{
+                background: "var(--muted)", color: getTrendInfo(experience.trend).color,
+                border: "1px solid var(--border)", fontSize: "10px",
+              }}>
+                {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
               </span>
             </div>
-            {prevExperience && prevExperience.comfort_score > 0 && (
-              <div style={{ fontSize: "10px", color: "var(--muted-foreground)", marginBottom: 4 }}>
-                PREV: Comfort {prevExperience.comfort_score} · {prevExperience.trend.toUpperCase()}
-              </div>
-            )}
-            {comfortDelta !== null && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, paddingTop: 4, borderTop: "1px dashed var(--border)" }}>
-                <span style={{ ...MONO, fontSize: "10px", border: "1.5px solid #2E8B6A", color: "#2E8B6A", padding: "2px 8px", borderRadius: 4 }}>
-                  Comfort {(experience.comfort_score + comfortDelta).toFixed(1)}
-                </span>
-                <span style={{ fontSize: "10px", fontWeight: 700, color: "#2E8B6A" }}>△ ESTIMATED</span>
-              </div>
-            )}
             {ruleTriggers.length > 0 && (
-              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed var(--border)", display: "flex", flexWrap: "wrap", gap: 3 }}>
+              <div className="flex flex-wrap gap-1 mt-1 mb-2">
                 {ruleTriggers.map((t) => (
-                  <span key={t} style={{ ...MONO, fontSize: "9px", fontWeight: 500, padding: "2px 6px", background: "var(--muted)", border: "1px solid var(--border)", borderRadius: 3 }}>
-                    {t}
-                  </span>
+                  <span key={t} className="sa-tag" style={{ fontSize: "9px" }}>{t}</span>
                 ))}
               </div>
             )}
-          </div>
-        </FloatingBlock>
-
-        {/* ════════════════════════════════════════════
-            ROW 4-5: ENVIRONMENT (right)
-            ════════════════════════════════════════════ */}
-
-        {/* Environment tag — row 4, col 6-7 */}
-        <div ref={registerRef("cat-environment")} style={{ gridColumn: "6 / 8", gridRow: "4", display: "flex", justifyContent: "center", alignItems: "center" }}>
-          <FloatingBlock floatDelay={3}>
-            <SectionTag label="ENVIRONMENT" icon="◉" color={COLORS.environment} />
-          </FloatingBlock>
+            <InterventionArrow />
+          </Panel>
         </div>
 
-        {/* Environment leaves — row 5, col 5-7 */}
-        <FloatingBlock floatDelay={3.5} style={{ gridColumn: "5 / 8", gridRow: "5" }}>
-          <div style={cardS} className="no-drag">
-            {!agentPlaced && (
-              <div style={{ fontSize: "9px", textAlign: "center", padding: "4px", marginBottom: 4, background: "#FFF8E1", border: "1px solid #E8D48A", borderRadius: 4, color: "#8A6D00" }}>
-                Agent not placed — default values
+        {/* ── R1–2 CENTER: AGENT (no duplicate fields, no height calc) ── */}
+        <div style={{ gridColumn: "2", gridRow: "1 / 3" }}>
+          <SectionTag label="AGENT" icon="◆" color={accentColor} />
+          <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
+                style={{ background: accentColor, color: "#fff" }}>
+                {agent.id.replace("persona_", "P")}
               </div>
-            )}
-            <SliderField label="Lux" value={environment.lux} min={0} max={2000} step={10}
-              onChange={(v) => updateEnv("lux", String(v))} color={COLORS.environment} />
-            <SliderField label="Noise" value={environment.dB} min={0} max={120} step={1} suffix="dB"
-              onChange={(v) => updateEnv("dB", String(v))} color="#C44040" />
-            <SliderField label="Temp" value={environment.air_temp} min={10} max={35} step={0.5} suffix="°C"
-              onChange={(v) => updateEnv("air_temp", String(v))} color={COLORS.environment} />
-            <SliderField label="RH" value={environment.humidity} min={0} max={100} step={1} suffix="%"
-              onChange={(v) => updateEnv("humidity", String(v))} color="#4A90B8" />
-            <SliderField label="Air V." value={environment.air_velocity} min={0} max={2} step={0.01} suffix="m/s"
-              onChange={(v) => updateEnv("air_velocity", String(v))} color="#2E8B6A" />
-          </div>
-        </FloatingBlock>
+              <div>
+                <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{agent.id}</div>
+                <div className="text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
+                  {agent.age}{agent.gender === "female" ? "F" : "M"} · {agent.mobility} · {agent.mbti}
+                </div>
+              </div>
+            </div>
 
-        {/* ════════════════════════════════════════════
-            ROW 6-7: PERCEPTUAL LOAD (left)
-            ════════════════════════════════════════════ */}
-
-        {/* Perceptual tag — row 6, col 2 */}
-        <div ref={registerRef("cat-perceptual")} style={{ gridColumn: "2 / 4", gridRow: "6", display: "flex", justifyContent: "center", alignItems: "center" }}>
-          <FloatingBlock floatDelay={7}>
-            <SectionTag label="PERCEPTUAL LOAD" icon="▐" color={COLORS.perceptual} />
-          </FloatingBlock>
-        </div>
-
-        {/* Perceptual leaves — row 7, col 1-3 */}
-        <FloatingBlock floatDelay={7.5} style={{ gridColumn: "1 / 4", gridRow: "7" }}>
-          <div style={cardS}>
-            <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
-            <LoadBar label="Visual" value={accumulatedState.visual_strain} prevValue={prevAccumulatedState?.visual_strain} note={accumulatedState.visual_strain > 0.4 ? "Signage contrast ↑" : undefined} />
-            <LoadBar label="Noise" value={accumulatedState.noise_stress} prevValue={prevAccumulatedState?.noise_stress} note={accumulatedState.noise_stress > 0.5 ? "Acoustic absorption ↑" : undefined} />
-            <LoadBar label="Social" value={accumulatedState.social_overload} prevValue={prevAccumulatedState?.social_overload} />
-            <LoadBar label="Fatigue" value={accumulatedState.fatigue} prevValue={prevAccumulatedState?.fatigue} />
-            <LoadBar label="Wayfind." value={accumulatedState.wayfinding_anxiety} prevValue={prevAccumulatedState?.wayfinding_anxiety} note={accumulatedState.wayfinding_anxiety > 0.4 ? "Sightline to egress ↑" : undefined} />
-          </div>
-        </FloatingBlock>
-
-        {/* ════════════════════════════════════════════
-            ROW 6-7: SPATIAL (right)
-            ════════════════════════════════════════════ */}
-
-        {/* Spatial tag — row 6, col 5-6 */}
-        <div ref={registerRef("cat-spatial")} style={{ gridColumn: "5 / 7", gridRow: "6", display: "flex", justifyContent: "center", alignItems: "center" }}>
-          <FloatingBlock floatDelay={6}>
-            <SectionTag label="SPATIAL" icon="□" color={COLORS.spatial} />
-          </FloatingBlock>
-        </div>
-
-        {/* Spatial leaves — row 7, col 5-7 */}
-        <FloatingBlock floatDelay={6.5} style={{ gridColumn: "5 / 8", gridRow: "7" }}>
-          <div style={cardS}>
-            <StaticRow label="→ Wall" value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : spatial.dist_to_wall} unit={agentPlaced && spatial.dist_to_wall >= 0 ? "m" : undefined} />
-            <StaticRow label="→ Win." value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : spatial.dist_to_window} unit={agentPlaced && spatial.dist_to_window >= 0 ? "m" : undefined} />
-            <StaticRow label="→ Exit" value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : spatial.dist_to_exit} unit={agentPlaced && spatial.dist_to_exit >= 0 ? "m" : undefined} highlight={agentPlaced && spatial.dist_to_exit > 10} />
-            <DataRow label="Ceil."><EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" /></DataRow>
-            <StaticRow label="Encl." value={!agentPlaced ? "—" : spatial.enclosure_ratio} />
-            <StaticRow label="Vis.Ag" value={!agentPlaced ? "—" : spatial.visible_agents} />
-          </div>
-        </FloatingBlock>
-
-        {/* ════════════════════════════════════════════
-            ROW 8-9: COMPUTED / MODEL OUTPUTS (center-bottom)
-            ════════════════════════════════════════════ */}
-
-        {/* Computed tag — row 8, col 3-5 */}
-        <div ref={registerRef("cat-computed")} style={{ gridColumn: "3 / 6", gridRow: "8", display: "flex", justifyContent: "center", alignItems: "center" }}>
-          <FloatingBlock floatDelay={8}>
-            <SectionTag label="COMPUTED" icon="⊕" color={COLORS.computed} />
-          </FloatingBlock>
-        </div>
-
-        {/* Computed leaves — row 9, col 2-6 */}
-        <FloatingBlock floatDelay={8.5} style={{ gridColumn: "2 / 7", gridRow: "9" }}>
-          <div style={cardS}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+            {/* Summary stat tiles */}
+            <div className="grid grid-cols-3 gap-2">
               {[
-                { label: "PMV", value: computedOutputs.PMV },
-                { label: "PPD", value: computedOutputs.PPD },
-                { label: "Eff.Lx", value: computedOutputs.effective_lux },
-                { label: "Pr.dB", value: computedOutputs.perceived_dB },
+                { label: "Met", value: agent.metabolic_rate.toFixed(1) },
+                { label: "Clo", value: agent.clothing_insulation.toFixed(1) },
+                {
+                  label: "Vision",
+                  value: agent.vision === "normal" ? "OK"
+                    : agent.vision === "mild_impairment" ? "Mild" : "Severe",
+                },
               ].map((item) => (
-                <div key={item.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "6px 8px", background: "var(--muted)", border: "1px solid var(--border)", borderRadius: 6 }}>
-                  <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 2 }}>{item.label}</span>
-                  <span style={{ ...MONO, fontSize: "14px" }}>{item.value}</span>
+                <div key={item.label} className="p-2 text-center rounded-lg" style={{
+                  background: "var(--muted)", border: "1px solid var(--border)",
+                }}>
+                  <div style={{ color: "var(--muted-foreground)", fontWeight: 600, fontSize: "10px" }}>{item.label}</div>
+                  <div style={{
+                    color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace",
+                    fontWeight: 700, fontSize: "14px", marginTop: 2,
+                  }}>{item.value}</div>
                 </div>
               ))}
             </div>
-            {computedOutputs.pmv_warnings && computedOutputs.pmv_warnings.length > 0 && (
-              <div style={{ marginTop: 6, padding: "4px 8px", background: "#FFF8E1", border: "1px solid #E8D48A", borderRadius: 4, fontSize: "9px", color: "#6B5500" }}>
-                {computedOutputs.pmv_warnings.map((w, i) => <div key={i}>{w}</div>)}
+
+            {/* Comfort badge */}
+            <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
+                  Current Respond
+                </span>
+                <div className="flex items-center gap-2">
+                  {hasSimulated ? (
+                    <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{
+                      background: getComfortColor(experience.comfort_score).bg,
+                      color: getComfortColor(experience.comfort_score).text,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {experience.comfort_score}/10
+                    </span>
+                  ) : (
+                    <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                      Waiting for calculation... Click "Calculate Current Respond" to generate experience narrative.
+                    </span>
+                  )}
+                  <span className="text-xs px-2 py-1 rounded-lg" style={{
+                    background: "var(--muted)", border: "1px solid var(--border)",
+                    color: getTrendInfo(experience.trend).color, fontSize: "10px",
+                  }}>
+                    {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </Panel>
+        </div>
+
+        {/* ── R3 CENTER: PERCEPTUAL LOAD ── */}
+        <div style={{ gridColumn: "2", gridRow: "3" }}>
+          <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
+          <Panel>
+            <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
+            <LoadBar label="Visual"  value={accumulatedState.visual_strain}      prevValue={prevAccumulatedState?.visual_strain} />
+            <LoadBar label="Noise"   value={accumulatedState.noise_stress}       prevValue={prevAccumulatedState?.noise_stress} />
+            <LoadBar label="Social"  value={accumulatedState.social_overload}    prevValue={prevAccumulatedState?.social_overload} />
+            <LoadBar label="Fatigue" value={accumulatedState.fatigue}            prevValue={prevAccumulatedState?.fatigue} />
+            <LoadBar label="Wayfind." value={accumulatedState.wayfinding_anxiety} prevValue={prevAccumulatedState?.wayfinding_anxiety} />
+          </Panel>
+        </div>
+
+        {/* ── R1 RIGHT: SPATIAL ── */}
+        <div style={{ gridColumn: "3", gridRow: "1" }}>
+          <SectionTag label="SPATIAL" icon="□" color="#D4A017" />
+          <Panel>
+            <StaticRow label="→ Wall"
+              value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : spatial.dist_to_wall}
+              unit={!agentPlaced || spatial.dist_to_wall < 0 ? undefined : "m"} />
+            <StaticRow label="→ Window"
+              value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : spatial.dist_to_window}
+              unit={!agentPlaced || spatial.dist_to_window < 0 ? undefined : "m"} />
+            <StaticRow label="→ Exit"
+              value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : spatial.dist_to_exit}
+              unit={!agentPlaced || spatial.dist_to_exit < 0 ? undefined : "m"} />
+            <DataRow label="Ceiling">
+              <EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" />
+            </DataRow>
+            <StaticRow label="Enclosure" value={!agentPlaced ? "—" : spatial.enclosure_ratio} />
+            <StaticRow label="Vis. Agents" value={!agentPlaced ? "—" : spatial.visible_agents} />
+            <div className="mt-1 text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
+              Auto-calculated from map
+            </div>
+          </Panel>
+        </div>
+
+        {/* ── R2 RIGHT: POSITION ── */}
+        <div style={{ gridColumn: "3", gridRow: "2" }}>
+          <SectionTag label="POSITION" icon="◇" color="#D4A017" />
+          <Panel>
+            <StaticRow label="Cell" value={`[${position.cell[0]}, ${position.cell[1]}]`} />
+            <DataRow label="Time">
+              <EditableField value={position.timestamp} onChange={(v) => updatePosition("timestamp", v)} type="time" />
+            </DataRow>
+            <DataRow label="Duration">
+              <EditableField value={position.duration_in_cell} onChange={(v) => updatePosition("duration_in_cell", v)} suffix="min" />
+            </DataRow>
+          </Panel>
+        </div>
+
+        {/* ── R3 RIGHT: COMPUTED ── */}
+        <div style={{ gridColumn: "3", gridRow: "3" }}>
+          <SectionTag label="COMPUTED" icon="⊕" color="#1D6B5E" />
+          <Panel>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "PMV",     value: computedOutputs.PMV,           tooltip: "Predicted Mean Vote (ISO 7730)" },
+                { label: "PPD",     value: `${computedOutputs.PPD}%`,     tooltip: "Predicted Percentage Dissatisfied" },
+                { label: "Eff. Lux", value: computedOutputs.effective_lux, tooltip: "Vision-adjusted illuminance" },
+                { label: "Pr. dB",  value: computedOutputs.perceived_dB,  tooltip: "Hearing-adjusted noise" },
+              ].map((item) => (
+                <div key={item.label} className="p-2 text-center rounded-lg" title={item.tooltip}
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)" }}>
+                  <div className="font-semibold" style={{ color: "var(--muted-foreground)", letterSpacing: "0.5px", fontSize: "10px" }}>
+                    {item.label}
+                  </div>
+                  <div className="font-bold mt-0.5" style={{
+                    color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace", fontSize: "18px",
+                  }}>
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <PMVWarnings computedOutputs={computedOutputs} />
+            <div className="mt-2 text-xs text-center" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
+              PMV/PPD: ISO 7730 Fanger Model
+            </div>
+            <FormulaModal />
+          </Panel>
+        </div>
+
+        {/* ── R4 BOTTOM: ENVIRONMENT (col 2–3) ── */}
+        <div style={{ gridColumn: "2 / 4", gridRow: "4" }}>
+          <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
+          <Panel>
+            {!agentPlaced && (
+              <div className="text-xs text-center py-4 px-2 rounded-lg mb-3" style={{
+                background: "#FFF8E1", border: "1px solid #E8D48A", color: "#8A6D00",
+              }}>
+                Agent not placed on map — showing default values
               </div>
             )}
-            <div className="no-drag">
-              <FormulaModal />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              {/* Sliders */}
+              <div>
+                <SliderField label="Light (Lux)" value={environment.lux} min={0} max={2000} step={10}
+                  onChange={(v) => updateEnv("lux", String(v))} color="#D4A017" />
+                <SliderField label="Noise (dB)" value={environment.dB} min={0} max={120} step={1} suffix="dB"
+                  onChange={(v) => updateEnv("dB", String(v))} color="#C44040" />
+                <SliderField label="Temperature" value={environment.air_temp} min={10} max={35} step={0.5} suffix="°C"
+                  onChange={(v) => updateEnv("air_temp", String(v))} color="#1D6B5E" />
+                <SliderField label="Humidity" value={environment.humidity} min={0} max={100} step={1} suffix="%"
+                  onChange={(v) => updateEnv("humidity", String(v))} color="#4A90B8" />
+                <SliderField label="Air Velocity" value={environment.air_velocity} min={0} max={2} step={0.01} suffix="m/s"
+                  onChange={(v) => updateEnv("air_velocity", String(v))} color="#2E8B6A" />
+              </div>
+              {/* Summary tiles */}
+              <div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Light",    value: `${environment.lux}`,       unit: "lux", color: "#D4A017" },
+                    { label: "Noise",    value: `${environment.dB}`,        unit: "dB",  color: "#C44040" },
+                    { label: "Temp",     value: `${environment.air_temp}`,  unit: "°C",  color: "#1D6B5E" },
+                    { label: "Humidity", value: `${environment.humidity}`,  unit: "%",   color: "#4A90B8" },
+                  ].map((item) => (
+                    <div key={item.label} className="p-2 text-center rounded-lg" style={{
+                      background: "var(--muted)", border: "1px solid var(--border)",
+                    }}>
+                      <div style={{ color: item.color, fontSize: "9px", fontWeight: 700, letterSpacing: "0.5px" }}>
+                        {item.label}
+                      </div>
+                      <div style={{
+                        fontFamily: "'JetBrains Mono', monospace", fontWeight: 700,
+                        fontSize: "16px", color: "var(--foreground)",
+                      }}>
+                        {item.value}
+                        <span style={{ fontSize: "10px", color: "var(--muted-foreground)", marginLeft: 2 }}>{item.unit}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 text-center" style={{ fontSize: "9px", color: "var(--muted-foreground)" }}>
+                  Air Velocity: {environment.air_velocity} m/s · From zone data
+                </div>
+              </div>
             </div>
-          </div>
-        </FloatingBlock>
-
-      </div>
-
-      {/* ── FOOTER ── */}
-      <div style={{ marginTop: 24, paddingTop: 10, borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <div style={{ fontSize: "9px", fontWeight: 600, letterSpacing: "1px", color: "var(--muted-foreground)", textTransform: "uppercase" }}>
-            HKU DEPT. OF ARCHITECTURE · BUILDING INFORMATICS LAB
-          </div>
-          <div style={{ display: "flex", gap: 12, marginTop: 4, alignItems: "center" }}>
-            {[{ c: "#2E8B6A", l: "Normal" }, { c: "#D4A017", l: "Moderate" }, { c: "#C44040", l: "Alert" }].map((x) => (
-              <span key={x.l} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: "9px", color: "var(--muted-foreground)" }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: x.c, display: "inline-block" }} /> {x.l}
-              </span>
-            ))}
-          </div>
+          </Panel>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: "9px", fontWeight: 600, letterSpacing: "1px", color: "var(--muted-foreground)", textTransform: "uppercase" }}>
-            AGENT-BASED ENVIRONMENTAL EXPERIENCE MODEL v0.1
-          </div>
-          <div style={{ fontSize: "9px", color: "var(--muted-foreground)", marginTop: 2 }}>
-            → 0.x Δ = predicted reduction in perceptual load <span style={{ fontStyle: "italic" }}>(design intent)</span>
-          </div>
-        </div>
+
       </div>
     </div>
   );
