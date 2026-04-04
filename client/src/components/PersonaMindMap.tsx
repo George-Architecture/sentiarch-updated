@@ -1,12 +1,12 @@
 // ============================================================
-// PersonaMindMap Component — Strict CSS Grid Layout
-// Left (280px): Persona + Agent Image + Env. Satisfaction
-// Center (flex grow): Agent + Perceptual Load
-// Right (280px): Spatial + Position + Computed
-// Bottom (center+right span): Environment
+// PersonaMindMap Component — Draggable Grid Layout with Edit Mode
+// Uses react-grid-layout v2 for drag & resize
+// Layout persists to localStorage
 // ============================================================
 
-import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react";
+import { Responsive as ResponsiveGridLayout, useContainerWidth, type Layout, type LayoutItem } from "react-grid-layout";
+import "react-grid-layout/css/styles.css";
 import type {
   PersonaData,
   ExperienceData,
@@ -251,7 +251,7 @@ function StaticRow({ label, value, unit }: { label: string; value: string | numb
   );
 }
 
-function LoadBar({ label, value, prevValue }: { label: string; value: number; prevValue?: number }) {
+function LoadBar({ label, value, prevValue }: { label: string; value: number; prevValue?: number | null }) {
   const getColor = (v: number) => {
     if (v <= 0.3) return "#2E8B6A";
     if (v <= 0.6) return "#D4A017";
@@ -504,6 +504,56 @@ function PMVWarnings({ computedOutputs }: { computedOutputs: ComputedOutputs }) 
 }
 
 // ================================================================
+// Layout Constants & Persistence
+// ================================================================
+
+const LAYOUT_STORAGE_KEY = "sentiarch-mindmap-layout";
+const GRID_COLS = 12;
+const ROW_HEIGHT = 60;
+
+/** Default layout matching the reference wireframe (game-style status panel) */
+const DEFAULT_LAYOUT: Layout = [
+  // Col 1: Persona (top-left, compact)
+  { i: "persona",     x: 0, y: 0,  w: 4, h: 4, minW: 3, minH: 2 },
+  // Col 1: Agent Image (mid-left)
+  { i: "avatar",      x: 0, y: 4,  w: 4, h: 4, minW: 3, minH: 3 },
+  // Col 1: ENV. Satisfaction (bottom-left)
+  { i: "envsat",      x: 0, y: 8,  w: 4, h: 5, minW: 3, minH: 3 },
+  // Col 2: Agent (top-center, tall)
+  { i: "agent",       x: 4, y: 0,  w: 4, h: 5, minW: 3, minH: 3 },
+  // Col 2: Perceptual Load (mid-center)
+  { i: "perceptual",  x: 4, y: 5,  w: 4, h: 4, minW: 3, minH: 3 },
+  // Col 3: Spatial (top-right)
+  { i: "spatial",     x: 8, y: 0,  w: 4, h: 4, minW: 3, minH: 2 },
+  // Col 3: Position (mid-right)
+  { i: "position",    x: 8, y: 4,  w: 4, h: 3, minW: 3, minH: 2 },
+  // Col 3: Computed (mid-right, below position)
+  { i: "computed",    x: 8, y: 7,  w: 4, h: 4, minW: 3, minH: 3 },
+  // Bottom: Environment (spans center + right)
+  { i: "environment", x: 4, y: 9,  w: 8, h: 4, minW: 4, minH: 3 },
+];
+
+function getStoredLayout(): Layout | null {
+  try {
+    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Layout;
+      // Validate it has all required keys
+      const requiredKeys = DEFAULT_LAYOUT.map(item => item.i);
+      const hasAll = requiredKeys.every(k => parsed.some(p => p.i === k));
+      if (hasAll) return parsed;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function saveLayout(layout: Layout) {
+  try {
+    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+  } catch { /* ignore */ }
+}
+
+// ================================================================
 // Main Component
 // ================================================================
 
@@ -533,6 +583,27 @@ export default function PersonaMindMap({
   agentPlaced?: boolean;
 }) {
   const { agent, position, environment, spatial } = persona;
+
+  // ── Edit Layout Mode ──
+  const [editMode, setEditMode] = useState(false);
+  const [currentLayout, setCurrentLayout] = useState<Layout>(() => {
+    return getStoredLayout() || DEFAULT_LAYOUT.map(item => ({ ...item }));
+  });
+
+  const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 800 });
+
+  const handleLayoutChange = useCallback((newLayout: Layout) => {
+    setCurrentLayout(newLayout);
+    if (editMode) {
+      saveLayout(newLayout);
+    }
+  }, [editMode]);
+
+  const handleResetLayout = useCallback(() => {
+    const fresh = DEFAULT_LAYOUT.map(item => ({ ...item }));
+    setCurrentLayout(fresh);
+    saveLayout(fresh);
+  }, []);
 
   const updateAgent = useCallback((key: string, val: string) => {
     const parsed = ["age", "metabolic_rate", "clothing_insulation"].includes(key) ? parseFloat(val) || 0 : val;
@@ -576,335 +647,407 @@ export default function PersonaMindMap({
 
   const accentColor = personaColor?.primary || "var(--primary)";
 
-  return (
-    <div className="w-full" style={{ maxWidth: "900px", margin: "0 auto" }}>
-      {/* ============================================================ */}
-      {/* MAIN GRID: 3 columns × 5 rows (square layout)               */}
-      {/* Col 1: Persona | Avatar | ENV.Satisfaction                  */}
-      {/* Col 2: Agent   | Perceptual Load | Environment              */}
-      {/* Col 3: Spatial | Position | Computed                        */}
-      {/* ============================================================ */}
+  // ── Grid item wrapper with edit-mode styling ──
+  const GridBlock = useMemo(() => {
+    return ({ children, editHighlight }: { children: ReactNode; editHighlight?: boolean }) => (
       <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr 1fr",
-        gridTemplateRows: "auto auto auto auto auto",
-        gap: "12px",
-        alignItems: "stretch",
-        aspectRatio: "1 / 1",
+        height: "100%",
+        overflow: "auto",
+        borderRadius: "var(--radius-md)",
+        outline: editMode ? "2px dashed var(--primary)" : "none",
+        outlineOffset: editMode ? "-1px" : "0",
+        opacity: editMode && editHighlight ? 0.95 : 1,
+        transition: "outline 0.2s ease",
       }}>
+        {children}
+      </div>
+    );
+  }, [editMode]);
 
-        {/* ── R1 LEFT: PERSONA ── */}
-        <div style={{ gridColumn: "1", gridRow: "1", overflow: "auto" }}>
-          <SectionTag label="PERSONA" icon="●" color={accentColor} />
-          <Panel>
-            <DataRow label="Name">
-              <EditableField value={agent.id} onChange={(v) => updateAgent("id", v)} type="text" />
-            </DataRow>
-            <DataRow label="Age">
-              <EditableField value={agent.age} onChange={(v) => updateAgent("age", v)} type="number" />
-            </DataRow>
-            <DataRow label="Gender">
-              <EditableField value={agent.gender} onChange={(v) => updateAgent("gender", v)} type="select"
-                options={[{ value: "female", label: "Female" }, { value: "male", label: "Male" }]} />
-            </DataRow>
-            <DataRow label="MBTI">
-              <EditableField value={agent.mbti} onChange={(v) => updateAgent("mbti", v)} type="select" options={mbtiOptions} />
-            </DataRow>
-            <DataRow label="Mobility">
-              <EditableField value={agent.mobility} onChange={(v) => updateAgent("mobility", v)} type="select"
-                options={[
-                  { value: "normal", label: "Normal" }, { value: "walker", label: "Walker" },
-                  { value: "wheelchair", label: "Wheelchair" }, { value: "cane", label: "Cane" },
-                ]} />
-            </DataRow>
-            <DataRow label="Hearing">
-              <EditableField value={agent.hearing} onChange={(v) => updateAgent("hearing", v)} type="select"
-                options={[
-                  { value: "normal", label: "Normal" }, { value: "impaired", label: "Impaired" },
-                  { value: "deaf", label: "Deaf" },
-                ]} />
-            </DataRow>
-            <DataRow label="Vision">
-              <EditableField value={agent.vision} onChange={(v) => updateAgent("vision", v)} type="select"
-                options={[
-                  { value: "normal", label: "Normal" },
-                  { value: "mild_impairment", label: "Mild Impairment" },
-                  { value: "severe_impairment", label: "Severe Impairment" },
-                ]} />
-            </DataRow>
-            <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
-              <SliderField label="Met Rate" value={agent.metabolic_rate} min={0.8} max={4} step={0.05}
-                onChange={(v) => updateAgent("metabolic_rate", String(v))} color={accentColor} />
-              <SliderField label="Clothing (Clo)" value={agent.clothing_insulation} min={0} max={2} step={0.05}
-                onChange={(v) => updateAgent("clothing_insulation", String(v))} color={accentColor} />
-            </div>
-          </Panel>
+  return (
+    <div className="w-full" ref={containerRef}>
+      {/* ── Edit Layout Toolbar ── */}
+      <div className="flex items-center justify-between mb-3 px-1">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setEditMode(!editMode)}
+            className={`sa-tool-btn ${editMode ? "sa-tool-btn-active" : ""}`}
+            style={{ fontSize: "11px", padding: "5px 12px" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+            </svg>
+            {editMode ? "Done Editing" : "Edit Layout"}
+          </button>
+          {editMode && (
+            <button
+              onClick={handleResetLayout}
+              className="sa-tool-btn"
+              style={{ fontSize: "11px", padding: "5px 12px" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+              Reset Layout
+            </button>
+          )}
         </div>
+        {editMode && (
+          <span className="text-xs" style={{ color: "var(--muted-foreground)", fontStyle: "italic" }}>
+            Drag blocks to reposition, resize from corners
+          </span>
+        )}
+      </div>
 
-        {/* ── R2-3 LEFT: AVATAR ── */}
-        <div style={{ gridColumn: "1", gridRow: "2 / 4" }}>
-          <Panel className="flex items-center justify-center" style={{ minHeight: 200 }}>
-            <AgentAvatar persona={persona} color={accentColor} size={180} />
-          </Panel>
-        </div>
-
-        {/* ── R4-5 LEFT: ENV. SATISFACTION ── */}
-        <div style={{ gridColumn: "1", gridRow: "4 / 6" }}>
-          <SectionTag label="ENV. SATISFACTION" icon="◌" color="#1D6B5E" />
-          <Panel>
-            <p className="text-xs italic mb-2" style={{ color: "var(--foreground)", lineHeight: 1.6, fontSize: "11px" }}>
-              "{experience.summary}"
-            </p>
-            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-              <span className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{
-                background: getComfortColor(experience.comfort_score).bg,
-                color: getComfortColor(experience.comfort_score).text,
-                boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
-                letterSpacing: "0.5px", fontSize: "10px",
-              }}>
-                COMFORT {experience.comfort_score}/10
-              </span>
-              {comfortDelta !== null && Math.abs(comfortDelta) >= 0.1 && (
-                <span className="text-xs font-bold px-2 py-1.5 rounded-lg" style={{
-                  background: comfortDelta > 0 ? "#1D6B5E" : "#C44040",
-                  color: "#FFFFFF", boxShadow: "0 2px 6px rgba(0,0,0,0.12)", fontSize: "10px",
-                }}>
-                  {comfortDelta > 0 ? "+" : ""}{comfortDelta.toFixed(1)}
-                </span>
-              )}
-              <span className="text-xs font-semibold px-2 py-1.5 rounded-lg" style={{
-                background: "var(--muted)", color: getTrendInfo(experience.trend).color,
-                border: "1px solid var(--border)", fontSize: "10px",
-              }}>
-                {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
-              </span>
-            </div>
-            {ruleTriggers.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1 mb-2">
-                {ruleTriggers.map((t) => (
-                  <span key={t} className="sa-tag" style={{ fontSize: "9px" }}>{t}</span>
-                ))}
-              </div>
-            )}
-            <InterventionArrow />
-          </Panel>
-        </div>
-
-        {/* ── R1-2 CENTER: AGENT ── */}
-        <div style={{ gridColumn: "2", gridRow: "1 / 3" }}>
-          <SectionTag label="AGENT" icon="◆" color={accentColor} />
-          <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
-                style={{ background: accentColor, color: "#fff" }}>
-                {agent.id.replace("persona_", "P")}
-              </div>
-              <div>
-                <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{agent.id}</div>
-                <div className="text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
-                  {agent.age}{agent.gender === "female" ? "F" : "M"} · {agent.mobility} · {agent.mbti}
+      {/* ── Main Grid ── */}
+      {mounted && (
+        <ResponsiveGridLayout
+          className="mindmap-grid"
+          width={width}
+          layouts={{ lg: currentLayout }}
+          breakpoints={{ lg: 0 }}
+          cols={{ lg: GRID_COLS }}
+          rowHeight={ROW_HEIGHT}
+          margin={[8, 8] as const}
+          containerPadding={[0, 0] as const}
+          dragConfig={{ enabled: editMode, cancel: ".no-drag" }}
+          resizeConfig={{ enabled: editMode, handles: ["se", "sw", "ne", "nw"] }}
+          onLayoutChange={(layout: Layout) => handleLayoutChange(layout)}
+        >
+          {/* ── PERSONA ── */}
+          <div key="persona">
+            <GridBlock>
+              <SectionTag label="PERSONA" icon="●" color={accentColor} />
+              <Panel>
+                <DataRow label="Name">
+                  <EditableField value={agent.id} onChange={(v) => updateAgent("id", v)} type="text" />
+                </DataRow>
+                <DataRow label="Age">
+                  <EditableField value={agent.age} onChange={(v) => updateAgent("age", v)} type="number" />
+                </DataRow>
+                <DataRow label="Gender">
+                  <EditableField value={agent.gender} onChange={(v) => updateAgent("gender", v)} type="select"
+                    options={[{ value: "female", label: "Female" }, { value: "male", label: "Male" }]} />
+                </DataRow>
+                <DataRow label="MBTI">
+                  <EditableField value={agent.mbti} onChange={(v) => updateAgent("mbti", v)} type="select" options={mbtiOptions} />
+                </DataRow>
+                <DataRow label="Mobility">
+                  <EditableField value={agent.mobility} onChange={(v) => updateAgent("mobility", v)} type="select"
+                    options={[
+                      { value: "normal", label: "Normal" }, { value: "walker", label: "Walker" },
+                      { value: "wheelchair", label: "Wheelchair" }, { value: "cane", label: "Cane" },
+                    ]} />
+                </DataRow>
+                <DataRow label="Hearing">
+                  <EditableField value={agent.hearing} onChange={(v) => updateAgent("hearing", v)} type="select"
+                    options={[
+                      { value: "normal", label: "Normal" }, { value: "impaired", label: "Impaired" },
+                      { value: "deaf", label: "Deaf" },
+                    ]} />
+                </DataRow>
+                <DataRow label="Vision">
+                  <EditableField value={agent.vision} onChange={(v) => updateAgent("vision", v)} type="select"
+                    options={[
+                      { value: "normal", label: "Normal" },
+                      { value: "mild_impairment", label: "Mild Impairment" },
+                      { value: "severe_impairment", label: "Severe Impairment" },
+                    ]} />
+                </DataRow>
+                <div className="mt-2 pt-2 no-drag" style={{ borderTop: "1px solid var(--border)" }}>
+                  <SliderField label="Met Rate" value={agent.metabolic_rate} min={0.8} max={4} step={0.05}
+                    onChange={(v) => updateAgent("metabolic_rate", String(v))} color={accentColor} />
+                  <SliderField label="Clothing (Clo)" value={agent.clothing_insulation} min={0} max={2} step={0.05}
+                    onChange={(v) => updateAgent("clothing_insulation", String(v))} color={accentColor} />
                 </div>
-              </div>
-            </div>
+              </Panel>
+            </GridBlock>
+          </div>
 
-            {/* Summary stat tiles */}
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: "Met", value: agent.metabolic_rate.toFixed(1) },
-                { label: "Clo", value: agent.clothing_insulation.toFixed(1) },
-                {
-                  label: "Vision",
-                  value: agent.vision === "normal" ? "OK"
-                    : agent.vision === "mild_impairment" ? "Mild" : "Severe",
-                },
-              ].map((item) => (
-                <div key={item.label} className="p-2 text-center rounded-lg" style={{
-                  background: "var(--muted)", border: "1px solid var(--border)",
-                }}>
-                  <div style={{ color: "var(--muted-foreground)", fontWeight: 600, fontSize: "10px" }}>{item.label}</div>
-                  <div style={{
-                    color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace",
-                    fontWeight: 700, fontSize: "14px", marginTop: 2,
-                  }}>{item.value}</div>
-                </div>
-              ))}
-            </div>
+          {/* ── AVATAR ── */}
+          <div key="avatar">
+            <GridBlock>
+              <Panel className="flex items-center justify-center" style={{ minHeight: 160, height: "100%" }}>
+                <AgentAvatar persona={persona} color={accentColor} size={150} />
+              </Panel>
+            </GridBlock>
+          </div>
 
-            {/* Comfort badge */}
-            <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
-                  Current Respond
-                </span>
-                <div className="flex items-center gap-2">
-                  {hasSimulated ? (
-                    <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{
-                      background: getComfortColor(experience.comfort_score).bg,
-                      color: getComfortColor(experience.comfort_score).text,
-                      fontFamily: "'JetBrains Mono', monospace",
+          {/* ── ENV. SATISFACTION ── */}
+          <div key="envsat">
+            <GridBlock>
+              <SectionTag label="ENV. SATISFACTION" icon="◌" color="#1D6B5E" />
+              <Panel>
+                <p className="text-xs italic mb-2" style={{ color: "var(--foreground)", lineHeight: 1.6, fontSize: "11px" }}>
+                  "{experience.summary}"
+                </p>
+                <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                  <span className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{
+                    background: getComfortColor(experience.comfort_score).bg,
+                    color: getComfortColor(experience.comfort_score).text,
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+                    letterSpacing: "0.5px", fontSize: "10px",
+                  }}>
+                    COMFORT {experience.comfort_score}/10
+                  </span>
+                  {comfortDelta !== null && Math.abs(comfortDelta) >= 0.1 && (
+                    <span className="text-xs font-bold px-2 py-1.5 rounded-lg" style={{
+                      background: comfortDelta > 0 ? "#1D6B5E" : "#C44040",
+                      color: "#FFFFFF", boxShadow: "0 2px 6px rgba(0,0,0,0.12)", fontSize: "10px",
                     }}>
-                      {experience.comfort_score}/10
-                    </span>
-                  ) : (
-                    <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                      Waiting for calculation... Click "Calculate Current Respond" to generate experience narrative.
+                      {comfortDelta > 0 ? "+" : ""}{comfortDelta.toFixed(1)}
                     </span>
                   )}
-                  <span className="text-xs px-2 py-1 rounded-lg" style={{
-                    background: "var(--muted)", border: "1px solid var(--border)",
-                    color: getTrendInfo(experience.trend).color, fontSize: "10px",
+                  <span className="text-xs font-semibold px-2 py-1.5 rounded-lg" style={{
+                    background: "var(--muted)", color: getTrendInfo(experience.trend).color,
+                    border: "1px solid var(--border)", fontSize: "10px",
                   }}>
                     {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
                   </span>
                 </div>
-              </div>
-            </div>
-          </Panel>
-        </div>
-
-        {/* ── R3-4 CENTER: PERCEPTUAL LOAD ── */}
-        <div style={{ gridColumn: "2", gridRow: "3 / 5" }}>
-          <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
-          <Panel>
-            <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
-            <LoadBar label="Visual"  value={accumulatedState.visual_strain}      prevValue={prevAccumulatedState?.visual_strain} />
-            <LoadBar label="Noise"   value={accumulatedState.noise_stress}       prevValue={prevAccumulatedState?.noise_stress} />
-            <LoadBar label="Social"  value={accumulatedState.social_overload}    prevValue={prevAccumulatedState?.social_overload} />
-            <LoadBar label="Fatigue" value={accumulatedState.fatigue}            prevValue={prevAccumulatedState?.fatigue} />
-            <LoadBar label="Wayfind." value={accumulatedState.wayfinding_anxiety} prevValue={prevAccumulatedState?.wayfinding_anxiety} />
-          </Panel>
-        </div>
-
-        {/* ── R1 RIGHT: SPATIAL ── */}
-        <div style={{ gridColumn: "3", gridRow: "1" }}>
-          <SectionTag label="SPATIAL" icon="□" color="#D4A017" />
-          <Panel>
-            <StaticRow label="→ Wall"
-              value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : spatial.dist_to_wall}
-              unit={!agentPlaced || spatial.dist_to_wall < 0 ? undefined : "m"} />
-            <StaticRow label="→ Window"
-              value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : spatial.dist_to_window}
-              unit={!agentPlaced || spatial.dist_to_window < 0 ? undefined : "m"} />
-            <StaticRow label="→ Exit"
-              value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : spatial.dist_to_exit}
-              unit={!agentPlaced || spatial.dist_to_exit < 0 ? undefined : "m"} />
-            <DataRow label="Ceiling">
-              <EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" />
-            </DataRow>
-            <StaticRow label="Enclosure" value={!agentPlaced ? "—" : spatial.enclosure_ratio} />
-            <StaticRow label="Vis. Agents" value={!agentPlaced ? "—" : spatial.visible_agents} />
-            <div className="mt-1 text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-              Auto-calculated from map
-            </div>
-          </Panel>
-        </div>
-
-        {/* ── R2 RIGHT: POSITION ── */}
-        <div style={{ gridColumn: "3", gridRow: "2" }}>
-          <SectionTag label="POSITION" icon="◇" color="#D4A017" />
-          <Panel>
-            <StaticRow label="Cell" value={`[${position.cell[0]}, ${position.cell[1]}]`} />
-            <DataRow label="Time">
-              <EditableField value={position.timestamp} onChange={(v) => updatePosition("timestamp", v)} type="time" />
-            </DataRow>
-            <DataRow label="Duration">
-              <EditableField value={position.duration_in_cell} onChange={(v) => updatePosition("duration_in_cell", v)} suffix="min" />
-            </DataRow>
-          </Panel>
-        </div>
-
-        {/* ── R3-4 RIGHT: COMPUTED ── */}
-        <div style={{ gridColumn: "3", gridRow: "3 / 5" }}>
-          <SectionTag label="COMPUTED" icon="⊕" color="#1D6B5E" />
-          <Panel>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: "PMV",     value: computedOutputs.PMV,           tooltip: "Predicted Mean Vote (ISO 7730)" },
-                { label: "PPD",     value: `${computedOutputs.PPD}%`,     tooltip: "Predicted Percentage Dissatisfied" },
-                { label: "Eff. Lux", value: computedOutputs.effective_lux, tooltip: "Vision-adjusted illuminance" },
-                { label: "Pr. dB",  value: computedOutputs.perceived_dB,  tooltip: "Hearing-adjusted noise" },
-              ].map((item) => (
-                <div key={item.label} className="p-2 text-center rounded-lg" title={item.tooltip}
-                  style={{ background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)" }}>
-                  <div className="font-semibold" style={{ color: "var(--muted-foreground)", letterSpacing: "0.5px", fontSize: "10px" }}>
-                    {item.label}
+                {ruleTriggers.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1 mb-2">
+                    {ruleTriggers.map((t) => (
+                      <span key={t} className="sa-tag" style={{ fontSize: "9px" }}>{t}</span>
+                    ))}
                   </div>
-                  <div className="font-bold mt-0.5" style={{
-                    color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace", fontSize: "18px",
-                  }}>
-                    {item.value}
+                )}
+                <InterventionArrow />
+              </Panel>
+            </GridBlock>
+          </div>
+
+          {/* ── AGENT ── */}
+          <div key="agent">
+            <GridBlock>
+              <SectionTag label="AGENT" icon="◆" color={accentColor} />
+              <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
+                {/* Header */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
+                    style={{ background: accentColor, color: "#fff" }}>
+                    {agent.id.replace("persona_", "P")}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{agent.id}</div>
+                    <div className="text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
+                      {agent.age}{agent.gender === "female" ? "F" : "M"} · {agent.mobility} · {agent.mbti}
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-            <PMVWarnings computedOutputs={computedOutputs} />
-            <div className="mt-2 text-xs text-center" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-              PMV/PPD: ISO 7730 Fanger Model
-            </div>
-            <FormulaModal />
-          </Panel>
-        </div>
 
-        {/* ── R5 BOTTOM: ENVIRONMENT (col 2–3) ── */}
-        <div style={{ gridColumn: "2 / 4", gridRow: "5" }}>
-          <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
-          <Panel>
-            {!agentPlaced && (
-              <div className="text-xs text-center py-4 px-2 rounded-lg mb-3" style={{
-                background: "#FFF8E1", border: "1px solid #E8D48A", color: "#8A6D00",
-              }}>
-                Agent not placed on map — showing default values
-              </div>
-            )}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-              {/* Sliders */}
-              <div>
-                <SliderField label="Light (Lux)" value={environment.lux} min={0} max={2000} step={10}
-                  onChange={(v) => updateEnv("lux", String(v))} color="#D4A017" />
-                <SliderField label="Noise (dB)" value={environment.dB} min={0} max={120} step={1} suffix="dB"
-                  onChange={(v) => updateEnv("dB", String(v))} color="#C44040" />
-                <SliderField label="Temperature" value={environment.air_temp} min={10} max={35} step={0.5} suffix="°C"
-                  onChange={(v) => updateEnv("air_temp", String(v))} color="#1D6B5E" />
-                <SliderField label="Humidity" value={environment.humidity} min={0} max={100} step={1} suffix="%"
-                  onChange={(v) => updateEnv("humidity", String(v))} color="#4A90B8" />
-                <SliderField label="Air Velocity" value={environment.air_velocity} min={0} max={2} step={0.01} suffix="m/s"
-                  onChange={(v) => updateEnv("air_velocity", String(v))} color="#2E8B6A" />
-              </div>
-              {/* Summary tiles */}
-              <div>
-                <div className="grid grid-cols-2 gap-2">
+                {/* Summary stat tiles */}
+                <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: "Light",    value: `${environment.lux}`,       unit: "lux", color: "#D4A017" },
-                    { label: "Noise",    value: `${environment.dB}`,        unit: "dB",  color: "#C44040" },
-                    { label: "Temp",     value: `${environment.air_temp}`,  unit: "°C",  color: "#1D6B5E" },
-                    { label: "Humidity", value: `${environment.humidity}`,  unit: "%",   color: "#4A90B8" },
+                    { label: "Met", value: agent.metabolic_rate.toFixed(1) },
+                    { label: "Clo", value: agent.clothing_insulation.toFixed(1) },
+                    {
+                      label: "Vision",
+                      value: agent.vision === "normal" ? "OK"
+                        : agent.vision === "mild_impairment" ? "Mild" : "Severe",
+                    },
                   ].map((item) => (
                     <div key={item.label} className="p-2 text-center rounded-lg" style={{
                       background: "var(--muted)", border: "1px solid var(--border)",
                     }}>
-                      <div style={{ color: item.color, fontSize: "9px", fontWeight: 700, letterSpacing: "0.5px" }}>
+                      <div style={{ color: "var(--muted-foreground)", fontWeight: 600, fontSize: "10px" }}>{item.label}</div>
+                      <div style={{
+                        color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace",
+                        fontWeight: 700, fontSize: "14px", marginTop: 2,
+                      }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Comfort badge */}
+                <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
+                      Current Respond
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {hasSimulated ? (
+                        <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{
+                          background: getComfortColor(experience.comfort_score).bg,
+                          color: getComfortColor(experience.comfort_score).text,
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>
+                          {experience.comfort_score}/10
+                        </span>
+                      ) : (
+                        <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                          Waiting for calculation... Click "Calculate Current Respond" to generate experience narrative.
+                        </span>
+                      )}
+                      <span className="text-xs px-2 py-1 rounded-lg" style={{
+                        background: "var(--muted)", border: "1px solid var(--border)",
+                        color: getTrendInfo(experience.trend).color, fontSize: "10px",
+                      }}>
+                        {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+            </GridBlock>
+          </div>
+
+          {/* ── PERCEPTUAL LOAD ── */}
+          <div key="perceptual">
+            <GridBlock>
+              <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
+              <Panel>
+                <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
+                <LoadBar label="Visual"  value={accumulatedState.visual_strain}      prevValue={prevAccumulatedState?.visual_strain} />
+                <LoadBar label="Noise"   value={accumulatedState.noise_stress}       prevValue={prevAccumulatedState?.noise_stress} />
+                <LoadBar label="Social"  value={accumulatedState.social_overload}    prevValue={prevAccumulatedState?.social_overload} />
+                <LoadBar label="Fatigue" value={accumulatedState.fatigue}            prevValue={prevAccumulatedState?.fatigue} />
+                <LoadBar label="Wayfind." value={accumulatedState.wayfinding_anxiety} prevValue={prevAccumulatedState?.wayfinding_anxiety} />
+              </Panel>
+            </GridBlock>
+          </div>
+
+          {/* ── SPATIAL ── */}
+          <div key="spatial">
+            <GridBlock>
+              <SectionTag label="SPATIAL" icon="□" color="#D4A017" />
+              <Panel>
+                <StaticRow label="→ Wall"
+                  value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : spatial.dist_to_wall}
+                  unit={!agentPlaced || spatial.dist_to_wall < 0 ? undefined : "m"} />
+                <StaticRow label="→ Window"
+                  value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : spatial.dist_to_window}
+                  unit={!agentPlaced || spatial.dist_to_window < 0 ? undefined : "m"} />
+                <StaticRow label="→ Exit"
+                  value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : spatial.dist_to_exit}
+                  unit={!agentPlaced || spatial.dist_to_exit < 0 ? undefined : "m"} />
+                <DataRow label="Ceiling">
+                  <EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" />
+                </DataRow>
+                <StaticRow label="Enclosure" value={!agentPlaced ? "—" : spatial.enclosure_ratio} />
+                <StaticRow label="Vis. Agents" value={!agentPlaced ? "—" : spatial.visible_agents} />
+                <div className="mt-1 text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
+                  Auto-calculated from map
+                </div>
+              </Panel>
+            </GridBlock>
+          </div>
+
+          {/* ── POSITION ── */}
+          <div key="position">
+            <GridBlock>
+              <SectionTag label="POSITION" icon="◇" color="#D4A017" />
+              <Panel>
+                <StaticRow label="Cell" value={`[${position.cell[0]}, ${position.cell[1]}]`} />
+                <DataRow label="Time">
+                  <EditableField value={position.timestamp} onChange={(v) => updatePosition("timestamp", v)} type="time" />
+                </DataRow>
+                <DataRow label="Duration">
+                  <EditableField value={position.duration_in_cell} onChange={(v) => updatePosition("duration_in_cell", v)} suffix="min" />
+                </DataRow>
+              </Panel>
+            </GridBlock>
+          </div>
+
+          {/* ── COMPUTED ── */}
+          <div key="computed">
+            <GridBlock>
+              <SectionTag label="COMPUTED" icon="⊕" color="#1D6B5E" />
+              <Panel>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "PMV",     value: computedOutputs.PMV,           tooltip: "Predicted Mean Vote (ISO 7730)" },
+                    { label: "PPD",     value: `${computedOutputs.PPD}%`,     tooltip: "Predicted Percentage Dissatisfied" },
+                    { label: "Eff. Lux", value: computedOutputs.effective_lux, tooltip: "Vision-adjusted illuminance" },
+                    { label: "Pr. dB",  value: computedOutputs.perceived_dB,  tooltip: "Hearing-adjusted noise" },
+                  ].map((item) => (
+                    <div key={item.label} className="p-2 text-center rounded-lg" title={item.tooltip}
+                      style={{ background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)" }}>
+                      <div className="font-semibold" style={{ color: "var(--muted-foreground)", letterSpacing: "0.5px", fontSize: "10px" }}>
                         {item.label}
                       </div>
-                      <div style={{
-                        fontFamily: "'JetBrains Mono', monospace", fontWeight: 700,
-                        fontSize: "16px", color: "var(--foreground)",
+                      <div className="font-bold mt-0.5" style={{
+                        color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace", fontSize: "18px",
                       }}>
                         {item.value}
-                        <span style={{ fontSize: "10px", color: "var(--muted-foreground)", marginLeft: 2 }}>{item.unit}</span>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="mt-2 text-center" style={{ fontSize: "9px", color: "var(--muted-foreground)" }}>
-                  Air Velocity: {environment.air_velocity} m/s · From zone data
+                <PMVWarnings computedOutputs={computedOutputs} />
+                <div className="mt-2 text-xs text-center" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
+                  PMV/PPD: ISO 7730 Fanger Model
                 </div>
-              </div>
-            </div>
-          </Panel>
-        </div>
+                <div className="no-drag">
+                  <FormulaModal />
+                </div>
+              </Panel>
+            </GridBlock>
+          </div>
 
-      </div>
+          {/* ── ENVIRONMENT ── */}
+          <div key="environment">
+            <GridBlock>
+              <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
+              <Panel>
+                {!agentPlaced && (
+                  <div className="text-xs text-center py-4 px-2 rounded-lg mb-3" style={{
+                    background: "#FFF8E1", border: "1px solid #E8D48A", color: "#8A6D00",
+                  }}>
+                    Agent not placed on map — showing default values
+                  </div>
+                )}
+                <div className="no-drag" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  {/* Sliders */}
+                  <div>
+                    <SliderField label="Light (Lux)" value={environment.lux} min={0} max={2000} step={10}
+                      onChange={(v) => updateEnv("lux", String(v))} color="#D4A017" />
+                    <SliderField label="Noise (dB)" value={environment.dB} min={0} max={120} step={1} suffix="dB"
+                      onChange={(v) => updateEnv("dB", String(v))} color="#C44040" />
+                    <SliderField label="Temperature" value={environment.air_temp} min={10} max={35} step={0.5} suffix="°C"
+                      onChange={(v) => updateEnv("air_temp", String(v))} color="#1D6B5E" />
+                    <SliderField label="Humidity" value={environment.humidity} min={0} max={100} step={1} suffix="%"
+                      onChange={(v) => updateEnv("humidity", String(v))} color="#4A90B8" />
+                    <SliderField label="Air Velocity" value={environment.air_velocity} min={0} max={2} step={0.01} suffix="m/s"
+                      onChange={(v) => updateEnv("air_velocity", String(v))} color="#2E8B6A" />
+                  </div>
+                  {/* Summary tiles */}
+                  <div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Light",    value: `${environment.lux}`,       unit: "lux", color: "#D4A017" },
+                        { label: "Noise",    value: `${environment.dB}`,        unit: "dB",  color: "#C44040" },
+                        { label: "Temp",     value: `${environment.air_temp}`,  unit: "°C",  color: "#1D6B5E" },
+                        { label: "Humidity", value: `${environment.humidity}`,  unit: "%",   color: "#4A90B8" },
+                      ].map((item) => (
+                        <div key={item.label} className="p-2 text-center rounded-lg" style={{
+                          background: "var(--muted)", border: "1px solid var(--border)",
+                        }}>
+                          <div style={{ color: item.color, fontSize: "9px", fontWeight: 700, letterSpacing: "0.5px" }}>
+                            {item.label}
+                          </div>
+                          <div style={{
+                            fontFamily: "'JetBrains Mono', monospace", fontWeight: 700,
+                            fontSize: "16px", color: "var(--foreground)",
+                          }}>
+                            {item.value}
+                            <span style={{ fontSize: "10px", color: "var(--muted-foreground)", marginLeft: 2 }}>{item.unit}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-center" style={{ fontSize: "9px", color: "var(--muted-foreground)" }}>
+                      Air Velocity: {environment.air_velocity} m/s · From zone data
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+            </GridBlock>
+          </div>
+        </ResponsiveGridLayout>
+      )}
     </div>
   );
 }
