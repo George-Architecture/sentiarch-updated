@@ -1,8 +1,8 @@
 // ============================================================
-// PersonaMindMap Component — Merged Version
-// Layout: 12-column Tailwind grid (from old version)
-// Style: beige/teal CSS variables (from current version)
-// Features: All current functionality preserved
+// PersonaMindMap Component — Merged Version v2
+// Layout: 12-column Tailwind grid with independent Avatar row
+// Style: beige/teal CSS variables
+// Avatar: Pixel art SVG with 36 variants (6 mobility × 3 age × 2 gender)
 // ============================================================
 
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
@@ -22,118 +22,658 @@ import {
 } from "@/components/ui/dialog";
 
 // ================================================================
-// SVG Agent Avatars (current style)
+// Pixel Art SVG Avatar System — 36 variants
+// Axes: age (child/young/elderly) × gender (male/female) × mobility
+// Mobility: normal, wheelchair, cane, blind, blind_wheelchair, blind_cane
 // ================================================================
 
-function AgentAvatar({ persona, color, size = 180 }: {
+// Helper: draw a single pixel rect
+function Px({ x, y, c, s = 1 }: { x: number; y: number; c: string; s?: number }) {
+  return <rect x={x * 4} y={y * 4} width={4 * s} height={4} fill={c} />;
+}
+
+// Color palettes per variant
+const PALETTES = {
+  male_young: { skin: "#F2C5A0", hair: "#5B3A29", shirt: "#3B6EA5", pants: "#3A4A5C", shoe: "#2C2C2C" },
+  female_young: { skin: "#F2C5A0", hair: "#8B4513", shirt: "#C75B7A", pants: "#4A4A6A", shoe: "#4A3030" },
+  male_child: { skin: "#F5D0B0", hair: "#6B4226", shirt: "#5B9BD5", pants: "#6A7A8A", shoe: "#3C3C3C" },
+  female_child: { skin: "#F5D0B0", hair: "#A0522D", shirt: "#E8829B", pants: "#7A6A9A", shoe: "#5A3A4A" },
+  male_elderly: { skin: "#E8B890", hair: "#C0C0C0", shirt: "#6B7B5A", pants: "#5A5A5A", shoe: "#3A3A3A" },
+  female_elderly: { skin: "#E8B890", hair: "#D3D3D3", shirt: "#8B6B7A", pants: "#5A5A6A", shoe: "#4A3A3A" },
+};
+
+// Determine avatar variant from persona data
+function getAvatarVariant(agent: PersonaData["agent"]): {
+  ageGroup: "child" | "young" | "elderly";
+  gender: "male" | "female";
+  mobility: "normal" | "wheelchair" | "cane" | "blind" | "blind_wheelchair" | "blind_cane";
+} {
+  const ageGroup = agent.age < 18 ? "child" : agent.age >= 60 ? "elderly" : "young";
+  const gender = agent.gender === "female" ? "female" : "male";
+  const isBlind = agent.vision === "severe_impairment";
+
+  let mobility: "normal" | "wheelchair" | "cane" | "blind" | "blind_wheelchair" | "blind_cane";
+  if (isBlind && agent.mobility === "wheelchair") mobility = "blind_wheelchair";
+  else if (isBlind && (agent.mobility === "cane" || agent.mobility === "walker")) mobility = "blind_cane";
+  else if (isBlind) mobility = "blind";
+  else if (agent.mobility === "wheelchair") mobility = "wheelchair";
+  else if (agent.mobility === "cane" || agent.mobility === "walker") mobility = "cane";
+  else mobility = "normal";
+
+  return { ageGroup, gender, mobility };
+}
+
+function getLabel(v: ReturnType<typeof getAvatarVariant>): string {
+  const age = v.ageGroup === "child" ? "Child" : v.ageGroup === "elderly" ? "Elderly" : "Adult";
+  const gen = v.gender === "female" ? "F" : "M";
+  const mob = {
+    normal: "", wheelchair: " · WC", cane: " · Cane",
+    blind: " · Blind", blind_wheelchair: " · Blind+WC", blind_cane: " · Blind+Cane",
+  }[v.mobility];
+  return `${age} ${gen}${mob}`;
+}
+
+// ================================================================
+// Pixel Art Body Renderers
+// Each draws on a 32×40 pixel grid (rendered at 4x = 128×160)
+// ================================================================
+
+function PixelBody_Normal({ p, isChild, isElderly, isFemale }: {
+  p: typeof PALETTES.male_young; isChild: boolean; isElderly: boolean; isFemale: boolean;
+}) {
+  const headY = isChild ? 6 : 4;
+  const bodyY = headY + 7;
+  const legY = bodyY + (isChild ? 6 : 8);
+  const bodyH = isChild ? 6 : 8;
+  const headSize = isChild ? 5 : 6;
+  const bodyW = isChild ? 4 : 5;
+  const cx = 16;
+
+  return (
+    <g>
+      {/* Hair */}
+      {isFemale ? (
+        <>
+          {Array.from({ length: headSize + 2 }, (_, i) => (
+            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
+          ))}
+          {/* Long hair sides */}
+          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
+          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY + 1} c={p.hair} />
+          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY + 2} c={p.hair} />
+          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
+          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY + 1} c={p.hair} />
+          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY + 2} c={p.hair} />
+          {isFemale && !isChild && (
+            <>
+              <Px x={cx - Math.floor(headSize / 2) - 1} y={headY + 3} c={p.hair} />
+              <Px x={cx + Math.floor(headSize / 2) + 1} y={headY + 3} c={p.hair} />
+              <Px x={cx - Math.floor(headSize / 2) - 1} y={headY + 4} c={p.hair} />
+              <Px x={cx + Math.floor(headSize / 2) + 1} y={headY + 4} c={p.hair} />
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          {Array.from({ length: headSize }, (_, i) => (
+            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
+          ))}
+          {isElderly && (
+            <>
+              <Px x={cx - Math.floor(headSize / 2)} y={headY} c={p.hair} />
+              <Px x={cx + Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
+            </>
+          )}
+        </>
+      )}
+
+      {/* Head (skin) */}
+      {Array.from({ length: headSize }, (_, row) =>
+        Array.from({ length: headSize }, (_, col) => (
+          <Px key={`face${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
+        ))
+      )}
+      {/* Eyes */}
+      <Px x={cx - 1} y={headY + 2} c="#333" />
+      <Px x={cx + 1} y={headY + 2} c="#333" />
+
+      {/* Neck */}
+      <Px x={cx} y={headY + headSize} c={p.skin} />
+      <Px x={cx - 1} y={headY + headSize} c={p.skin} />
+
+      {/* Body / Torso */}
+      {Array.from({ length: bodyH }, (_, row) =>
+        Array.from({ length: bodyW }, (_, col) => (
+          <Px key={`body${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row}
+            c={isFemale && row >= bodyH - 2 ? p.pants : p.shirt} />
+        ))
+      )}
+
+      {/* Arms */}
+      {Array.from({ length: isChild ? 4 : 5 }, (_, i) => (
+        <Px key={`al${i}`} x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + i} c={p.skin} />
+      ))}
+      {Array.from({ length: isChild ? 4 : 5 }, (_, i) => (
+        <Px key={`ar${i}`} x={cx + Math.floor(bodyW / 2) + 1} y={bodyY + i} c={p.skin} />
+      ))}
+
+      {/* Elderly: hunched posture indicator */}
+      {isElderly && (
+        <>
+          <Px x={cx - Math.floor(bodyW / 2) - 2} y={bodyY + 2} c={p.skin} />
+          <Px x={cx + Math.floor(bodyW / 2) + 2} y={bodyY + 2} c={p.skin} />
+        </>
+      )}
+
+      {/* Legs */}
+      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
+        <Px key={`ll${i}`} x={cx - 1} y={legY + i} c={p.pants} />
+      ))}
+      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
+        <Px key={`lr${i}`} x={cx + 1} y={legY + i} c={p.pants} />
+      ))}
+
+      {/* Shoes */}
+      <Px x={cx - 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx - 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx + 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx + 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+    </g>
+  );
+}
+
+function PixelBody_Wheelchair({ p, isChild, isFemale }: {
+  p: typeof PALETTES.male_young; isChild: boolean; isFemale: boolean;
+}) {
+  const headY = isChild ? 4 : 2;
+  const headSize = isChild ? 5 : 6;
+  const cx = 16;
+  const bodyY = headY + headSize + 1;
+  const bodyH = isChild ? 5 : 6;
+  const bodyW = isChild ? 4 : 5;
+  const chairY = bodyY + bodyH - 1;
+
+  return (
+    <g>
+      {/* Hair */}
+      {isFemale ? (
+        <>
+          {Array.from({ length: headSize + 2 }, (_, i) => (
+            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
+          ))}
+          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
+          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
+          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY + 1} c={p.hair} />
+          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY + 1} c={p.hair} />
+        </>
+      ) : (
+        Array.from({ length: headSize }, (_, i) => (
+          <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
+        ))
+      )}
+
+      {/* Head */}
+      {Array.from({ length: headSize }, (_, row) =>
+        Array.from({ length: headSize }, (_, col) => (
+          <Px key={`f${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
+        ))
+      )}
+      <Px x={cx - 1} y={headY + 2} c="#333" />
+      <Px x={cx + 1} y={headY + 2} c="#333" />
+
+      {/* Neck */}
+      <Px x={cx} y={headY + headSize} c={p.skin} />
+
+      {/* Body (seated) */}
+      {Array.from({ length: bodyH }, (_, row) =>
+        Array.from({ length: bodyW }, (_, col) => (
+          <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row} c={p.shirt} />
+        ))
+      )}
+
+      {/* Arms */}
+      {Array.from({ length: 4 }, (_, i) => (
+        <Px key={`al${i}`} x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + i} c={p.skin} />
+      ))}
+      {Array.from({ length: 4 }, (_, i) => (
+        <Px key={`ar${i}`} x={cx + Math.floor(bodyW / 2) + 1} y={bodyY + i} c={p.skin} />
+      ))}
+
+      {/* Legs (bent, seated) */}
+      {Array.from({ length: 3 }, (_, i) => (
+        <Px key={`sl${i}`} x={cx - 1 - i} y={chairY + 1} c={p.pants} />
+      ))}
+      {Array.from({ length: 3 }, (_, i) => (
+        <Px key={`sr${i}`} x={cx + 1 + i} y={chairY + 1} c={p.pants} />
+      ))}
+
+      {/* Wheelchair frame */}
+      {/* Seat */}
+      {Array.from({ length: 9 }, (_, i) => (
+        <Px key={`seat${i}`} x={cx - 4 + i} y={chairY} c="#666" />
+      ))}
+      {/* Back */}
+      {Array.from({ length: 5 }, (_, i) => (
+        <Px key={`back${i}`} x={cx + 4} y={chairY - 4 + i} c="#666" />
+      ))}
+      {/* Wheels */}
+      {Array.from({ length: 3 }, (_, i) => (
+        <Px key={`wl${i}`} x={cx - 4 + i} y={chairY + 2} c="#444" />
+      ))}
+      {Array.from({ length: 3 }, (_, i) => (
+        <Px key={`wr${i}`} x={cx + 2 + i} y={chairY + 2} c="#444" />
+      ))}
+      <Px x={cx - 3} y={chairY + 3} c="#555" />
+      <Px x={cx + 3} y={chairY + 3} c="#555" />
+      {/* Axle dots */}
+      <Px x={cx - 3} y={chairY + 2} c="#888" />
+      <Px x={cx + 3} y={chairY + 2} c="#888" />
+
+      {/* Shoes */}
+      <Px x={cx - 3} y={chairY + 2} c={p.shoe} />
+      <Px x={cx + 3} y={chairY + 2} c={p.shoe} />
+    </g>
+  );
+}
+
+function PixelBody_Cane({ p, isChild, isElderly, isFemale }: {
+  p: typeof PALETTES.male_young; isChild: boolean; isElderly: boolean; isFemale: boolean;
+}) {
+  const headY = isChild ? 6 : 4;
+  const headSize = isChild ? 5 : 6;
+  const cx = 14; // shifted left to make room for cane
+  const bodyY = headY + headSize + 1;
+  const bodyH = isChild ? 6 : 8;
+  const bodyW = isChild ? 4 : 5;
+  const legY = bodyY + bodyH;
+
+  return (
+    <g>
+      {/* Hair */}
+      {isFemale ? (
+        <>
+          {Array.from({ length: headSize + 2 }, (_, i) => (
+            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
+          ))}
+          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
+          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
+        </>
+      ) : (
+        Array.from({ length: headSize }, (_, i) => (
+          <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
+        ))
+      )}
+
+      {/* Head */}
+      {Array.from({ length: headSize }, (_, row) =>
+        Array.from({ length: headSize }, (_, col) => (
+          <Px key={`f${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
+        ))
+      )}
+      <Px x={cx - 1} y={headY + 2} c="#333" />
+      <Px x={cx + 1} y={headY + 2} c="#333" />
+
+      {/* Neck */}
+      <Px x={cx} y={headY + headSize} c={p.skin} />
+
+      {/* Body (slightly hunched for elderly) */}
+      {Array.from({ length: bodyH }, (_, row) =>
+        Array.from({ length: bodyW }, (_, col) => (
+          <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col + (isElderly && row < 2 ? 1 : 0)} y={bodyY + row} c={p.shirt} />
+        ))
+      )}
+
+      {/* Left arm (holding cane) */}
+      <Px x={cx - Math.floor(bodyW / 2) - 1} y={bodyY} c={p.skin} />
+      <Px x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + 1} c={p.skin} />
+      {/* Right arm extended to cane */}
+      <Px x={cx + Math.floor(bodyW / 2) + 1} y={bodyY} c={p.skin} />
+      <Px x={cx + Math.floor(bodyW / 2) + 2} y={bodyY + 1} c={p.skin} />
+      <Px x={cx + Math.floor(bodyW / 2) + 3} y={bodyY + 2} c={p.skin} />
+
+      {/* Cane */}
+      {Array.from({ length: isChild ? 10 : 14 }, (_, i) => (
+        <Px key={`cane${i}`} x={cx + Math.floor(bodyW / 2) + 4} y={bodyY + 1 + i} c="#8B6914" />
+      ))}
+      {/* Cane handle */}
+      <Px x={cx + Math.floor(bodyW / 2) + 3} y={bodyY + 1} c="#8B6914" />
+      <Px x={cx + Math.floor(bodyW / 2) + 5} y={bodyY + 1} c="#8B6914" />
+
+      {/* Legs */}
+      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
+        <Px key={`ll${i}`} x={cx - 1} y={legY + i} c={p.pants} />
+      ))}
+      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
+        <Px key={`lr${i}`} x={cx + 1} y={legY + i} c={p.pants} />
+      ))}
+
+      {/* Shoes */}
+      <Px x={cx - 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx - 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx + 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx + 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+    </g>
+  );
+}
+
+function PixelBody_Blind({ p, isChild, isElderly, isFemale }: {
+  p: typeof PALETTES.male_young; isChild: boolean; isElderly: boolean; isFemale: boolean;
+}) {
+  const headY = isChild ? 6 : 4;
+  const headSize = isChild ? 5 : 6;
+  const cx = 14;
+  const bodyY = headY + headSize + 1;
+  const bodyH = isChild ? 6 : 8;
+  const bodyW = isChild ? 4 : 5;
+  const legY = bodyY + bodyH;
+
+  return (
+    <g>
+      {/* Hair */}
+      {isFemale ? (
+        <>
+          {Array.from({ length: headSize + 2 }, (_, i) => (
+            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
+          ))}
+          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
+          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
+        </>
+      ) : (
+        Array.from({ length: headSize }, (_, i) => (
+          <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
+        ))
+      )}
+
+      {/* Head */}
+      {Array.from({ length: headSize }, (_, row) =>
+        Array.from({ length: headSize }, (_, col) => (
+          <Px key={`f${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
+        ))
+      )}
+      {/* Sunglasses (dark band across eyes) */}
+      {Array.from({ length: headSize }, (_, i) => (
+        <Px key={`sg${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY + 2} c="#1A1A1A" />
+      ))}
+
+      {/* Neck */}
+      <Px x={cx} y={headY + headSize} c={p.skin} />
+
+      {/* Body */}
+      {Array.from({ length: bodyH }, (_, row) =>
+        Array.from({ length: bodyW }, (_, col) => (
+          <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row} c={p.shirt} />
+        ))
+      )}
+
+      {/* Left arm */}
+      <Px x={cx - Math.floor(bodyW / 2) - 1} y={bodyY} c={p.skin} />
+      <Px x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + 1} c={p.skin} />
+      <Px x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + 2} c={p.skin} />
+      {/* Right arm extended forward holding white cane */}
+      <Px x={cx + Math.floor(bodyW / 2) + 1} y={bodyY} c={p.skin} />
+      <Px x={cx + Math.floor(bodyW / 2) + 2} y={bodyY + 1} c={p.skin} />
+
+      {/* White cane (longer, angled forward) */}
+      {Array.from({ length: isChild ? 12 : 16 }, (_, i) => (
+        <Px key={`wc${i}`} x={cx + Math.floor(bodyW / 2) + 3 + Math.floor(i / 3)} y={bodyY + 1 + i} c="#EEEEEE" />
+      ))}
+      {/* Red tip */}
+      <Px x={cx + Math.floor(bodyW / 2) + 3 + Math.floor((isChild ? 11 : 15) / 3)} y={bodyY + (isChild ? 13 : 17)} c="#CC0000" />
+
+      {/* Legs */}
+      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
+        <Px key={`ll${i}`} x={cx - 1} y={legY + i} c={p.pants} />
+      ))}
+      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
+        <Px key={`lr${i}`} x={cx + 1} y={legY + i} c={p.pants} />
+      ))}
+
+      {/* Shoes */}
+      <Px x={cx - 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx - 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx + 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx + 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+    </g>
+  );
+}
+
+function PixelBody_BlindWheelchair({ p, isChild, isFemale }: {
+  p: typeof PALETTES.male_young; isChild: boolean; isFemale: boolean;
+}) {
+  const headY = isChild ? 4 : 2;
+  const headSize = isChild ? 5 : 6;
+  const cx = 16;
+  const bodyY = headY + headSize + 1;
+  const bodyH = isChild ? 5 : 6;
+  const bodyW = isChild ? 4 : 5;
+  const chairY = bodyY + bodyH - 1;
+
+  return (
+    <g>
+      {/* Hair */}
+      {isFemale ? (
+        <>
+          {Array.from({ length: headSize + 2 }, (_, i) => (
+            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
+          ))}
+          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
+          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
+        </>
+      ) : (
+        Array.from({ length: headSize }, (_, i) => (
+          <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
+        ))
+      )}
+
+      {/* Head */}
+      {Array.from({ length: headSize }, (_, row) =>
+        Array.from({ length: headSize }, (_, col) => (
+          <Px key={`f${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
+        ))
+      )}
+      {/* Sunglasses */}
+      {Array.from({ length: headSize }, (_, i) => (
+        <Px key={`sg${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY + 2} c="#1A1A1A" />
+      ))}
+
+      {/* Neck */}
+      <Px x={cx} y={headY + headSize} c={p.skin} />
+
+      {/* Body (seated) */}
+      {Array.from({ length: bodyH }, (_, row) =>
+        Array.from({ length: bodyW }, (_, col) => (
+          <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row} c={p.shirt} />
+        ))
+      )}
+
+      {/* Arms */}
+      {Array.from({ length: 4 }, (_, i) => (
+        <Px key={`al${i}`} x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + i} c={p.skin} />
+      ))}
+      {Array.from({ length: 4 }, (_, i) => (
+        <Px key={`ar${i}`} x={cx + Math.floor(bodyW / 2) + 1} y={bodyY + i} c={p.skin} />
+      ))}
+
+      {/* Legs (bent) */}
+      {Array.from({ length: 3 }, (_, i) => (
+        <Px key={`sl${i}`} x={cx - 1 - i} y={chairY + 1} c={p.pants} />
+      ))}
+      {Array.from({ length: 3 }, (_, i) => (
+        <Px key={`sr${i}`} x={cx + 1 + i} y={chairY + 1} c={p.pants} />
+      ))}
+
+      {/* Wheelchair */}
+      {Array.from({ length: 9 }, (_, i) => (
+        <Px key={`seat${i}`} x={cx - 4 + i} y={chairY} c="#666" />
+      ))}
+      {Array.from({ length: 5 }, (_, i) => (
+        <Px key={`back${i}`} x={cx + 4} y={chairY - 4 + i} c="#666" />
+      ))}
+      {Array.from({ length: 3 }, (_, i) => (
+        <Px key={`wl${i}`} x={cx - 4 + i} y={chairY + 2} c="#444" />
+      ))}
+      {Array.from({ length: 3 }, (_, i) => (
+        <Px key={`wr${i}`} x={cx + 2 + i} y={chairY + 2} c="#444" />
+      ))}
+      <Px x={cx - 3} y={chairY + 3} c="#555" />
+      <Px x={cx + 3} y={chairY + 3} c="#555" />
+
+      {/* White cane resting on lap */}
+      {Array.from({ length: 6 }, (_, i) => (
+        <Px key={`wc${i}`} x={cx - 3 + i} y={chairY - 1} c="#EEEEEE" />
+      ))}
+      <Px x={cx + 3} y={chairY - 1} c="#CC0000" />
+    </g>
+  );
+}
+
+function PixelBody_BlindCane({ p, isChild, isElderly, isFemale }: {
+  p: typeof PALETTES.male_young; isChild: boolean; isElderly: boolean; isFemale: boolean;
+}) {
+  // Combines blind (sunglasses + white cane in one hand) + walking cane in other
+  const headY = isChild ? 6 : 4;
+  const headSize = isChild ? 5 : 6;
+  const cx = 16;
+  const bodyY = headY + headSize + 1;
+  const bodyH = isChild ? 6 : 8;
+  const bodyW = isChild ? 4 : 5;
+  const legY = bodyY + bodyH;
+
+  return (
+    <g>
+      {/* Hair */}
+      {isFemale ? (
+        <>
+          {Array.from({ length: headSize + 2 }, (_, i) => (
+            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
+          ))}
+          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
+          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
+        </>
+      ) : (
+        Array.from({ length: headSize }, (_, i) => (
+          <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
+        ))
+      )}
+
+      {/* Head */}
+      {Array.from({ length: headSize }, (_, row) =>
+        Array.from({ length: headSize }, (_, col) => (
+          <Px key={`f${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
+        ))
+      )}
+      {/* Sunglasses */}
+      {Array.from({ length: headSize }, (_, i) => (
+        <Px key={`sg${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY + 2} c="#1A1A1A" />
+      ))}
+
+      {/* Neck */}
+      <Px x={cx} y={headY + headSize} c={p.skin} />
+
+      {/* Body */}
+      {Array.from({ length: bodyH }, (_, row) =>
+        Array.from({ length: bodyW }, (_, col) => (
+          <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row} c={p.shirt} />
+        ))
+      )}
+
+      {/* Left arm → walking cane */}
+      <Px x={cx - Math.floor(bodyW / 2) - 1} y={bodyY} c={p.skin} />
+      <Px x={cx - Math.floor(bodyW / 2) - 2} y={bodyY + 1} c={p.skin} />
+      {/* Walking cane (left side) */}
+      {Array.from({ length: isChild ? 10 : 14 }, (_, i) => (
+        <Px key={`lc${i}`} x={cx - Math.floor(bodyW / 2) - 3} y={bodyY + 1 + i} c="#8B6914" />
+      ))}
+      <Px x={cx - Math.floor(bodyW / 2) - 4} y={bodyY + 1} c="#8B6914" />
+
+      {/* Right arm → white cane */}
+      <Px x={cx + Math.floor(bodyW / 2) + 1} y={bodyY} c={p.skin} />
+      <Px x={cx + Math.floor(bodyW / 2) + 2} y={bodyY + 1} c={p.skin} />
+      {/* White cane (right side) */}
+      {Array.from({ length: isChild ? 10 : 14 }, (_, i) => (
+        <Px key={`wc${i}`} x={cx + Math.floor(bodyW / 2) + 3} y={bodyY + 1 + i} c="#EEEEEE" />
+      ))}
+      <Px x={cx + Math.floor(bodyW / 2) + 3} y={bodyY + (isChild ? 11 : 15)} c="#CC0000" />
+
+      {/* Legs */}
+      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
+        <Px key={`ll${i}`} x={cx - 1} y={legY + i} c={p.pants} />
+      ))}
+      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
+        <Px key={`lr${i}`} x={cx + 1} y={legY + i} c={p.pants} />
+      ))}
+
+      {/* Shoes */}
+      <Px x={cx - 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx - 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx + 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <Px x={cx + 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+    </g>
+  );
+}
+
+// ================================================================
+// Main PixelAvatar Component
+// ================================================================
+
+function PixelAvatar({ persona, color, size = 200 }: {
   persona: PersonaData;
   color: string;
   size?: number;
 }) {
-  const { age, mobility, vision } = persona.agent;
+  const variant = getAvatarVariant(persona.agent);
+  const paletteKey = `${variant.gender}_${variant.ageGroup}` as keyof typeof PALETTES;
+  const p = PALETTES[paletteKey];
+  const isChild = variant.ageGroup === "child";
+  const isElderly = variant.ageGroup === "elderly";
+  const isFemale = variant.gender === "female";
+  const label = getLabel(variant);
 
-  let preset: "young" | "middle" | "elderly" | "wheelchair" | "blind" = "young";
-  if (vision === "severe_impairment") preset = "blind";
-  else if (mobility === "wheelchair") preset = "wheelchair";
-  else if (age >= 60 || mobility === "walker" || mobility === "cane") preset = "elderly";
-  else if (age >= 40) preset = "middle";
-
-  const w = size;
-  const h = size;
-  const cx = w / 2;
-  const strokeW = 2.5;
+  // Canvas: 32×40 pixel grid rendered at 4x = 128×160, then scaled to size
+  const canvasW = 128;
+  const canvasH = 160;
 
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx={cx} cy={h / 2} r={w * 0.42} fill={`${color}12`} stroke={`${color}30`} strokeWidth={1} />
+    <div className="flex flex-col items-center gap-2">
+      <svg
+        width={size}
+        height={size * (canvasH / canvasW)}
+        viewBox={`0 0 ${canvasW} ${canvasH}`}
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ imageRendering: "pixelated" }}
+      >
+        {/* Background circle */}
+        <circle cx={canvasW / 2} cy={canvasH / 2} r={55} fill={`${color}12`} stroke={`${color}30`} strokeWidth={1} />
 
-      {preset === "young" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx} cy={h * 0.22} r={16} fill={`${color}20`} />
-          <line x1={cx} y1={h * 0.31} x2={cx} y2={h * 0.55} />
-          <line x1={cx} y1={h * 0.38} x2={cx - 22} y2={h * 0.50} />
-          <line x1={cx} y1={h * 0.38} x2={cx + 22} y2={h * 0.50} />
-          <line x1={cx} y1={h * 0.55} x2={cx - 16} y2={h * 0.75} />
-          <line x1={cx} y1={h * 0.55} x2={cx + 16} y2={h * 0.75} />
-          <line x1={cx - 16} y1={h * 0.75} x2={cx - 22} y2={h * 0.76} />
-          <line x1={cx + 16} y1={h * 0.75} x2={cx + 22} y2={h * 0.76} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Young Adult
-          </text>
-        </g>
-      )}
-
-      {preset === "middle" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx} cy={h * 0.22} r={16} fill={`${color}20`} />
-          <line x1={cx} y1={h * 0.31} x2={cx} y2={h * 0.56} />
-          <line x1={cx} y1={h * 0.37} x2={cx - 20} y2={h * 0.52} />
-          <line x1={cx} y1={h * 0.37} x2={cx + 20} y2={h * 0.52} />
-          <rect x={cx + 16} y={h * 0.50} width={12} height={10} rx={2} fill="none" />
-          <line x1={cx} y1={h * 0.56} x2={cx - 14} y2={h * 0.75} />
-          <line x1={cx} y1={h * 0.56} x2={cx + 14} y2={h * 0.75} />
-          <line x1={cx - 14} y1={h * 0.75} x2={cx - 20} y2={h * 0.76} />
-          <line x1={cx + 14} y1={h * 0.75} x2={cx + 20} y2={h * 0.76} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Middle-aged
-          </text>
-        </g>
-      )}
-
-      {preset === "elderly" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx - 4} cy={h * 0.22} r={15} fill={`${color}20`} />
-          <path d={`M${cx - 4} ${h * 0.30} Q${cx - 2} ${h * 0.42} ${cx - 6} ${h * 0.55}`} fill="none" />
-          <line x1={cx - 6} y1={h * 0.38} x2={cx - 24} y2={h * 0.50} />
-          <line x1={cx - 24} y1={h * 0.48} x2={cx - 26} y2={h * 0.76} strokeWidth={3} />
-          <line x1={cx - 4} y1={h * 0.38} x2={cx + 14} y2={h * 0.48} />
-          <line x1={cx - 6} y1={h * 0.55} x2={cx - 16} y2={h * 0.75} />
-          <line x1={cx - 6} y1={h * 0.55} x2={cx + 8} y2={h * 0.75} />
-          <line x1={cx - 16} y1={h * 0.75} x2={cx - 22} y2={h * 0.76} />
-          <line x1={cx + 8} y1={h * 0.75} x2={cx + 14} y2={h * 0.76} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Elderly
-          </text>
-        </g>
-      )}
-
-      {preset === "wheelchair" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx} cy={h * 0.20} r={15} fill={`${color}20`} />
-          <line x1={cx} y1={h * 0.28} x2={cx} y2={h * 0.48} />
-          <line x1={cx} y1={h * 0.36} x2={cx - 20} y2={h * 0.42} />
-          <line x1={cx} y1={h * 0.36} x2={cx + 20} y2={h * 0.42} />
-          <line x1={cx} y1={h * 0.48} x2={cx - 8} y2={h * 0.58} />
-          <line x1={cx - 8} y1={h * 0.58} x2={cx - 6} y2={h * 0.66} />
-          <line x1={cx + 18} y1={h * 0.30} x2={cx + 18} y2={h * 0.60} />
-          <line x1={cx - 10} y1={h * 0.48} x2={cx + 18} y2={h * 0.48} />
-          <circle cx={cx + 12} cy={h * 0.62} r={14} fill="none" />
-          <circle cx={cx - 14} cy={h * 0.66} r={6} fill="none" />
-          <line x1={cx - 14} y1={h * 0.60} x2={cx - 6} y2={h * 0.66} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Wheelchair
-          </text>
-        </g>
-      )}
-
-      {preset === "blind" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx} cy={h * 0.22} r={16} fill={`${color}20`} />
-          <line x1={cx - 10} y1={h * 0.21} x2={cx + 10} y2={h * 0.21} strokeWidth={3} />
-          <line x1={cx} y1={h * 0.31} x2={cx} y2={h * 0.55} />
-          <line x1={cx} y1={h * 0.38} x2={cx - 16} y2={h * 0.48} />
-          <line x1={cx - 16} y1={h * 0.48} x2={cx - 34} y2={h * 0.76} strokeWidth={3} />
-          <line x1={cx} y1={h * 0.38} x2={cx + 18} y2={h * 0.48} />
-          <line x1={cx} y1={h * 0.55} x2={cx - 14} y2={h * 0.75} />
-          <line x1={cx} y1={h * 0.55} x2={cx + 14} y2={h * 0.75} />
-          <line x1={cx - 14} y1={h * 0.75} x2={cx - 20} y2={h * 0.76} />
-          <line x1={cx + 14} y1={h * 0.75} x2={cx + 20} y2={h * 0.76} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Visually Impaired
-          </text>
-        </g>
-      )}
-    </svg>
+        {variant.mobility === "normal" && (
+          <PixelBody_Normal p={p} isChild={isChild} isElderly={isElderly} isFemale={isFemale} />
+        )}
+        {variant.mobility === "wheelchair" && (
+          <PixelBody_Wheelchair p={p} isChild={isChild} isFemale={isFemale} />
+        )}
+        {variant.mobility === "cane" && (
+          <PixelBody_Cane p={p} isChild={isChild} isElderly={isElderly} isFemale={isFemale} />
+        )}
+        {variant.mobility === "blind" && (
+          <PixelBody_Blind p={p} isChild={isChild} isElderly={isElderly} isFemale={isFemale} />
+        )}
+        {variant.mobility === "blind_wheelchair" && (
+          <PixelBody_BlindWheelchair p={p} isChild={isChild} isFemale={isFemale} />
+        )}
+        {variant.mobility === "blind_cane" && (
+          <PixelBody_BlindCane p={p} isChild={isChild} isElderly={isElderly} isFemale={isFemale} />
+        )}
+      </svg>
+      <span style={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: "10px",
+        fontWeight: 600,
+        color: color,
+        letterSpacing: "0.5px",
+      }}>
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -316,7 +856,7 @@ function Panel({ children, className = "", style = {} }: { children: ReactNode; 
 }
 
 // ================================================================
-// SVG Connection Lines (from old layout)
+// SVG Connection Lines
 // ================================================================
 
 function ConnectionLines({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
@@ -364,7 +904,7 @@ function ConnectionLines({ containerRef }: { containerRef: React.RefObject<HTMLD
 }
 
 // ================================================================
-// Design Intervention Arrow Mock-up (current style)
+// Design Intervention Arrow Mock-up
 // ================================================================
 
 function InterventionArrow() {
@@ -411,7 +951,7 @@ function InterventionArrow() {
 }
 
 // ================================================================
-// Show Formula Modal (current style)
+// Show Formula Modal
 // ================================================================
 
 function FormulaModal() {
@@ -532,7 +1072,7 @@ function FormulaModal() {
 }
 
 // ================================================================
-// PMV Warnings (current style)
+// PMV Warnings
 // ================================================================
 
 function PMVWarnings({ computedOutputs }: { computedOutputs: ComputedOutputs }) {
@@ -630,15 +1170,16 @@ export default function PersonaMindMap({
       <ConnectionLines containerRef={containerRef} />
 
       {/* ============================================================ */}
-      {/* 12-COLUMN TAILWIND GRID (old layout structure)               */}
+      {/* 12-COLUMN TAILWIND GRID                                      */}
       {/* Row 1: AGENT (5) | POSITION (3) | ENVIRONMENT (4)           */}
-      {/* Row 2: PERSONA card (12, centered)                          */}
-      {/* Row 3: ENV.SAT (5) | SPATIAL (3) | COMPUTED (4)             */}
-      {/* Row 4: PERCEPTUAL LOAD (12, two-column bars)                */}
+      {/* Row 2: AVATAR (centered, col-span-4 offset)                 */}
+      {/* Row 3: PERSONA info card (12, centered)                     */}
+      {/* Row 4: ENV.SAT (5) | SPATIAL (3) | COMPUTED (4)             */}
+      {/* Row 5: PERCEPTUAL LOAD (12, two-column bars)                */}
       {/* ============================================================ */}
       <div className="relative grid grid-cols-12 gap-3 md:gap-4" style={{ zIndex: 1 }}>
 
-        {/* ── AGENT (col-span-5) ── */}
+        {/* ── ROW 1: AGENT (col-span-5) ── */}
         <div className="col-span-12 md:col-span-5" data-node="agent">
           <SectionTag label="AGENT" icon="◆" color={accentColor} />
           <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
@@ -686,7 +1227,7 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── POSITION (col-span-3) ── */}
+        {/* ── ROW 1: POSITION (col-span-3) ── */}
         <div className="col-span-12 md:col-span-3" data-node="position">
           <SectionTag label="POSITION" icon="◇" color="#D4A017" />
           <Panel>
@@ -700,7 +1241,7 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── ENVIRONMENT (col-span-4) ── */}
+        {/* ── ROW 1: ENVIRONMENT (col-span-4) ── */}
         <div className="col-span-12 md:col-span-4" data-node="environment">
           <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
           <Panel>
@@ -724,17 +1265,26 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── PERSONA Card (centered, col-span-12) ── */}
-        <div className="col-span-12 flex justify-center my-4 md:my-6">
-          <div data-node="persona" className="flex items-center gap-6 px-8 py-5 rounded-2xl"
+        {/* ── ROW 2: AVATAR (independent, centered) ── */}
+        <div className="col-span-12 flex justify-center my-2 md:my-4" data-node="avatar">
+          <Panel className="flex items-center justify-center" style={{
+            minHeight: 240,
+            minWidth: 220,
+            background: `linear-gradient(135deg, ${accentColor}10, ${accentColor}05)`,
+            border: `2px solid ${accentColor}25`,
+          }}>
+            <PixelAvatar persona={persona} color={accentColor} size={180} />
+          </Panel>
+        </div>
+
+        {/* ── ROW 3: PERSONA Info Card (centered, col-span-12) ── */}
+        <div className="col-span-12 flex justify-center mb-2 md:mb-4">
+          <div data-node="persona" className="flex items-center gap-6 px-8 py-4 rounded-2xl"
             style={{
               background: `linear-gradient(135deg, ${accentColor}18, ${accentColor}08)`,
               border: `2px solid ${accentColor}40`,
               boxShadow: `0 4px 20px ${accentColor}15`,
             }}>
-            {/* Avatar */}
-            <AgentAvatar persona={persona} color={accentColor} size={120} />
-            {/* Info */}
             <div className="text-center">
               <div className="text-lg font-bold" style={{ color: "var(--foreground)" }}>{agent.id}</div>
               <div className="text-sm mt-1" style={{
@@ -790,7 +1340,7 @@ export default function PersonaMindMap({
           </div>
         </div>
 
-        {/* ── ENV. SATISFACTION (col-span-5) ── */}
+        {/* ── ROW 4: ENV. SATISFACTION (col-span-5) ── */}
         <div className="col-span-12 md:col-span-5" data-node="experience">
           <SectionTag label="ENV. SATISFACTION" icon="◌" color="#1D6B5E" />
           <Panel>
@@ -842,7 +1392,7 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── SPATIAL (col-span-3) ── */}
+        {/* ── ROW 4: SPATIAL (col-span-3) ── */}
         <div className="col-span-12 md:col-span-3" data-node="spatial">
           <SectionTag label="SPATIAL" icon="□" color="#D4A017" />
           <Panel>
@@ -866,7 +1416,7 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── COMPUTED (col-span-4) ── */}
+        {/* ── ROW 4: COMPUTED (col-span-4) ── */}
         <div className="col-span-12 md:col-span-4" data-node="outputs">
           <SectionTag label="COMPUTED" icon="⊕" color="#1D6B5E" />
           <Panel>
@@ -898,7 +1448,7 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── PERCEPTUAL LOAD (col-span-12, two-column bars) ── */}
+        {/* ── ROW 5: PERCEPTUAL LOAD (col-span-12, two-column bars) ── */}
         <div className="col-span-12" data-node="perceptual">
           <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
           <Panel>
