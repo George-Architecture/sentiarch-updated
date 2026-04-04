@@ -588,7 +588,7 @@ export default function PersonaMindMap({
       <div style={{
         display: "grid",
         gridTemplateColumns: "260px 1fr 260px",
-        gridTemplateRows: "auto auto auto",
+        gridTemplateRows: "auto auto auto auto",
         gap: "12px",
         alignItems: "start",
       }}>
@@ -638,14 +638,18 @@ export default function PersonaMindMap({
               <SliderField label="Clothing (Clo)" value={agent.clothing_insulation} min={0} max={2} step={0.05}
                 onChange={(v) => updateAgent("clothing_insulation", String(v))} color={accentColor} />
             </div>
-            <div className="flex justify-center mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-              <AgentAvatar persona={persona} color={accentColor} size={80} />
-            </div>
           </Panel>
         </div>
 
-        {/* ── R2 LEFT: ENV. SATISFACTION ── */}
+        {/* ── R2 LEFT: AVATAR ── */}
         <div style={{ gridColumn: "1", gridRow: "2" }}>
+          <Panel className="flex items-center justify-center" style={{ minHeight: 200 }}>
+            <AgentAvatar persona={persona} color={accentColor} size={180} />
+          </Panel>
+        </div>
+
+        {/* ── R3 LEFT: ENV. SATISFACTION ── */}
+        <div style={{ gridColumn: "1", gridRow: "3" }}>
           <SectionTag label="ENV. SATISFACTION" icon="◌" color="#1D6B5E" />
           <Panel>
             <p className="text-xs italic mb-2" style={{ color: "var(--foreground)", lineHeight: 1.6, fontSize: "11px" }}>
@@ -686,8 +690,8 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── R1 CENTER: AGENT ── */}
-        <div style={{ gridColumn: "2", gridRow: "1" }}>
+        {/* ── R1–2 CENTER: AGENT ── */}
+        <div style={{ gridColumn: "2", gridRow: "1 / 3" }}>
           <SectionTag label="AGENT" icon="◆" color={accentColor} />
           <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
             {/* Header */}
@@ -759,8 +763,8 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── R2 CENTER: PERCEPTUAL LOAD ── */}
-        <div style={{ gridColumn: "2", gridRow: "2" }}>
+        {/* ── R3 CENTER: PERCEPTUAL LOAD ── */}
+        <div style={{ gridColumn: "2", gridRow: "3" }}>
           <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
           <Panel>
             <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
@@ -772,7 +776,7 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── R1 RIGHT: SPATIAL + POSITION ── */}
+        {/* ── R1 RIGHT: SPATIAL ── */}
         <div style={{ gridColumn: "3", gridRow: "1" }}>
           <SectionTag label="SPATIAL" icon="□" color="#D4A017" />
           <Panel>
@@ -793,21 +797,25 @@ export default function PersonaMindMap({
             <div className="mt-1 text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
               Auto-calculated from map
             </div>
-            <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-              <div className="mb-2"><SectionTag label="POSITION" icon="◇" color="#D4A017" /></div>
-              <StaticRow label="Cell" value={`[${position.cell[0]}, ${position.cell[1]}]`} />
-              <DataRow label="Time">
-                <EditableField value={position.timestamp} onChange={(v) => updatePosition("timestamp", v)} type="time" />
-              </DataRow>
-              <DataRow label="Duration">
-                <EditableField value={position.duration_in_cell} onChange={(v) => updatePosition("duration_in_cell", v)} suffix="min" />
-              </DataRow>
-            </div>
           </Panel>
         </div>
 
-        {/* ── R2 RIGHT: COMPUTED ── */}
+        {/* ── R2 RIGHT: POSITION ── */}
         <div style={{ gridColumn: "3", gridRow: "2" }}>
+          <SectionTag label="POSITION" icon="◇" color="#D4A017" />
+          <Panel>
+            <StaticRow label="Cell" value={`[${position.cell[0]}, ${position.cell[1]}]`} />
+            <DataRow label="Time">
+              <EditableField value={position.timestamp} onChange={(v) => updatePosition("timestamp", v)} type="time" />
+            </DataRow>
+            <DataRow label="Duration">
+              <EditableField value={position.duration_in_cell} onChange={(v) => updatePosition("duration_in_cell", v)} suffix="min" />
+            </DataRow>
+          </Panel>
+        </div>
+
+        {/* ── R3 RIGHT: COMPUTED ── */}
+        <div style={{ gridColumn: "3", gridRow: "3" }}>
           <SectionTag label="COMPUTED" icon="⊕" color="#1D6B5E" />
           <Panel>
             <div className="grid grid-cols-2 gap-2">
@@ -838,8 +846,8 @@ export default function PersonaMindMap({
           </Panel>
         </div>
 
-        {/* ── R3 BOTTOM: ENVIRONMENT (all cols) ── */}
-        <div style={{ gridColumn: "1 / 4", gridRow: "3" }}>
+        {/* ── R4 BOTTOM: ENVIRONMENT (col 2–3) ── */}
+        <div style={{ gridColumn: "2 / 4", gridRow: "4" }}>
           <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
           <Panel>
             {!agentPlaced && (
