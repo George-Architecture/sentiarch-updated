@@ -1406,8 +1406,8 @@ export default function PersonaMindMap({
           </div>
         </DS>
 
-        {/* ── ROW 2: AVATAR (independent, centered) ── */}
-        <DS k="avatar" className="col-span-12 flex justify-center my-2 md:my-4">
+        {/* ── ROW 2: AVATAR (independent, centered) — HIDDEN ── */}
+        <DS k="avatar" className="col-span-12 flex justify-center my-2 md:my-4 hidden">
           <div data-node="avatar">
             <Panel className="flex items-center justify-center" style={{
               minHeight: 240, minWidth: 220,

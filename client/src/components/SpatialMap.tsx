@@ -58,6 +58,20 @@ function screenToWorld(sx: number, sy: number, cam: Camera): [number, number] {
   ];
 }
 
+// Snap point to 0/45/90 degree angles from a reference point (for Shift key)
+function snapToAngle(fromX: number, fromY: number, toX: number, toY: number): [number, number] {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const angle = Math.atan2(dy, dx);
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  // Snap to nearest 45-degree multiple
+  const snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+  return [
+    Math.round(fromX + Math.cos(snappedAngle) * dist),
+    Math.round(fromY + Math.sin(snappedAngle) * dist),
+  ];
+}
+
 function snapToGrid(v: number): number {
   return Math.round(v / SNAP_GRID) * SNAP_GRID;
 }
@@ -324,6 +338,16 @@ export default function SpatialMap({
   const dragMoved = useRef(false);
   const [hoverWorld, setHoverWorld] = useState<{ x: number; y: number } | null>(null);
   const [hoveredAgentIdx, setHoveredAgentIdx] = useState<number | null>(null);
+  const [shiftHeld, setShiftHeld] = useState(false);
+
+  // Shift key tracking
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Shift") setShiftHeld(true); };
+    const onKeyUp = (e: KeyboardEvent) => { if (e.key === "Shift") setShiftHeld(false); };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); };
+  }, []);
 
   // Animation pulse
   const [animPulse, setAnimPulse] = useState(0);
@@ -911,10 +935,26 @@ export default function SpatialMap({
         ctx.stroke();
         ctx.setLineDash([]);
 
-        drawingPoints.forEach(([wx, wy]) => {
+        drawingPoints.forEach(([wx, wy], idx) => {
           const [vx, vy] = worldToScreen(wx, wy, c);
+          const isFirst = idx === 0;
+          const isPolyTool = activeTool === "zone_poly" || activeTool === "room";
+          // Highlight first point when polygon can be closed (>= 3 points)
+          if (isFirst && isPolyTool && drawingPoints.length >= 3) {
+            ctx.beginPath();
+            ctx.arc(vx, vy, 8, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(29, 107, 94, 0.15)";
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(vx, vy, 6, 0, Math.PI * 2);
+            ctx.strokeStyle = (activeTool === "zone_poly") ? "rgba(29, 107, 94, 0.9)" : style.stroke;
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 2]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
           ctx.beginPath();
-          ctx.arc(vx, vy, 4, 0, Math.PI * 2);
+          ctx.arc(vx, vy, isFirst && isPolyTool && drawingPoints.length >= 3 ? 5 : 4, 0, Math.PI * 2);
           ctx.fillStyle = (activeTool === "zone_poly" || activeTool === "zone") ? "rgba(29, 107, 94, 0.8)" : style.stroke;
           ctx.fill();
           ctx.beginPath();
@@ -1105,7 +1145,14 @@ export default function SpatialMap({
     }
 
     const [wx, wy] = getMouseWorld(e);
-    setHoverWorld({ x: snapToGrid(wx), y: snapToGrid(wy) });
+    // Shift key: snap to 0/45/90 degree angles from last drawing point
+    let finalX = snapToGrid(wx);
+    let finalY = snapToGrid(wy);
+    if (e.shiftKey && drawingPoints.length > 0) {
+      const lastPt = drawingPoints[drawingPoints.length - 1];
+      [finalX, finalY] = snapToAngle(lastPt[0], lastPt[1], finalX, finalY);
+    }
+    setHoverWorld({ x: finalX, y: finalY });
 
     // Wall snap preview for window/door tools
     if (activeTool === "window" || activeTool === "door") {
@@ -1163,8 +1210,13 @@ export default function SpatialMap({
     if (e.button !== 0 || e.altKey || dragMoved.current) return;
 
     const [wx, wy] = getMouseWorld(e);
-    const snappedX = snapToGrid(wx);
-    const snappedY = snapToGrid(wy);
+    let snappedX = snapToGrid(wx);
+    let snappedY = snapToGrid(wy);
+    // Shift key: snap to 0/45/90 degree angles from last drawing point
+    if (e.shiftKey && drawingPoints.length > 0) {
+      const lastPt = drawingPoints[drawingPoints.length - 1];
+      [snappedX, snappedY] = snapToAngle(lastPt[0], lastPt[1], snappedX, snappedY);
+    }
 
     if (activeTool === "select") {
       // Check if clicking on a shape
@@ -1232,6 +1284,40 @@ export default function SpatialMap({
         setDrawingPoints(newPoints);
       }
     } else if (activeTool === "room" || activeTool === "zone_poly") {
+      // Check if clicking near the first point to auto-close the polygon
+      if (drawingPoints.length >= 3) {
+        const firstPt = drawingPoints[0];
+        const CLOSE_DIST = SNAP_GRID * 1.5; // Close if within 1.5 grid cells
+        const dx = snappedX - firstPt[0];
+        const dy = snappedY - firstPt[1];
+        if (Math.sqrt(dx * dx + dy * dy) <= CLOSE_DIST) {
+          // Auto-close: treat as double-click to finish
+          if (activeTool === "room" && onAddShape) {
+            const newShape: Shape = { type: "room", points: drawingPoints };
+            onAddShape(newShape);
+            pushUndo({ type: "add_shape", payload: { shape: newShape, index: shapes.length } });
+            toast.success(`Room created with ${drawingPoints.length} points`);
+            setDrawingPoints([]);
+            return;
+          } else if (activeTool === "zone_poly" && onAddZone) {
+            const minX = Math.min(...drawingPoints.map(p => p[0]));
+            const minY = Math.min(...drawingPoints.map(p => p[1]));
+            const maxX = Math.max(...drawingPoints.map(p => p[0]));
+            const maxY = Math.max(...drawingPoints.map(p => p[1]));
+            const zone: Zone = {
+              id: `zone_${Date.now()}`,
+              label: `Zone ${zones.length + 1}`,
+              bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY, points: drawingPoints.map(p => [...p] as [number, number]) },
+              env: { ...defaultZoneEnv },
+            };
+            onAddZone(zone);
+            pushUndo({ type: "add_zone", payload: { zone } });
+            toast.success(`Polygon zone created with ${drawingPoints.length} points`);
+            setDrawingPoints([]);
+            return;
+          }
+        }
+      }
       setDrawingPoints([...drawingPoints, [snappedX, snappedY]]);
     } else if (activeTool === "window" || activeTool === "door") {
       // Window/Door: snap to wall
@@ -1610,9 +1696,10 @@ export default function SpatialMap({
         <span>Alt+drag to pan</span>
         <span>Scroll to zoom (to cursor)</span>
         {activeTool === "select" && <span>Click shape to select · Drag to move · Del to delete · Click empty to place agent</span>}
-        {(activeTool === "room" || activeTool === "zone_poly") && <span>Double-click to close polygon</span>}
+        {(activeTool === "room" || activeTool === "zone_poly") && <span>Click first point (or double-click) to close polygon · Hold Shift to snap to 0°/45°/90°</span>}
         {activeTool === "waypoint" && <span>Click to place waypoint for P{activeAgentIdx + 1} (requires agent placed)</span>}
-        {(activeTool === "window" || activeTool === "door") && <span>Auto-snaps to nearest wall (within 500mm)</span>}
+        {(activeTool === "window" || activeTool === "door") && <span>Auto-snaps to nearest wall (within 500mm) · Hold Shift to snap to 0°/45°/90°</span>}
+        {activeTool === "wall" && <span>Click 2 points to draw wall · Hold Shift to snap to 0°/45°/90°</span>}
       </div>
     </div>
   );
