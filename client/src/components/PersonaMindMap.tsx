@@ -1,12 +1,17 @@
 // ============================================================
-// PersonaMindMap Component — Draggable Grid Layout with Edit Mode
-// Uses react-grid-layout v2 for drag & resize
-// Layout persists to localStorage
+// Occupant Perception Map — Radial Mind-Map Layout
+// Pure CSS positioning · Floating idle animation · Drag-to-move with spring-back
+// MBTI-derived preferences · No react-grid-layout
 // ============================================================
 
-import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react";
-import { Responsive as ResponsiveGridLayout, useContainerWidth, type Layout, type LayoutItem } from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type ReactNode,
+  type PointerEvent as RPointerEvent,
+} from "react";
 import type {
   PersonaData,
   ExperienceData,
@@ -22,125 +27,46 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-// ================================================================
-// SVG Agent Avatars
-// ================================================================
+/* ================================================================
+   MBTI → Environmental Preferences
+   ================================================================ */
 
-function AgentAvatar({ persona, color, size = 180 }: {
-  persona: PersonaData;
-  color: string;
-  size?: number;
-}) {
-  const { age, mobility, vision } = persona.agent;
-
-  let preset: "young" | "middle" | "elderly" | "wheelchair" | "blind" = "young";
-  if (vision === "severe_impairment") preset = "blind";
-  else if (mobility === "wheelchair") preset = "wheelchair";
-  else if (age >= 60 || mobility === "walker" || mobility === "cane") preset = "elderly";
-  else if (age >= 40) preset = "middle";
-
-  const w = size;
-  const h = size;
-  const cx = w / 2;
-  const strokeW = 2.5;
-
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx={cx} cy={h / 2} r={w * 0.42} fill={`${color}12`} stroke={`${color}30`} strokeWidth={1} />
-
-      {preset === "young" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx} cy={h * 0.22} r={16} fill={`${color}20`} />
-          <line x1={cx} y1={h * 0.31} x2={cx} y2={h * 0.55} />
-          <line x1={cx} y1={h * 0.38} x2={cx - 22} y2={h * 0.50} />
-          <line x1={cx} y1={h * 0.38} x2={cx + 22} y2={h * 0.50} />
-          <line x1={cx} y1={h * 0.55} x2={cx - 16} y2={h * 0.75} />
-          <line x1={cx} y1={h * 0.55} x2={cx + 16} y2={h * 0.75} />
-          <line x1={cx - 16} y1={h * 0.75} x2={cx - 22} y2={h * 0.76} />
-          <line x1={cx + 16} y1={h * 0.75} x2={cx + 22} y2={h * 0.76} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Young Adult
-          </text>
-        </g>
-      )}
-
-      {preset === "middle" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx} cy={h * 0.22} r={16} fill={`${color}20`} />
-          <line x1={cx} y1={h * 0.31} x2={cx} y2={h * 0.56} />
-          <line x1={cx} y1={h * 0.37} x2={cx - 20} y2={h * 0.52} />
-          <line x1={cx} y1={h * 0.37} x2={cx + 20} y2={h * 0.52} />
-          <rect x={cx + 16} y={h * 0.50} width={12} height={10} rx={2} fill="none" />
-          <line x1={cx} y1={h * 0.56} x2={cx - 14} y2={h * 0.75} />
-          <line x1={cx} y1={h * 0.56} x2={cx + 14} y2={h * 0.75} />
-          <line x1={cx - 14} y1={h * 0.75} x2={cx - 20} y2={h * 0.76} />
-          <line x1={cx + 14} y1={h * 0.75} x2={cx + 20} y2={h * 0.76} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Middle-aged
-          </text>
-        </g>
-      )}
-
-      {preset === "elderly" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx - 4} cy={h * 0.22} r={15} fill={`${color}20`} />
-          <path d={`M${cx - 4} ${h * 0.30} Q${cx - 2} ${h * 0.42} ${cx - 6} ${h * 0.55}`} fill="none" />
-          <line x1={cx - 6} y1={h * 0.38} x2={cx - 24} y2={h * 0.50} />
-          <line x1={cx - 24} y1={h * 0.48} x2={cx - 26} y2={h * 0.76} strokeWidth={3} />
-          <line x1={cx - 4} y1={h * 0.38} x2={cx + 14} y2={h * 0.48} />
-          <line x1={cx - 6} y1={h * 0.55} x2={cx - 16} y2={h * 0.75} />
-          <line x1={cx - 6} y1={h * 0.55} x2={cx + 8} y2={h * 0.75} />
-          <line x1={cx - 16} y1={h * 0.75} x2={cx - 22} y2={h * 0.76} />
-          <line x1={cx + 8} y1={h * 0.75} x2={cx + 14} y2={h * 0.76} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Elderly
-          </text>
-        </g>
-      )}
-
-      {preset === "wheelchair" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx} cy={h * 0.20} r={15} fill={`${color}20`} />
-          <line x1={cx} y1={h * 0.28} x2={cx} y2={h * 0.48} />
-          <line x1={cx} y1={h * 0.36} x2={cx - 20} y2={h * 0.42} />
-          <line x1={cx} y1={h * 0.36} x2={cx + 20} y2={h * 0.42} />
-          <line x1={cx} y1={h * 0.48} x2={cx - 8} y2={h * 0.58} />
-          <line x1={cx - 8} y1={h * 0.58} x2={cx - 6} y2={h * 0.66} />
-          <line x1={cx + 18} y1={h * 0.30} x2={cx + 18} y2={h * 0.60} />
-          <line x1={cx - 10} y1={h * 0.48} x2={cx + 18} y2={h * 0.48} />
-          <circle cx={cx + 12} cy={h * 0.62} r={14} fill="none" />
-          <circle cx={cx - 14} cy={h * 0.66} r={6} fill="none" />
-          <line x1={cx - 14} y1={h * 0.60} x2={cx - 6} y2={h * 0.66} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Wheelchair
-          </text>
-        </g>
-      )}
-
-      {preset === "blind" && (
-        <g stroke={color} strokeWidth={strokeW} strokeLinecap="round" strokeLinejoin="round">
-          <circle cx={cx} cy={h * 0.22} r={16} fill={`${color}20`} />
-          <line x1={cx - 10} y1={h * 0.21} x2={cx + 10} y2={h * 0.21} strokeWidth={3} />
-          <line x1={cx} y1={h * 0.31} x2={cx} y2={h * 0.55} />
-          <line x1={cx} y1={h * 0.38} x2={cx - 16} y2={h * 0.48} />
-          <line x1={cx - 16} y1={h * 0.48} x2={cx - 34} y2={h * 0.76} strokeWidth={3} />
-          <line x1={cx} y1={h * 0.38} x2={cx + 18} y2={h * 0.48} />
-          <line x1={cx} y1={h * 0.55} x2={cx - 14} y2={h * 0.75} />
-          <line x1={cx} y1={h * 0.55} x2={cx + 14} y2={h * 0.75} />
-          <line x1={cx - 14} y1={h * 0.75} x2={cx - 20} y2={h * 0.76} />
-          <line x1={cx + 14} y1={h * 0.75} x2={cx + 20} y2={h * 0.76} />
-          <text x={cx} y={h * 0.88} textAnchor="middle" fill={color} fontSize="10" fontFamily="Inter, sans-serif" fontWeight="600" stroke="none">
-            Visually Impaired
-          </text>
-        </g>
-      )}
-    </svg>
-  );
+interface MBTIPreferences {
+  noiseTolerance: number;   // dB threshold
+  lightPref: string;        // "bright" | "dim" | "moderate"
+  socialPref: string;       // "low_den" | "high_den" | "moderate"
+  enclosurePref: string;    // "enclosed" | "open" | "moderate"
 }
 
-// ================================================================
-// Inline Editable Field
-// ================================================================
+function deriveMBTIPreferences(mbti: string): MBTIPreferences {
+  const m = mbti.toUpperCase();
+  const isI = m[0] === "I";
+  const isS = m[1] === "S";
+  const isT = m[2] === "T";
+  const isJ = m[3] === "J";
+
+  // Noise tolerance: I/F → lower, E/T → higher
+  let noiseTolerance = 55;
+  if (isI) noiseTolerance -= 8;
+  else noiseTolerance += 5;
+  if (isT) noiseTolerance += 5;
+  else noiseTolerance -= 5;
+
+  // Light: S → bright, N → dim
+  const lightPref = isS ? "bright" : "dim";
+
+  // Social density: I → low, E → high
+  const socialPref = isI ? "low_den" : "high_den";
+
+  // Enclosure: J → enclosed, P → open
+  const enclosurePref = isJ ? "enclosed" : "open";
+
+  return { noiseTolerance, lightPref, socialPref, enclosurePref };
+}
+
+/* ================================================================
+   Inline Editable Field
+   ================================================================ */
 
 function EditableField({
   value,
@@ -184,9 +110,7 @@ function EditableField({
           className="sa-input"
           style={{ minWidth: 80, fontSize: "12px" }}
         >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
+          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       );
     }
@@ -200,10 +124,7 @@ function EditableField({
         onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
         step={type === "number" ? "any" : undefined}
         className="sa-input text-right"
-        style={{
-          width: type === "time" ? 90 : Math.max(60, String(value).length * 10 + 30),
-          fontSize: "12px",
-        }}
+        style={{ width: type === "time" ? 90 : Math.max(60, String(value).length * 10 + 30), fontSize: "12px" }}
       />
     );
   }
@@ -211,29 +132,29 @@ function EditableField({
   return (
     <span
       onClick={() => { setDraft(String(value)); setEditing(true); }}
-      className="cursor-pointer px-2 py-0.5 rounded-md transition-all hover:bg-[var(--muted)]"
+      className="cursor-pointer px-1 py-0.5 rounded transition-all hover:bg-[var(--muted)]"
       style={{
         fontFamily: "'JetBrains Mono', monospace",
         fontSize: "12px",
-        fontWeight: 600,
-        color: highlight ? "var(--destructive)" : "var(--foreground)",
+        fontWeight: 700,
+        color: highlight ? "#C44040" : "var(--foreground)",
       }}
       title="Click to edit"
     >
       {value}
-      {suffix && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 3 }}>{suffix}</span>}
+      {suffix && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 2 }}>{suffix}</span>}
     </span>
   );
 }
 
-// ================================================================
-// Reusable Sub-Components
-// ================================================================
+/* ================================================================
+   Reusable Sub-Components
+   ================================================================ */
 
 function DataRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-1.5 px-1" style={{ borderBottom: "1px solid var(--border)" }}>
-      <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)", letterSpacing: "0.3px" }}>{label}</span>
+    <div className="flex items-center justify-between py-1 px-0.5" style={{ borderBottom: "1px solid var(--border)" }}>
+      <span style={{ color: "var(--muted-foreground)", fontSize: "11px", fontWeight: 500, letterSpacing: "0.2px" }}>{label}</span>
       <div className="flex items-center">{children}</div>
     </div>
   );
@@ -241,48 +162,41 @@ function DataRow({ label, children }: { label: string; children: ReactNode }) {
 
 function StaticRow({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
   return (
-    <div className="flex items-center justify-between py-1.5 px-1" style={{ borderBottom: "1px solid var(--border)" }}>
-      <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>{label}</span>
-      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", fontWeight: 600, color: "var(--foreground)" }}>
+    <div className="flex items-center justify-between py-1 px-0.5" style={{ borderBottom: "1px solid var(--border)" }}>
+      <span style={{ color: "var(--muted-foreground)", fontSize: "11px", fontWeight: 500 }}>{label}</span>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", fontWeight: 700 }}>
         {value}
-        {unit && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 3 }}>{unit}</span>}
+        {unit && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 2 }}>{unit}</span>}
       </span>
     </div>
   );
 }
 
-function LoadBar({ label, value, prevValue }: { label: string; value: number; prevValue?: number | null }) {
-  const getColor = (v: number) => {
-    if (v <= 0.3) return "#2E8B6A";
-    if (v <= 0.6) return "#D4A017";
-    return "#C44040";
-  };
+function LoadBar({ label, value, prevValue, note }: { label: string; value: number; prevValue?: number | null; note?: string }) {
+  const getColor = (v: number) => v <= 0.3 ? "#2E8B6A" : v <= 0.6 ? "#D4A017" : "#C44040";
   const color = getColor(value);
   const hasPrev = prevValue != null && prevValue !== 0;
   const delta = hasPrev ? value - (prevValue ?? 0) : 0;
+  const improved = hasPrev && delta < -0.05;
 
   return (
     <div className="flex items-center gap-2 py-1">
-      <span className="text-xs font-medium w-14 shrink-0" style={{ color: "var(--muted-foreground)", fontSize: "10px" }}>{label}</span>
-      <div className="flex-1 relative" style={{ height: 5, background: "var(--muted)", borderRadius: 3 }}>
-        <div style={{
-          position: "absolute", top: 0, left: 0, height: "100%",
-          width: `${value * 100}%`, background: color,
-          borderRadius: 3, transition: "width 0.5s ease",
-        }} />
+      <span style={{ color: "var(--muted-foreground)", fontSize: "11px", fontWeight: 500, width: 56, flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1, height: 6, background: "var(--muted)", borderRadius: 3, position: "relative" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, height: "100%", width: `${value * 100}%`, background: color, borderRadius: 3, transition: "width 0.5s ease" }} />
       </div>
-      <span className="text-xs w-6 text-right shrink-0" style={{
-        fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "var(--foreground)", fontSize: "10px",
-      }}>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: "11px", width: 28, textAlign: "right", flexShrink: 0 }}>
         {value.toFixed(1)}
       </span>
-      {hasPrev && Math.abs(delta) >= 0.01 && (
-        <span className="text-xs w-8 text-right shrink-0" style={{
-          fontWeight: 600, color: delta > 0 ? "#C44040" : "#2E8B6A", fontSize: "10px",
-        }}>
-          {delta > 0 ? "+" : ""}{delta.toFixed(1)}
-        </span>
+      {improved && (
+        <>
+          <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>→</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: "11px", color: "#2E8B6A" }}>
+            {(prevValue! + delta).toFixed(1)}
+          </span>
+        </>
       )}
+      {note && <span style={{ fontSize: "9px", color: "#D4A017", fontStyle: "italic", marginLeft: 4 }}>{note}</span>}
     </div>
   );
 }
@@ -291,7 +205,7 @@ function SectionTag({ label, icon, color }: { label: string; icon: string; color
   const c = color || "var(--primary)";
   return (
     <div
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-2 rounded-md"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full"
       style={{
         fontFamily: "'Inter', sans-serif",
         fontSize: "10px",
@@ -303,78 +217,22 @@ function SectionTag({ label, icon, color }: { label: string; icon: string; color
         background: `${c}10`,
       }}
     >
-      <span style={{ fontSize: "11px" }}>{icon}</span> {label}
+      <span style={{ fontSize: "10px" }}>{icon}</span> {label}
     </div>
   );
 }
 
-function Panel({ children, className = "", style = {} }: { children: ReactNode; className?: string; style?: React.CSSProperties }) {
-  return (
-    <div className={`sa-panel ${className}`} style={{ padding: "12px", ...style }}>
-      {children}
-    </div>
-  );
-}
-
-// ================================================================
-// Design Intervention Arrow Mock-up
-// ================================================================
-
-function InterventionArrow() {
-  return (
-    <div className="mt-3 pt-3" style={{ borderTop: "1px dashed var(--border)" }}>
-      <div className="text-xs font-semibold tracking-wider mb-2" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-        DESIGN INTERVENTION
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="flex-1 p-2 text-center rounded-lg" style={{
-          background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)",
-        }}>
-          <div className="text-xs font-medium" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>BEFORE</div>
-          <div className="text-lg font-bold" style={{ color: "#C44040", fontFamily: "'JetBrains Mono', monospace" }}>4</div>
-          <div className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>Comfort</div>
-        </div>
-        <div className="flex flex-col items-center gap-1 px-1">
-          <span className="font-semibold px-1.5 py-0.5 rounded" style={{
-            background: "var(--primary)", color: "var(--primary-foreground)", fontSize: "8px", letterSpacing: "0.5px",
-          }}>+WINDOW</span>
-          <svg width="30" height="10" viewBox="0 0 30 10">
-            <defs><marker id="ah2" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-              <polygon points="0 0, 6 2.5, 0 5" fill="var(--primary)" />
-            </marker></defs>
-            <line x1="2" y1="5" x2="24" y2="5" stroke="var(--primary)" strokeWidth="1.5" markerEnd="url(#ah2)" />
-          </svg>
-          <span className="font-semibold px-1.5 py-0.5 rounded" style={{
-            background: "var(--primary)", color: "var(--primary-foreground)", fontSize: "8px", letterSpacing: "0.5px",
-          }}>+LIGHT</span>
-        </div>
-        <div className="flex-1 p-2 text-center rounded-lg" style={{
-          background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)",
-        }}>
-          <div className="text-xs font-medium" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>AFTER</div>
-          <div className="text-lg font-bold" style={{ color: "#2E8B6A", fontFamily: "'JetBrains Mono', monospace" }}>7</div>
-          <div className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>Comfort</div>
-        </div>
-      </div>
-      <div className="text-xs mt-1.5 text-center" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-        Mock-up: Intervention Feedback Loop
-      </div>
-    </div>
-  );
-}
-
-// ================================================================
-// Show Formula Modal
-// ================================================================
+/* ================================================================
+   Formula Modal
+   ================================================================ */
 
 function FormulaModal() {
   return (
     <Dialog>
       <DialogTrigger asChild>
         <button className="sa-btn w-full mt-2" style={{
-          fontSize: "11px", padding: "8px 12px",
-          background: "var(--primary)", color: "var(--primary-foreground)",
-          border: "none",
+          fontSize: "11px", padding: "6px 10px",
+          background: "var(--primary)", color: "var(--primary-foreground)", border: "none",
         }}>
           Show Formulas
         </button>
@@ -388,174 +246,192 @@ function FormulaModal() {
             Computation Formulas
           </DialogTitle>
         </DialogHeader>
-
         <div className="space-y-5 mt-2">
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "var(--primary)" }}>
-              PMV — Predicted Mean Vote (ISO 7730 Fanger)
-            </h4>
-            <div className="p-3 rounded-lg" style={{
-              background: "var(--muted)", border: "1px solid var(--border)",
-              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
-            }}>
-              <div>PMV = f(M, W, I<sub>cl</sub>, f<sub>cl</sub>, t<sub>a</sub>, t<sub>r</sub>, v<sub>ar</sub>, p<sub>a</sub>)</div>
-              <div className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                PMV = [0.303 × exp(-0.036 × M) + 0.028] × L
-              </div>
-              <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                where L = internal heat production - heat loss
-              </div>
-              <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
-                M = metabolic rate (W/m²) &nbsp;|&nbsp; W = external work (≈0)<br />
-                I<sub>cl</sub> = clothing insulation (clo) &nbsp;|&nbsp; f<sub>cl</sub> = clothing area factor<br />
-                t<sub>a</sub> = air temperature (°C) &nbsp;|&nbsp; t<sub>r</sub> = mean radiant temp (°C)<br />
-                v<sub>ar</sub> = relative air velocity (m/s) &nbsp;|&nbsp; p<sub>a</sub> = water vapour pressure (Pa)
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "var(--primary)" }}>
-              PPD — Predicted Percentage Dissatisfied
-            </h4>
-            <div className="p-3 rounded-lg" style={{
-              background: "var(--muted)", border: "1px solid var(--border)",
-              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
-            }}>
-              <div>PPD = 100 - 95 × exp(-0.03353 × PMV⁴ - 0.2179 × PMV²)</div>
-              <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
-                Range: 5% (PMV=0, neutral) → 100% (extreme discomfort)
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "#D4A017" }}>
-              Enclosure Ratio — Ray Casting Method
-            </h4>
-            <div className="p-3 rounded-lg" style={{
-              background: "var(--muted)", border: "1px solid var(--border)",
-              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
-            }}>
-              <div>Enclosure = 1 - (open_rays / total_rays)</div>
-              <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
-                16 rays cast from agent position at 22.5° intervals<br />
-                Each ray checks intersection with walls and room boundaries<br />
-                Max ray distance: 10,000mm (10m)
+          {[
+            {
+              title: "PMV — Predicted Mean Vote (ISO 7730 Fanger)",
+              color: "var(--primary)",
+              lines: [
+                "PMV = [0.303 × exp(-0.036 × M) + 0.028] × L",
+                "where L = internal heat production − heat loss",
+              ],
+              notes: "M = metabolic rate (W/m²) | W = external work (≈0)\nI_cl = clothing insulation (clo) | f_cl = clothing area factor\nt_a = air temperature (°C) | t_r = mean radiant temp (°C)\nv_ar = relative air velocity (m/s) | p_a = water vapour pressure (Pa)",
+            },
+            {
+              title: "PPD — Predicted Percentage Dissatisfied",
+              color: "var(--primary)",
+              lines: ["PPD = 100 − 95 × exp(−0.03353 × PMV⁴ − 0.2179 × PMV²)"],
+              notes: "Range: 5% (PMV=0, neutral) → 100% (extreme discomfort)",
+            },
+            {
+              title: "Effective Lux — Vision-Adjusted Illuminance",
+              color: "#D4A017",
+              lines: [
+                "Eff.Lux = base_lux + Σ(window_influence × distance_decay)",
+                "Vision adjustment: normal ×1.0 | mild ×0.5 | severe ×0.15",
+              ],
+              notes: "Window influence: max +400 lux, quadratic decay over 5000mm",
+            },
+            {
+              title: "Perceived dB — Hearing-Adjusted Noise",
+              color: "#C44040",
+              lines: ["Pr.dB = base_dB × hearing_factor"],
+              notes: "Hearing factor: normal ×1.0 | impaired ×0.6 | deaf ×0.1",
+            },
+          ].map((f) => (
+            <div key={f.title}>
+              <h4 className="text-sm font-bold mb-2" style={{ color: f.color }}>{f.title}</h4>
+              <div className="p-3 rounded-lg" style={{
+                background: "var(--muted)", border: "1px solid var(--border)",
+                fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
+              }}>
+                {f.lines.map((l, i) => <div key={i}>{l}</div>)}
+                {f.notes && (
+                  <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)", whiteSpace: "pre-line" }}>
+                    {f.notes}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "#D4A017" }}>
-              Effective Lux — Vision-Adjusted Illuminance
-            </h4>
-            <div className="p-3 rounded-lg" style={{
-              background: "var(--muted)", border: "1px solid var(--border)",
-              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
-            }}>
-              <div>Eff.Lux = base_lux + Σ(window_influence × distance_decay)</div>
-              <div className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                Window influence: max +400 lux, quadratic decay over 5000mm
-              </div>
-              <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                Vision adjustment: normal ×1.0 | mild ×0.5 | severe ×0.15
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "#C44040" }}>
-              Perceived dB — Hearing-Adjusted Noise
-            </h4>
-            <div className="p-3 rounded-lg" style={{
-              background: "var(--muted)", border: "1px solid var(--border)",
-              fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8,
-            }}>
-              <div>Pr.dB = base_dB × hearing_factor</div>
-              <div className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                Hearing factor: normal ×1.0 | impaired ×0.6 | deaf ×0.1
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ================================================================
-// PMV Warnings
-// ================================================================
+/* ================================================================
+   FloatingBlock — idle float animation + drag-to-move + spring-back
+   ================================================================ */
 
-function PMVWarnings({ computedOutputs }: { computedOutputs: ComputedOutputs }) {
-  const warnings = computedOutputs.pmv_warnings || [];
-  if (warnings.length === 0) return null;
+function FloatingBlock({
+  children,
+  floatDelay = 0,
+  floatRange = 4,
+  className = "",
+  style = {},
+}: {
+  children: ReactNode;
+  floatDelay?: number;
+  floatRange?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const elRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    offsetX: number;
+    offsetY: number;
+    pointerId: number;
+  } | null>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [isReturning, setIsReturning] = useState(false);
+
+  const onPointerDown = useCallback((e: RPointerEvent<HTMLDivElement>) => {
+    // Don't drag if clicking on interactive elements
+    const tag = (e.target as HTMLElement).tagName;
+    if (["INPUT", "SELECT", "BUTTON", "TEXTAREA", "A"].includes(tag)) return;
+    if ((e.target as HTMLElement).closest("button, input, select, textarea, a, .no-drag")) return;
+
+    e.preventDefault();
+    const el = elRef.current;
+    if (!el) return;
+    el.setPointerCapture(e.pointerId);
+    dragState.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      offsetX: offset.x,
+      offsetY: offset.y,
+      pointerId: e.pointerId,
+    };
+    setIsDragging(true);
+    setIsReturning(false);
+  }, [offset]);
+
+  const onPointerMove = useCallback((e: RPointerEvent<HTMLDivElement>) => {
+    if (!dragState.current?.active) return;
+    const dx = e.clientX - dragState.current.startX;
+    const dy = e.clientY - dragState.current.startY;
+    setOffset({
+      x: dragState.current.offsetX + dx,
+      y: dragState.current.offsetY + dy,
+    });
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    if (!dragState.current?.active) return;
+    dragState.current.active = false;
+    dragState.current = null;
+    setIsDragging(false);
+    setIsReturning(true);
+    // Spring back to origin
+    setOffset({ x: 0, y: 0 });
+    // Clear returning flag after animation
+    setTimeout(() => setIsReturning(false), 600);
+  }, []);
+
+  const animName = `opm-float-${floatDelay}`;
+
   return (
-    <div className="mt-2 px-2 py-2 rounded-lg" style={{
-      background: "#FFF8E1", border: "1px solid #E8D48A", fontSize: "10px",
-    }}>
-      <div className="font-semibold mb-0.5" style={{ color: "#8A6D00", letterSpacing: "0.5px" }}>PMV Notes</div>
-      {warnings.map((w, i) => (
-        <div key={i} style={{ color: "#6B5500", lineHeight: 1.5 }}>{w}</div>
-      ))}
+    <div
+      ref={elRef}
+      className={className}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      style={{
+        ...style,
+        transform: `translate(${offset.x}px, ${offset.y}px)`,
+        transition: isDragging
+          ? "none"
+          : isReturning
+            ? "transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)"
+            : "none",
+        animation: isDragging || isReturning
+          ? "none"
+          : `opm-float ${3 + (floatDelay % 2)}s ease-in-out ${floatDelay * 0.3}s infinite`,
+        cursor: isDragging ? "grabbing" : "grab",
+        userSelect: "none",
+        touchAction: "none",
+        willChange: "transform",
+        zIndex: isDragging ? 50 : 1,
+      }}
+    >
+      {children}
     </div>
   );
 }
 
-// ================================================================
-// Layout Constants & Persistence
-// ================================================================
+/* ================================================================
+   CSS Keyframes (injected once)
+   ================================================================ */
 
-const LAYOUT_STORAGE_KEY = "sentiarch-mindmap-layout";
-const GRID_COLS = 12;
-const ROW_HEIGHT = 60;
+const FLOAT_CSS = `
+@keyframes opm-float {
+  0%, 100% { transform: translate(0px, 0px); }
+  25% { transform: translate(2px, -3px); }
+  50% { transform: translate(-1px, 2px); }
+  75% { transform: translate(1px, -1px); }
+}
+`;
 
-/** Default layout matching the reference wireframe (game-style status panel) */
-const DEFAULT_LAYOUT: Layout = [
-  // Col 1: Persona (top-left, compact)
-  { i: "persona",     x: 0, y: 0,  w: 4, h: 4, minW: 3, minH: 2 },
-  // Col 1: Agent Image (mid-left)
-  { i: "avatar",      x: 0, y: 4,  w: 4, h: 4, minW: 3, minH: 3 },
-  // Col 1: ENV. Satisfaction (bottom-left)
-  { i: "envsat",      x: 0, y: 8,  w: 4, h: 5, minW: 3, minH: 3 },
-  // Col 2: Agent (top-center, tall)
-  { i: "agent",       x: 4, y: 0,  w: 4, h: 5, minW: 3, minH: 3 },
-  // Col 2: Perceptual Load (mid-center)
-  { i: "perceptual",  x: 4, y: 5,  w: 4, h: 4, minW: 3, minH: 3 },
-  // Col 3: Spatial (top-right)
-  { i: "spatial",     x: 8, y: 0,  w: 4, h: 4, minW: 3, minH: 2 },
-  // Col 3: Position (mid-right)
-  { i: "position",    x: 8, y: 4,  w: 4, h: 3, minW: 3, minH: 2 },
-  // Col 3: Computed (mid-right, below position)
-  { i: "computed",    x: 8, y: 7,  w: 4, h: 4, minW: 3, minH: 3 },
-  // Bottom: Environment (spans center + right)
-  { i: "environment", x: 4, y: 9,  w: 8, h: 4, minW: 4, minH: 3 },
-];
-
-function getStoredLayout(): Layout | null {
-  try {
-    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Layout;
-      // Validate it has all required keys
-      const requiredKeys = DEFAULT_LAYOUT.map(item => item.i);
-      const hasAll = requiredKeys.every(k => parsed.some(p => p.i === k));
-      if (hasAll) return parsed;
-    }
-  } catch { /* ignore */ }
-  return null;
+let cssInjected = false;
+function injectCSS() {
+  if (cssInjected) return;
+  cssInjected = true;
+  const style = document.createElement("style");
+  style.textContent = FLOAT_CSS;
+  document.head.appendChild(style);
 }
 
-function saveLayout(layout: Layout) {
-  try {
-    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
-  } catch { /* ignore */ }
-}
-
-// ================================================================
-// Main Component
-// ================================================================
+/* ================================================================
+   Main Component
+   ================================================================ */
 
 export default function PersonaMindMap({
   persona,
@@ -583,28 +459,11 @@ export default function PersonaMindMap({
   agentPlaced?: boolean;
 }) {
   const { agent, position, environment, spatial } = persona;
+  const accentColor = personaColor?.primary || "#8B5E3C";
 
-  // ── Edit Layout Mode ──
-  const [editMode, setEditMode] = useState(false);
-  const [currentLayout, setCurrentLayout] = useState<Layout>(() => {
-    return getStoredLayout() || DEFAULT_LAYOUT.map(item => ({ ...item }));
-  });
+  useEffect(() => { injectCSS(); }, []);
 
-  const { width, containerRef, mounted } = useContainerWidth({ initialWidth: 800 });
-
-  const handleLayoutChange = useCallback((newLayout: Layout) => {
-    setCurrentLayout(newLayout);
-    if (editMode) {
-      saveLayout(newLayout);
-    }
-  }, [editMode]);
-
-  const handleResetLayout = useCallback(() => {
-    const fresh = DEFAULT_LAYOUT.map(item => ({ ...item }));
-    setCurrentLayout(fresh);
-    saveLayout(fresh);
-  }, []);
-
+  // ── Updaters ──
   const updateAgent = useCallback((key: string, val: string) => {
     const parsed = ["age", "metabolic_rate", "clothing_insulation"].includes(key) ? parseFloat(val) || 0 : val;
     onPersonaChange({ ...persona, agent: { ...persona.agent, [key]: parsed } });
@@ -623,431 +482,429 @@ export default function PersonaMindMap({
     onPersonaChange({ ...persona, spatial: { ...persona.spatial, [key]: parseFloat(val) || 0 } });
   }, [persona, onPersonaChange]);
 
+  // ── Derived data ──
+  const prefs = deriveMBTIPreferences(agent.mbti);
+
   const comfortDelta = hasSimulated && prevExperience && prevExperience.comfort_score > 0
     ? experience.comfort_score - prevExperience.comfort_score : null;
+
+  const getTrendInfo = (trend: string) => {
+    if (trend === "declining") return { icon: "▽", label: "DECLINING", color: "#C44040" };
+    if (trend === "rising") return { icon: "△", label: "ESTIMATED", color: "#2E8B6A" };
+    return { icon: "—", label: "STABLE", color: "var(--muted-foreground)" };
+  };
+
+  const getComfortColor = (score: number) => {
+    if (score === 0) return "var(--muted-foreground)";
+    if (score <= 3) return "#C44040";
+    if (score <= 5) return "#D4A017";
+    return "#2E8B6A";
+  };
 
   const mbtiOptions = [
     "ISTJ","ISFJ","INFJ","INTJ","ISTP","ISFP","INFP","INTP",
     "ESTP","ESFP","ENFP","ENTP","ESTJ","ESFJ","ENFJ","ENTJ",
   ].map((m) => ({ value: m, label: m }));
 
-  const getComfortColor = (score: number) => {
-    if (score === 0) return { bg: "var(--muted)", text: "var(--muted-foreground)" };
-    if (score <= 3) return { bg: "#C44040", text: "#FFFFFF" };
-    if (score <= 5) return { bg: "#D4A017", text: "#FFFFFF" };
-    if (score <= 7) return { bg: "#2A8F7E", text: "#FFFFFF" };
-    return { bg: "#1D6B5E", text: "#FFFFFF" };
+  const trendInfo = getTrendInfo(experience.trend);
+
+  // ── Shared styles ──
+  const cardStyle: React.CSSProperties = {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-md)",
+    padding: "12px 14px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
   };
 
-  const getTrendInfo = (trend: string) => {
-    if (trend === "declining") return { icon: "▼", label: "Declining", color: "#C44040" };
-    if (trend === "rising") return { icon: "▲", label: "Improving", color: "#1D6B5E" };
-    return { icon: "—", label: "Stable", color: "var(--muted-foreground)" };
+  const monoStyle: React.CSSProperties = {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontWeight: 700,
+    fontSize: "12px",
   };
 
-  const accentColor = personaColor?.primary || "var(--primary)";
-
-  // ── Grid item wrapper with edit-mode styling ──
-  const GridBlock = useMemo(() => {
-    return ({ children, editHighlight }: { children: ReactNode; editHighlight?: boolean }) => (
-      <div style={{
-        height: "100%",
-        overflow: "auto",
-        borderRadius: "var(--radius-md)",
-        outline: editMode ? "2px dashed var(--primary)" : "none",
-        outlineOffset: editMode ? "-1px" : "0",
-        opacity: editMode && editHighlight ? 0.95 : 1,
-        transition: "outline 0.2s ease",
-      }}>
-        {children}
-      </div>
-    );
-  }, [editMode]);
-
+  /* ================================================================
+     RENDER
+     ================================================================ */
   return (
-    <div className="w-full" ref={containerRef}>
-      {/* ── Edit Layout Toolbar ── */}
-      <div className="flex items-center justify-between mb-3 px-1">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setEditMode(!editMode)}
-            className={`sa-tool-btn ${editMode ? "sa-tool-btn-active" : ""}`}
-            style={{ fontSize: "11px", padding: "5px 12px" }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
-              <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
-            </svg>
-            {editMode ? "Done Editing" : "Edit Layout"}
-          </button>
-          {editMode && (
-            <button
-              onClick={handleResetLayout}
-              className="sa-tool-btn"
-              style={{ fontSize: "11px", padding: "5px 12px" }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-              </svg>
-              Reset Layout
-            </button>
-          )}
+    <div style={{ width: "100%", position: "relative", fontFamily: "'Inter', sans-serif" }}>
+
+      {/* ── HEADER ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+        <div>
+          <h1 style={{ fontSize: "22px", fontWeight: 800, letterSpacing: "-0.5px", color: "var(--foreground)", margin: 0, lineHeight: 1.2 }}>
+            Occupant Perception Map
+          </h1>
+          <div style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "1.5px", color: "var(--muted-foreground)", textTransform: "uppercase", marginTop: 2 }}>
+            AGENT-BASED ENVIRONMENTAL EXPERIENCE MODEL
+          </div>
         </div>
-        {editMode && (
-          <span className="text-xs" style={{ color: "var(--muted-foreground)", fontStyle: "italic" }}>
-            Drag blocks to reposition, resize from corners
-          </span>
-        )}
+        <div style={{ textAlign: "right" }}>
+          <div style={{ ...monoStyle, fontSize: "11px", color: "var(--muted-foreground)" }}>
+            CELL [{position.cell[0]}, {position.cell[1]}] · {position.timestamp} · {position.duration_in_cell} min
+          </div>
+          <div style={{ ...monoStyle, fontSize: "12px", color: getComfortColor(experience.comfort_score), marginTop: 2 }}>
+            COMFORT {experience.comfort_score}/10 {trendInfo.icon} {trendInfo.label}
+          </div>
+        </div>
       </div>
 
-      {/* ── Main Grid ── */}
-      {mounted && (
-        <ResponsiveGridLayout
-          className="mindmap-grid"
-          width={width}
-          layouts={{ lg: currentLayout }}
-          breakpoints={{ lg: 0 }}
-          cols={{ lg: GRID_COLS }}
-          rowHeight={ROW_HEIGHT}
-          margin={[8, 8] as const}
-          containerPadding={[0, 0] as const}
-          dragConfig={{ enabled: editMode, cancel: ".no-drag" }}
-          resizeConfig={{ enabled: editMode, handles: ["se", "sw", "ne", "nw"] }}
-          onLayoutChange={(layout: Layout) => handleLayoutChange(layout)}
-        >
-          {/* ── PERSONA ── */}
-          <div key="persona">
-            <GridBlock>
-              <SectionTag label="PERSONA" icon="●" color={accentColor} />
-              <Panel>
-                <DataRow label="Name">
-                  <EditableField value={agent.id} onChange={(v) => updateAgent("id", v)} type="text" />
-                </DataRow>
-                <DataRow label="Age">
-                  <EditableField value={agent.age} onChange={(v) => updateAgent("age", v)} type="number" />
-                </DataRow>
-                <DataRow label="Gender">
-                  <EditableField value={agent.gender} onChange={(v) => updateAgent("gender", v)} type="select"
-                    options={[{ value: "female", label: "Female" }, { value: "male", label: "Male" }]} />
-                </DataRow>
-                <DataRow label="MBTI">
-                  <EditableField value={agent.mbti} onChange={(v) => updateAgent("mbti", v)} type="select" options={mbtiOptions} />
-                </DataRow>
-                <DataRow label="Mobility">
-                  <EditableField value={agent.mobility} onChange={(v) => updateAgent("mobility", v)} type="select"
-                    options={[
-                      { value: "normal", label: "Normal" }, { value: "walker", label: "Walker" },
-                      { value: "wheelchair", label: "Wheelchair" }, { value: "cane", label: "Cane" },
-                    ]} />
-                </DataRow>
-                <DataRow label="Hearing">
-                  <EditableField value={agent.hearing} onChange={(v) => updateAgent("hearing", v)} type="select"
-                    options={[
-                      { value: "normal", label: "Normal" }, { value: "impaired", label: "Impaired" },
-                      { value: "deaf", label: "Deaf" },
-                    ]} />
-                </DataRow>
-                <DataRow label="Vision">
-                  <EditableField value={agent.vision} onChange={(v) => updateAgent("vision", v)} type="select"
-                    options={[
-                      { value: "normal", label: "Normal" },
-                      { value: "mild_impairment", label: "Mild Impairment" },
-                      { value: "severe_impairment", label: "Severe Impairment" },
-                    ]} />
-                </DataRow>
-                <div className="mt-2 pt-2 no-drag" style={{ borderTop: "1px solid var(--border)" }}>
-                  <SliderField label="Met Rate" value={agent.metabolic_rate} min={0.8} max={4} step={0.05}
-                    onChange={(v) => updateAgent("metabolic_rate", String(v))} color={accentColor} />
-                  <SliderField label="Clothing (Clo)" value={agent.clothing_insulation} min={0} max={2} step={0.05}
-                    onChange={(v) => updateAgent("clothing_insulation", String(v))} color={accentColor} />
-                </div>
-              </Panel>
-            </GridBlock>
+      {/* ── Subtitle ── */}
+      <div style={{ fontSize: "11px", fontStyle: "italic", color: "var(--muted-foreground)", textAlign: "center", margin: "8px 0 16px", lineHeight: 1.5 }}>
+        Perceptual loads are computed from environmental and spatial conditions and translated into ranked spatial interventions.
+      </div>
+
+      {/* ── PREFERENCES (MBTI-derived) ── */}
+      <FloatingBlock floatDelay={0} style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
+        <SectionTag label="PREFERENCES" icon="♥" color={accentColor} />
+        <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap", justifyContent: "center" }}>
+          {[
+            { label: "Noise Tol.", value: `${prefs.noiseTolerance} dB` },
+            { label: "Light", value: prefs.lightPref },
+            { label: "Social", value: prefs.socialPref },
+            { label: "Enclosure", value: prefs.enclosurePref },
+          ].map((p) => (
+            <div key={p.label} style={{
+              ...cardStyle,
+              padding: "6px 14px",
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+            }}>
+              <span style={{ fontSize: "11px", color: "var(--muted-foreground)", fontWeight: 500 }}>{p.label}</span>
+              <span style={{ ...monoStyle, fontSize: "12px" }}>{p.value}</span>
+            </div>
+          ))}
+        </div>
+      </FloatingBlock>
+
+      {/* ── MAIN RADIAL LAYOUT ── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr 1fr",
+        gridTemplateRows: "auto auto auto auto auto",
+        gap: "16px 20px",
+        alignItems: "start",
+      }}>
+
+        {/* ── Row 1: AGENT (left) + gap (center) + POSITION (right) ── */}
+        <FloatingBlock floatDelay={1} style={{ gridColumn: 1, gridRow: 1 }}>
+          <div style={cardStyle}>
+            <div style={{ ...monoStyle, fontSize: "11px", marginBottom: 6, lineHeight: 1.5 }}>
+              {agent.age} · {agent.gender} · {agent.mobility}
+            </div>
+            <DataRow label="Hear.">
+              <EditableField value={agent.hearing} onChange={(v) => updateAgent("hearing", v)} type="select"
+                options={[{ value: "normal", label: "normal" }, { value: "impaired", label: "impaired" }, { value: "deaf", label: "deaf" }]}
+                highlight={agent.hearing !== "normal"} />
+            </DataRow>
+            <DataRow label="Vis.">
+              <EditableField value={agent.vision === "normal" ? "normal" : agent.vision === "mild_impairment" ? "mild imp." : "severe imp."} onChange={(v) => {
+                const map: Record<string, string> = { "normal": "normal", "mild imp.": "mild_impairment", "severe imp.": "severe_impairment" };
+                updateAgent("vision", map[v] || v);
+              }} type="select"
+                options={[{ value: "normal", label: "normal" }, { value: "mild imp.", label: "mild imp." }, { value: "severe imp.", label: "severe imp." }]}
+                highlight={agent.vision !== "normal"} />
+            </DataRow>
+            <div className="flex items-center gap-3 mt-2 pt-1" style={{ borderTop: "1px solid var(--border)" }}>
+              <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Met</span>
+              <span style={monoStyle}>{agent.metabolic_rate.toFixed(1)}</span>
+              <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginLeft: 8 }}>Clo</span>
+              <span style={monoStyle}>{agent.clothing_insulation.toFixed(1)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+              <SectionTag label="AGENT" icon="◎" color={accentColor} />
+            </div>
           </div>
+        </FloatingBlock>
 
-          {/* ── AVATAR ── */}
-          <div key="avatar">
-            <GridBlock>
-              <Panel className="flex items-center justify-center" style={{ minHeight: 160, height: "100%" }}>
-                <AgentAvatar persona={persona} color={accentColor} size={150} />
-              </Panel>
-            </GridBlock>
-          </div>
+        {/* Center gap row 1 — empty */}
+        <div style={{ gridColumn: 2, gridRow: 1 }} />
 
-          {/* ── ENV. SATISFACTION ── */}
-          <div key="envsat">
-            <GridBlock>
-              <SectionTag label="ENV. SATISFACTION" icon="◌" color="#1D6B5E" />
-              <Panel>
-                <p className="text-xs italic mb-2" style={{ color: "var(--foreground)", lineHeight: 1.6, fontSize: "11px" }}>
-                  "{experience.summary}"
-                </p>
-                <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                  <span className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{
-                    background: getComfortColor(experience.comfort_score).bg,
-                    color: getComfortColor(experience.comfort_score).text,
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
-                    letterSpacing: "0.5px", fontSize: "10px",
-                  }}>
-                    COMFORT {experience.comfort_score}/10
-                  </span>
-                  {comfortDelta !== null && Math.abs(comfortDelta) >= 0.1 && (
-                    <span className="text-xs font-bold px-2 py-1.5 rounded-lg" style={{
-                      background: comfortDelta > 0 ? "#1D6B5E" : "#C44040",
-                      color: "#FFFFFF", boxShadow: "0 2px 6px rgba(0,0,0,0.12)", fontSize: "10px",
-                    }}>
-                      {comfortDelta > 0 ? "+" : ""}{comfortDelta.toFixed(1)}
-                    </span>
-                  )}
-                  <span className="text-xs font-semibold px-2 py-1.5 rounded-lg" style={{
-                    background: "var(--muted)", color: getTrendInfo(experience.trend).color,
-                    border: "1px solid var(--border)", fontSize: "10px",
-                  }}>
-                    {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
-                  </span>
-                </div>
-                {ruleTriggers.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1 mb-2">
-                    {ruleTriggers.map((t) => (
-                      <span key={t} className="sa-tag" style={{ fontSize: "9px" }}>{t}</span>
-                    ))}
-                  </div>
-                )}
-                <InterventionArrow />
-              </Panel>
-            </GridBlock>
-          </div>
-
-          {/* ── AGENT ── */}
-          <div key="agent">
-            <GridBlock>
-              <SectionTag label="AGENT" icon="◆" color={accentColor} />
-              <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
-                {/* Header */}
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
-                    style={{ background: accentColor, color: "#fff" }}>
-                    {agent.id.replace("persona_", "P")}
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold" style={{ color: "var(--foreground)" }}>{agent.id}</div>
-                    <div className="text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
-                      {agent.age}{agent.gender === "female" ? "F" : "M"} · {agent.mobility} · {agent.mbti}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Summary stat tiles */}
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: "Met", value: agent.metabolic_rate.toFixed(1) },
-                    { label: "Clo", value: agent.clothing_insulation.toFixed(1) },
-                    {
-                      label: "Vision",
-                      value: agent.vision === "normal" ? "OK"
-                        : agent.vision === "mild_impairment" ? "Mild" : "Severe",
-                    },
-                  ].map((item) => (
-                    <div key={item.label} className="p-2 text-center rounded-lg" style={{
-                      background: "var(--muted)", border: "1px solid var(--border)",
-                    }}>
-                      <div style={{ color: "var(--muted-foreground)", fontWeight: 600, fontSize: "10px" }}>{item.label}</div>
-                      <div style={{
-                        color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace",
-                        fontWeight: 700, fontSize: "14px", marginTop: 2,
-                      }}>{item.value}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Comfort badge */}
-                <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
-                      Current Respond
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {hasSimulated ? (
-                        <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{
-                          background: getComfortColor(experience.comfort_score).bg,
-                          color: getComfortColor(experience.comfort_score).text,
-                          fontFamily: "'JetBrains Mono', monospace",
-                        }}>
-                          {experience.comfort_score}/10
-                        </span>
-                      ) : (
-                        <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                          Waiting for calculation... Click "Calculate Current Respond" to generate experience narrative.
-                        </span>
-                      )}
-                      <span className="text-xs px-2 py-1 rounded-lg" style={{
-                        background: "var(--muted)", border: "1px solid var(--border)",
-                        color: getTrendInfo(experience.trend).color, fontSize: "10px",
-                      }}>
-                        {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </Panel>
-            </GridBlock>
-          </div>
-
-          {/* ── PERCEPTUAL LOAD ── */}
-          <div key="perceptual">
-            <GridBlock>
-              <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
-              <Panel>
-                <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
-                <LoadBar label="Visual"  value={accumulatedState.visual_strain}      prevValue={prevAccumulatedState?.visual_strain} />
-                <LoadBar label="Noise"   value={accumulatedState.noise_stress}       prevValue={prevAccumulatedState?.noise_stress} />
-                <LoadBar label="Social"  value={accumulatedState.social_overload}    prevValue={prevAccumulatedState?.social_overload} />
-                <LoadBar label="Fatigue" value={accumulatedState.fatigue}            prevValue={prevAccumulatedState?.fatigue} />
-                <LoadBar label="Wayfind." value={accumulatedState.wayfinding_anxiety} prevValue={prevAccumulatedState?.wayfinding_anxiety} />
-              </Panel>
-            </GridBlock>
-          </div>
-
-          {/* ── SPATIAL ── */}
-          <div key="spatial">
-            <GridBlock>
-              <SectionTag label="SPATIAL" icon="□" color="#D4A017" />
-              <Panel>
-                <StaticRow label="→ Wall"
-                  value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : spatial.dist_to_wall}
-                  unit={!agentPlaced || spatial.dist_to_wall < 0 ? undefined : "m"} />
-                <StaticRow label="→ Window"
-                  value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : spatial.dist_to_window}
-                  unit={!agentPlaced || spatial.dist_to_window < 0 ? undefined : "m"} />
-                <StaticRow label="→ Exit"
-                  value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : spatial.dist_to_exit}
-                  unit={!agentPlaced || spatial.dist_to_exit < 0 ? undefined : "m"} />
-                <DataRow label="Ceiling">
-                  <EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" />
-                </DataRow>
-                <StaticRow label="Enclosure" value={!agentPlaced ? "—" : spatial.enclosure_ratio} />
-                <StaticRow label="Vis. Agents" value={!agentPlaced ? "—" : spatial.visible_agents} />
-                <div className="mt-1 text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-                  Auto-calculated from map
-                </div>
-              </Panel>
-            </GridBlock>
-          </div>
-
-          {/* ── POSITION ── */}
-          <div key="position">
-            <GridBlock>
+        <FloatingBlock floatDelay={2} style={{ gridColumn: 3, gridRow: 1 }}>
+          <div style={cardStyle}>
+            <DataRow label="Cell">
+              <span style={monoStyle}>[{position.cell[0]}, {position.cell[1]}]</span>
+            </DataRow>
+            <DataRow label="Time">
+              <EditableField value={position.timestamp} onChange={(v) => updatePosition("timestamp", v)} type="time" />
+            </DataRow>
+            <DataRow label="Dur.">
+              <EditableField value={position.duration_in_cell} onChange={(v) => updatePosition("duration_in_cell", v)} suffix="min" />
+            </DataRow>
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
               <SectionTag label="POSITION" icon="◇" color="#D4A017" />
-              <Panel>
-                <StaticRow label="Cell" value={`[${position.cell[0]}, ${position.cell[1]}]`} />
-                <DataRow label="Time">
-                  <EditableField value={position.timestamp} onChange={(v) => updatePosition("timestamp", v)} type="time" />
-                </DataRow>
-                <DataRow label="Duration">
-                  <EditableField value={position.duration_in_cell} onChange={(v) => updatePosition("duration_in_cell", v)} suffix="min" />
-                </DataRow>
-              </Panel>
-            </GridBlock>
+            </div>
           </div>
+        </FloatingBlock>
 
-          {/* ── COMPUTED ── */}
-          <div key="computed">
-            <GridBlock>
-              <SectionTag label="COMPUTED" icon="⊕" color="#1D6B5E" />
-              <Panel>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { label: "PMV",     value: computedOutputs.PMV,           tooltip: "Predicted Mean Vote (ISO 7730)" },
-                    { label: "PPD",     value: `${computedOutputs.PPD}%`,     tooltip: "Predicted Percentage Dissatisfied" },
-                    { label: "Eff. Lux", value: computedOutputs.effective_lux, tooltip: "Vision-adjusted illuminance" },
-                    { label: "Pr. dB",  value: computedOutputs.perceived_dB,  tooltip: "Hearing-adjusted noise" },
-                  ].map((item) => (
-                    <div key={item.label} className="p-2 text-center rounded-lg" title={item.tooltip}
-                      style={{ background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)" }}>
-                      <div className="font-semibold" style={{ color: "var(--muted-foreground)", letterSpacing: "0.5px", fontSize: "10px" }}>
-                        {item.label}
-                      </div>
-                      <div className="font-bold mt-0.5" style={{
-                        color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace", fontSize: "18px",
-                      }}>
-                        {item.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <PMVWarnings computedOutputs={computedOutputs} />
-                <div className="mt-2 text-xs text-center" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-                  PMV/PPD: ISO 7730 Fanger Model
-                </div>
-                <div className="no-drag">
-                  <FormulaModal />
-                </div>
-              </Panel>
-            </GridBlock>
+        {/* ── Row 2: (empty) + PERSONA CIRCLE (center) + ENVIRONMENT (right) ── */}
+        <div style={{ gridColumn: 1, gridRow: 2 }} />
+
+        {/* PERSONA CIRCLE */}
+        <FloatingBlock floatDelay={3} floatRange={2} style={{
+          gridColumn: 2, gridRow: "2 / 4",
+          display: "flex", justifyContent: "center", alignItems: "center",
+        }}>
+          <div style={{
+            width: 180, height: 180,
+            borderRadius: "50%",
+            background: `linear-gradient(135deg, ${accentColor}18, ${accentColor}30)`,
+            border: `2px solid ${accentColor}50`,
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            boxShadow: `0 0 40px ${accentColor}15, 0 4px 20px rgba(0,0,0,0.06)`,
+            position: "relative",
+          }}>
+            <div style={{ fontSize: "8px", fontWeight: 700, letterSpacing: "2px", color: accentColor, textTransform: "uppercase", marginBottom: 4 }}>
+              PERSONA
+            </div>
+            <div style={{ ...monoStyle, fontSize: "16px", color: "var(--foreground)" }}>
+              {agent.id}
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: 4 }}>
+              {agent.age}{agent.gender === "female" ? "F" : "M"} · {agent.mobility === "normal" ? "Normal" : agent.mobility.charAt(0).toUpperCase() + agent.mobility.slice(1)}
+            </div>
           </div>
+        </FloatingBlock>
 
-          {/* ── ENVIRONMENT ── */}
-          <div key="environment">
-            <GridBlock>
+        <FloatingBlock floatDelay={4} style={{ gridColumn: 3, gridRow: 2 }}>
+          <div style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
               <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
-              <Panel>
-                {!agentPlaced && (
-                  <div className="text-xs text-center py-4 px-2 rounded-lg mb-3" style={{
-                    background: "#FFF8E1", border: "1px solid #E8D48A", color: "#8A6D00",
-                  }}>
-                    Agent not placed on map — showing default values
-                  </div>
-                )}
-                <div className="no-drag" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  {/* Sliders */}
-                  <div>
-                    <SliderField label="Light (Lux)" value={environment.lux} min={0} max={2000} step={10}
-                      onChange={(v) => updateEnv("lux", String(v))} color="#D4A017" />
-                    <SliderField label="Noise (dB)" value={environment.dB} min={0} max={120} step={1} suffix="dB"
-                      onChange={(v) => updateEnv("dB", String(v))} color="#C44040" />
-                    <SliderField label="Temperature" value={environment.air_temp} min={10} max={35} step={0.5} suffix="°C"
-                      onChange={(v) => updateEnv("air_temp", String(v))} color="#1D6B5E" />
-                    <SliderField label="Humidity" value={environment.humidity} min={0} max={100} step={1} suffix="%"
-                      onChange={(v) => updateEnv("humidity", String(v))} color="#4A90B8" />
-                    <SliderField label="Air Velocity" value={environment.air_velocity} min={0} max={2} step={0.01} suffix="m/s"
-                      onChange={(v) => updateEnv("air_velocity", String(v))} color="#2E8B6A" />
-                  </div>
-                  {/* Summary tiles */}
-                  <div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { label: "Light",    value: `${environment.lux}`,       unit: "lux", color: "#D4A017" },
-                        { label: "Noise",    value: `${environment.dB}`,        unit: "dB",  color: "#C44040" },
-                        { label: "Temp",     value: `${environment.air_temp}`,  unit: "°C",  color: "#1D6B5E" },
-                        { label: "Humidity", value: `${environment.humidity}`,  unit: "%",   color: "#4A90B8" },
-                      ].map((item) => (
-                        <div key={item.label} className="p-2 text-center rounded-lg" style={{
-                          background: "var(--muted)", border: "1px solid var(--border)",
-                        }}>
-                          <div style={{ color: item.color, fontSize: "9px", fontWeight: 700, letterSpacing: "0.5px" }}>
-                            {item.label}
-                          </div>
-                          <div style={{
-                            fontFamily: "'JetBrains Mono', monospace", fontWeight: 700,
-                            fontSize: "16px", color: "var(--foreground)",
-                          }}>
-                            {item.value}
-                            <span style={{ fontSize: "10px", color: "var(--muted-foreground)", marginLeft: 2 }}>{item.unit}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-2 text-center" style={{ fontSize: "9px", color: "var(--muted-foreground)" }}>
-                      Air Velocity: {environment.air_velocity} m/s · From zone data
-                    </div>
-                  </div>
-                </div>
-              </Panel>
-            </GridBlock>
+            </div>
+            <StaticRow label="Lux" value={environment.lux} />
+            <StaticRow label="Noise" value={`${environment.dB}`} unit="dB" />
+            <StaticRow label="Temp" value={`${environment.air_temp}`} unit="°C" />
+            <StaticRow label="RH" value={`${environment.humidity}`} unit="%" />
+            <StaticRow label="Air V." value={`${environment.air_velocity}`} unit="m/s" />
           </div>
-        </ResponsiveGridLayout>
-      )}
+        </FloatingBlock>
+
+        {/* ── Row 3: EXPERIENCE (left) + (persona continues) + SPATIAL (right) ── */}
+        <FloatingBlock floatDelay={5} style={{ gridColumn: 1, gridRow: "3 / 5" }}>
+          <div style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <SectionTag label="EXPERIENCE" icon="◌" color="var(--muted-foreground)" />
+            </div>
+            <p style={{
+              fontSize: "12px", fontStyle: "italic", color: "var(--foreground)",
+              lineHeight: 1.6, margin: "0 0 10px", borderLeft: "2px solid var(--border)", paddingLeft: 10,
+            }}>
+              "{experience.summary}"
+            </p>
+
+            {/* Current comfort */}
+            <div className="flex items-center gap-2 mb-1">
+              <span style={{
+                ...monoStyle, fontSize: "11px",
+                border: `1.5px solid ${getComfortColor(experience.comfort_score)}`,
+                color: getComfortColor(experience.comfort_score),
+                padding: "3px 10px", borderRadius: 6,
+              }}>
+                Comfort {experience.comfort_score}
+              </span>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: trendInfo.color }}>
+                {trendInfo.icon} {trendInfo.label}
+              </span>
+            </div>
+
+            {/* Rule triggers */}
+            {ruleTriggers.length > 0 && (
+              <div style={{ marginTop: 8, borderTop: "1px dashed var(--border)", paddingTop: 8 }}>
+                {ruleTriggers.map((t) => (
+                  <div key={t} style={{
+                    ...monoStyle, fontSize: "10px", fontWeight: 500,
+                    padding: "3px 8px", marginBottom: 3,
+                    background: "var(--muted)", border: "1px solid var(--border)",
+                    borderRadius: 4, color: "var(--foreground)",
+                  }}>
+                    {t}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Estimated comfort (if previous exists) */}
+            {comfortDelta !== null && (
+              <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: "1px dashed var(--border)" }}>
+                <span style={{
+                  ...monoStyle, fontSize: "11px",
+                  border: `1.5px solid #2E8B6A`,
+                  color: "#2E8B6A",
+                  padding: "3px 10px", borderRadius: 6,
+                }}>
+                  Comfort {(experience.comfort_score + comfortDelta).toFixed(1)}
+                </span>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#2E8B6A" }}>
+                  △ ESTIMATED
+                </span>
+              </div>
+            )}
+          </div>
+        </FloatingBlock>
+
+        <FloatingBlock floatDelay={6} style={{ gridColumn: 3, gridRow: "3 / 5" }}>
+          <div style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <SectionTag label="SPATIAL" icon="□" color="#D4A017" />
+            </div>
+            <StaticRow label="→ Wall" value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : `${spatial.dist_to_wall}`} unit={agentPlaced && spatial.dist_to_wall >= 0 ? "m" : undefined} />
+            <StaticRow label="→ Win." value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : `${spatial.dist_to_window}`} unit={agentPlaced && spatial.dist_to_window >= 0 ? "m" : undefined} />
+            <StaticRow label="→ Exit" value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : `${spatial.dist_to_exit}`} unit={agentPlaced && spatial.dist_to_exit >= 0 ? "m" : undefined} />
+            <DataRow label="Ceil.">
+              <EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" />
+            </DataRow>
+            <StaticRow label="Encl." value={!agentPlaced ? "—" : spatial.enclosure_ratio} />
+            <div style={{ fontSize: "9px", color: "var(--muted-foreground)", fontStyle: "italic", marginTop: 2 }}>
+              Corridor section ↑
+            </div>
+            <StaticRow label="Vis.Ag" value={!agentPlaced ? "—" : spatial.visible_agents} />
+          </div>
+        </FloatingBlock>
+
+        {/* ── Row 4-5: PERCEPTUAL LOAD (left) + MODEL OUTPUTS (right) ── */}
+        <FloatingBlock floatDelay={7} style={{ gridColumn: 1, gridRow: 5 }}>
+          <div style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
+            </div>
+            <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
+            <LoadBar label="Visual" value={accumulatedState.visual_strain} prevValue={prevAccumulatedState?.visual_strain} note={accumulatedState.visual_strain > 0.4 ? "Signage contrast ↑" : undefined} />
+            <LoadBar label="Noise" value={accumulatedState.noise_stress} prevValue={prevAccumulatedState?.noise_stress} note={accumulatedState.noise_stress > 0.5 ? "Acoustic absorption ↑" : undefined} />
+            <LoadBar label="Social" value={accumulatedState.social_overload} prevValue={prevAccumulatedState?.social_overload} />
+            <LoadBar label="Fatigue" value={accumulatedState.fatigue} prevValue={prevAccumulatedState?.fatigue} />
+            <LoadBar label="Wayfind." value={accumulatedState.wayfinding_anxiety} prevValue={prevAccumulatedState?.wayfinding_anxiety} note={accumulatedState.wayfinding_anxiety > 0.4 ? "Sightline to egress ↑" : undefined} />
+          </div>
+        </FloatingBlock>
+
+        <FloatingBlock floatDelay={8} style={{ gridColumn: "2 / 4", gridRow: 5 }}>
+          <div style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <SectionTag label="MODEL OUTPUTS" icon="⊕" color="#1D6B5E" />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {[
+                { label: "PMV", value: computedOutputs.PMV },
+                { label: "PPD", value: computedOutputs.PPD },
+                { label: "Eff.Lx", value: computedOutputs.effective_lux },
+                { label: "Pr.dB", value: computedOutputs.perceived_dB },
+              ].map((item) => (
+                <div key={item.label} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "6px 12px",
+                  background: "var(--muted)", border: "1px solid var(--border)", borderRadius: 6,
+                }}>
+                  <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)" }}>{item.label}</span>
+                  <span style={{ ...monoStyle, fontSize: "16px" }}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+            {computedOutputs.pmv_warnings && computedOutputs.pmv_warnings.length > 0 && (
+              <div style={{ marginTop: 8, padding: "6px 10px", background: "#FFF8E1", border: "1px solid #E8D48A", borderRadius: 6, fontSize: "10px", color: "#6B5500" }}>
+                {computedOutputs.pmv_warnings.map((w, i) => <div key={i}>{w}</div>)}
+              </div>
+            )}
+            <div className="no-drag">
+              <FormulaModal />
+            </div>
+          </div>
+        </FloatingBlock>
+
+        {/* ── Row 4 center: Environment Sliders (hidden detail, expandable) ── */}
+        <FloatingBlock floatDelay={9} style={{ gridColumn: 2, gridRow: 4 }}>
+          <div style={{ ...cardStyle, padding: "10px 12px" }} className="no-drag">
+            {!agentPlaced && (
+              <div style={{
+                fontSize: "10px", textAlign: "center", padding: "6px", marginBottom: 6,
+                background: "#FFF8E1", border: "1px solid #E8D48A", borderRadius: 6, color: "#8A6D00",
+              }}>
+                Agent not placed — default values
+              </div>
+            )}
+            <SliderField label="Light (Lux)" value={environment.lux} min={0} max={2000} step={10}
+              onChange={(v) => updateEnv("lux", String(v))} color="#D4A017" />
+            <SliderField label="Noise (dB)" value={environment.dB} min={0} max={120} step={1} suffix="dB"
+              onChange={(v) => updateEnv("dB", String(v))} color="#C44040" />
+            <SliderField label="Temp (°C)" value={environment.air_temp} min={10} max={35} step={0.5} suffix="°C"
+              onChange={(v) => updateEnv("air_temp", String(v))} color="#1D6B5E" />
+            <SliderField label="RH (%)" value={environment.humidity} min={0} max={100} step={1} suffix="%"
+              onChange={(v) => updateEnv("humidity", String(v))} color="#4A90B8" />
+            <SliderField label="Air Vel." value={environment.air_velocity} min={0} max={2} step={0.01} suffix="m/s"
+              onChange={(v) => updateEnv("air_velocity", String(v))} color="#2E8B6A" />
+          </div>
+        </FloatingBlock>
+
+        {/* ── Row 4 left: Agent detail (MBTI, sliders) ── */}
+        <FloatingBlock floatDelay={10} style={{ gridColumn: 1, gridRow: 4 }}>
+          <div style={{ ...cardStyle, padding: "10px 12px" }} className="no-drag">
+            <DataRow label="Name">
+              <EditableField value={agent.id} onChange={(v) => updateAgent("id", v)} type="text" />
+            </DataRow>
+            <DataRow label="Age">
+              <EditableField value={agent.age} onChange={(v) => updateAgent("age", v)} type="number" />
+            </DataRow>
+            <DataRow label="Gender">
+              <EditableField value={agent.gender} onChange={(v) => updateAgent("gender", v)} type="select"
+                options={[{ value: "female", label: "Female" }, { value: "male", label: "Male" }]} />
+            </DataRow>
+            <DataRow label="MBTI">
+              <EditableField value={agent.mbti} onChange={(v) => updateAgent("mbti", v)} type="select" options={mbtiOptions} />
+            </DataRow>
+            <DataRow label="Mobility">
+              <EditableField value={agent.mobility} onChange={(v) => updateAgent("mobility", v)} type="select"
+                options={[
+                  { value: "normal", label: "Normal" }, { value: "walker", label: "Walker" },
+                  { value: "wheelchair", label: "Wheelchair" }, { value: "cane", label: "Cane" },
+                ]} />
+            </DataRow>
+            <div style={{ marginTop: 6 }}>
+              <SliderField label="Met Rate" value={agent.metabolic_rate} min={0.8} max={4} step={0.05}
+                onChange={(v) => updateAgent("metabolic_rate", String(v))} color={accentColor} />
+              <SliderField label="Clo" value={agent.clothing_insulation} min={0} max={2} step={0.05}
+                onChange={(v) => updateAgent("clothing_insulation", String(v))} color={accentColor} />
+            </div>
+          </div>
+        </FloatingBlock>
+
+      </div>
+
+      {/* ── FOOTER ── */}
+      <div style={{
+        marginTop: 28,
+        paddingTop: 12,
+        borderTop: "1px solid var(--border)",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-end",
+        flexWrap: "wrap",
+        gap: 8,
+      }}>
+        <div>
+          <div style={{ fontSize: "9px", fontWeight: 600, letterSpacing: "1px", color: "var(--muted-foreground)", textTransform: "uppercase" }}>
+            HKU DEPT. OF ARCHITECTURE · BUILDING INFORMATICS LAB
+          </div>
+          <div style={{ display: "flex", gap: 12, marginTop: 4, alignItems: "center" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: "9px", color: "var(--muted-foreground)" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2E8B6A", display: "inline-block" }} /> Normal
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: "9px", color: "var(--muted-foreground)" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#D4A017", display: "inline-block" }} /> Moderate
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: "9px", color: "var(--muted-foreground)" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#C44040", display: "inline-block" }} /> Alert
+            </span>
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: "9px", fontWeight: 600, letterSpacing: "1px", color: "var(--muted-foreground)", textTransform: "uppercase" }}>
+            AGENT-BASED ENVIRONMENTAL EXPERIENCE MODEL v0.1
+          </div>
+          <div style={{ fontSize: "9px", color: "var(--muted-foreground)", marginTop: 2 }}>
+            → 0.x Δ = predicted reduction in perceptual load <span style={{ fontStyle: "italic" }}>(design intent)</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
