@@ -104,6 +104,7 @@ export interface ZoneBounds {
   y: number;      // top-left y in world coords (mm)
   width: number;  // width in world coords (mm)
   height: number; // height in world coords (mm)
+  points?: [number, number][]; // Optional points for polygon zones
 }
 
 export interface ZoneEnv {
@@ -131,6 +132,19 @@ export const defaultZoneEnv: ZoneEnv = {
 
 /** Check if a point (world coords) is inside a zone's bounds */
 function isPointInZone(px: number, py: number, z: ZoneBounds): boolean {
+  if (z.points && z.points.length >= 3) {
+    // Ray-casting algorithm for polygon containment
+    let inside = false;
+    for (let i = 0, j = z.points.length - 1; i < z.points.length; j = i++) {
+      const xi = z.points[i][0], yi = z.points[i][1];
+      const xj = z.points[j][0], yj = z.points[j][1];
+      const intersect = ((yi > py) !== (yj > py)) &&
+        (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+  // Fallback to rectangle
   return px >= z.x && px <= z.x + z.width && py >= z.y && py <= z.y + z.height;
 }
 

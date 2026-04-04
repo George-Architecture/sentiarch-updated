@@ -864,9 +864,62 @@ interface SectionLayout {
 
 type LayoutConfig = Record<SectionKey, SectionLayout>;
 
-const EMPTY_LAYOUT: LayoutConfig = Object.fromEntries(
-  SECTION_KEYS.map((k) => [k, { x: 0, y: 0, w: 0, h: 0 }])
-) as LayoutConfig;
+const EMPTY_LAYOUT: LayoutConfig = {
+  "agent": {
+    "x": -1,
+    "y": 12,
+    "w": 0,
+    "h": 0
+  },
+  "position": {
+    "x": 0,
+    "y": 12,
+    "w": 0,
+    "h": 0
+  },
+  "environment": {
+    "x": 0,
+    "y": 12,
+    "w": 0,
+    "h": 0
+  },
+  "avatar": {
+    "x": 0,
+    "y": 1,
+    "w": 0,
+    "h": 0
+  },
+  "persona": {
+    "x": 0,
+    "y": -4,
+    "w": 0,
+    "h": 0
+  },
+  "experience": {
+    "x": -1,
+    "y": -22,
+    "w": 0,
+    "h": 0
+  },
+  "spatial": {
+    "x": 0,
+    "y": -22,
+    "w": 0,
+    "h": 0
+  },
+  "outputs": {
+    "x": 0,
+    "y": -22,
+    "w": 0,
+    "h": 0
+  },
+  "perceptual": {
+    "x": 0,
+    "y": -33,
+    "w": 0,
+    "h": 0
+  }
+};
 
 const STORAGE_KEY = "sentiarch-design-layout";
 
@@ -1253,20 +1306,7 @@ export default function PersonaMindMap({
         onImport={handleImport}
       />
 
-      {/* Grid guide overlay in design mode */}
-      {designMode && (
-        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
-          <div className="grid grid-cols-12 gap-3 md:gap-4 h-full">
-            {Array.from({ length: 12 }, (_, i) => (
-              <div key={i} style={{
-                background: "var(--primary)", opacity: 0.04,
-                borderLeft: "1px dashed var(--primary)",
-                borderRight: "1px dashed var(--primary)",
-              }} />
-            ))}
-          </div>
-        </div>
-      )}
+
 
       {/* SVG Connection Lines */}
       <ConnectionLines containerRef={containerRef} />

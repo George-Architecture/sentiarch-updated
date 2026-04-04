@@ -252,6 +252,13 @@ export default function Home() {
     setStates((prev) => {
       const next = [...prev];
       if (!next[agentIdx]) return prev;
+
+      // Requirement: Must place agent first
+      if (!next[agentIdx].agentPos) {
+        toast.error("Please place the agent on the map first before adding waypoints.");
+        return prev;
+      }
+
       const route = { ...next[agentIdx].route };
       route.waypoints = [...route.waypoints, wp];
       next[agentIdx] = { ...next[agentIdx], route };
@@ -436,28 +443,35 @@ export default function Home() {
   // ---- Route Playback Engine ----
   const runRouteForAgent = async (idx: number): Promise<PerceptionLogEntry[]> => {
     const s = states[idx];
-    if (!s) return [];
+    if (!s || !s.agentPos) return [];
     const wps = s.route.waypoints;
-    if (wps.length < 2) return [];
+    // Requirement: Route starts from agent position (index 0)
+    if (wps.length < 1) return [];
 
     const log: PerceptionLogEntry[] = [];
-    const trail: AgentPosition[] = [wps[0].position];
+    // Full path: Agent Position -> Waypoint 1 -> Waypoint 2 ...
+    const fullPath: AgentPosition[] = [s.agentPos, ...wps.map(w => w.position)];
+    const trail: AgentPosition[] = [fullPath[0]];
     const WALK_SPEED = 1200;
     const ANIM_INTERVAL = 50;
 
-    for (let i = 0; i < wps.length - 1; i++) {
+    for (let i = 0; i < fullPath.length - 1; i++) {
       if (routeAbortRef.current) break;
 
-      const fromWP = wps[i];
-      const toWP = wps[i + 1];
-      const dist = posDist(fromWP.position, toWP.position);
+      const fromPos = fullPath[i];
+      const toPos = fullPath[i + 1];
+      // Waypoint ID for log: "agent-start" for agent pos, then actual waypoint IDs
+      const fromID = i === 0 ? "agent-start" : wps[i - 1].id;
+      const toID = wps[i].id;
+      const targetWP = wps[i];
+      const dist = posDist(fromPos, toPos);
       const walkDuration = (dist / WALK_SPEED) * 1000;
       const steps = Math.max(1, Math.floor(walkDuration / ANIM_INTERVAL));
 
       for (let step = 0; step <= steps; step++) {
         if (routeAbortRef.current) break;
         const t = step / steps;
-        const pos = lerpPos(fromWP.position, toWP.position, t);
+        const pos = lerpPos(fromPos, toPos, t);
         setAnimatingAgents((prev) => ({ ...prev, [idx]: pos }));
         trail.push(pos);
         setPathTrails((prev) => ({ ...prev, [idx]: [...trail] }));
@@ -466,21 +480,26 @@ export default function Home() {
 
       if (routeAbortRef.current) break;
 
-      const midPos = lerpPos(fromWP.position, toWP.position, 0.5);
+      const midPos = lerpPos(fromPos, toPos, 0.5);
       const walkEnv = getEnvAtPosition(midPos.x, midPos.y, zones, shapes);
       const walkEnvData = zoneEnvToEnvironment(walkEnv);
       const walkSpatial = computeSpatialFromAgent(midPos, shapes, s.persona.spatial);
       const walkPersona = { ...s.persona, environment: walkEnvData, spatial: walkSpatial };
       const walkComputed = computeOutputs(walkPersona);
 
-      const walkPrompt = buildWalkPrompt(walkPersona, walkComputed, shapes, fromWP, toWP, midPos);
+      // Create a dummy fromWP for the prompt if it's the agent start
+      const dummyFromWP: Waypoint = i === 0 
+        ? { id: "agent-start", position: fromPos, dwell_minutes: 0, label: "Agent Start" }
+        : wps[i-1];
+
+      const walkPrompt = buildWalkPrompt(walkPersona, walkComputed, shapes, dummyFromWP, targetWP, midPos);
       const walkResult = await callLLMWithPrompt(walkPrompt);
 
       const walkEntry: PerceptionLogEntry = {
-        waypoint_id: toWP.id,
+        waypoint_id: toID,
         phase: "walking",
-        from: fromWP.id,
-        to: toWP.id,
+        from: fromID,
+        to: toID,
         position: midPos,
         environment: walkEnvData,
         spatial: walkSpatial,
@@ -509,8 +528,7 @@ export default function Home() {
 
       if (routeAbortRef.current) break;
 
-      const dwellWP = toWP;
-      const arrivalPos = dwellWP.position;
+      const arrivalPos = targetWP.position;
       setAnimatingAgents((prev) => ({ ...prev, [idx]: arrivalPos }));
 
       const dwellEnv = getEnvAtPosition(arrivalPos.x, arrivalPos.y, zones, shapes);
@@ -519,11 +537,11 @@ export default function Home() {
       const dwellPersona = { ...s.persona, environment: dwellEnvData, spatial: dwellSpatial };
       const dwellComputed = computeOutputs(dwellPersona);
 
-      const dwellPrompt = buildDwellPrompt(dwellPersona, dwellComputed, shapes, dwellWP, dwellWP.dwell_minutes);
+      const dwellPrompt = buildDwellPrompt(dwellPersona, dwellComputed, shapes, targetWP, targetWP.dwell_minutes);
       const dwellResult = await callLLMWithPrompt(dwellPrompt);
 
       const dwellEntry: PerceptionLogEntry = {
-        waypoint_id: dwellWP.id,
+        waypoint_id: targetWP.id,
         phase: "dwelling",
         position: arrivalPos,
         environment: dwellEnvData,
@@ -572,11 +590,11 @@ export default function Home() {
     }
 
     const agentsWithRoutes = states
-      .map((s, i) => ({ idx: i, wps: s.route.waypoints }))
-      .filter((a) => a.wps.length >= 2 && simChecked[a.idx]);
+      .map((s, i) => ({ idx: i, wps: s.route.waypoints, hasPos: !!s.agentPos }))
+      .filter((a) => a.hasPos && a.wps.length >= 1 && simChecked[a.idx]);
 
     if (agentsWithRoutes.length === 0) {
-      toast.error("No agents have waypoint routes defined (need at least 2 waypoints)");
+      toast.error("No agents have waypoint routes defined (need agent placed and at least 1 waypoint)");
       return;
     }
 

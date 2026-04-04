@@ -14,7 +14,7 @@ import { getPersonaColor, defaultZoneEnv } from "@/lib/store";
 import { toast } from "sonner";
 
 // ---- Types ----
-type ToolMode = "select" | "wall" | "window" | "door" | "room" | "zone" | "waypoint";
+type ToolMode = "select" | "wall" | "window" | "door" | "room" | "zone" | "zone_poly" | "waypoint";
 
 // ---- Undo action types ----
 interface UndoAction {
@@ -119,7 +119,8 @@ const TOOLS: { mode: ToolMode; label: string; icon: string; hint: string }[] = [
   { mode: "wall", label: "Wall", icon: "▬", hint: "Click 2 points to draw wall segment" },
   { mode: "window", label: "Window", icon: "▭", hint: "Click 2 points — auto-snaps to nearest wall" },
   { mode: "door", label: "Door", icon: "◫", hint: "Click 2 points — auto-snaps to nearest wall" },
-  { mode: "zone", label: "Zone", icon: "▦", hint: "Click 2 corners to define zone rectangle" },
+  { mode: "zone", label: "Zone", icon: "▭", hint: "Click 2 corners to define zone rectangle" },
+  { mode: "zone_poly", label: "Zone Poly", icon: "▦", hint: "Click points to draw zone polygon, double-click to close" },
   { mode: "waypoint", label: "Waypoint", icon: "◉", hint: "Click to place waypoint for active agent's route" },
 ];
 
@@ -543,18 +544,45 @@ export default function SpatialMap({
     // Draw zones
     zones.forEach((zone) => {
       const b = zone.bounds;
-      const [zx1, zy1] = worldToScreen(b.x, b.y + b.height, c);
-      const [zx2, zy2] = worldToScreen(b.x + b.width, b.y, c);
-      const zw = zx2 - zx1;
-      const zh = zy2 - zy1;
+      let zx1, zy1, zw, zh;
 
-      ctx.fillStyle = "rgba(29, 107, 94, 0.04)";
-      ctx.fillRect(zx1, zy1, zw, zh);
-      ctx.strokeStyle = "rgba(29, 107, 94, 0.3)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([6, 4]);
-      ctx.strokeRect(zx1, zy1, zw, zh);
-      ctx.setLineDash([]);
+      if (b.points && b.points.length >= 3) {
+        ctx.beginPath();
+        const [p0x, p0y] = worldToScreen(b.points[0][0], b.points[0][1], c);
+        ctx.moveTo(p0x, p0y);
+        for (let i = 1; i < b.points.length; i++) {
+          const [px, py] = worldToScreen(b.points[i][0], b.points[i][1], c);
+          ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fillStyle = "rgba(29, 107, 94, 0.04)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(29, 107, 94, 0.3)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Label position for polygon (centroid-ish)
+        zx1 = b.points.reduce((s, p) => s + p[0], 0) / b.points.length;
+        zy1 = b.points.reduce((s, p) => s + p[1], 0) / b.points.length;
+        const [lsx, lsy] = worldToScreen(zx1, zy1, c);
+        zx1 = lsx; zy1 = lsy;
+      } else {
+        const [x1, y1] = worldToScreen(b.x, b.y + b.height, c);
+        const [x2, y2] = worldToScreen(b.x + b.width, b.y, c);
+        zx1 = x1; zy1 = y1;
+        zw = x2 - x1;
+        zh = y2 - y1;
+
+        ctx.fillStyle = "rgba(29, 107, 94, 0.04)";
+        ctx.fillRect(zx1, zy1, zw, zh);
+        ctx.strokeStyle = "rgba(29, 107, 94, 0.3)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(zx1, zy1, zw, zh);
+        ctx.setLineDash([]);
+      }
 
       const zlabel = zone.label || zone.id;
       ctx.font = "500 10px 'Inter', sans-serif";
@@ -758,12 +786,17 @@ export default function SpatialMap({
       const color = getPersonaColor(idx);
       if (!wps || wps.length === 0) continue;
 
-      if (wps.length >= 2) {
+      const agentPos = agentPositions[idx];
+      const points: AgentPosition[] = [];
+      if (agentPos) points.push(agentPos);
+      wps.forEach(wp => points.push(wp.position));
+
+      if (points.length >= 2) {
         ctx.beginPath();
-        const [lx0, ly0] = worldToScreen(wps[0].position.x, wps[0].position.y, c);
+        const [lx0, ly0] = worldToScreen(points[0].x, points[0].y, c);
         ctx.moveTo(lx0, ly0);
-        for (let i = 1; i < wps.length; i++) {
-          const [lxi, lyi] = worldToScreen(wps[i].position.x, wps[i].position.y, c);
+        for (let i = 1; i < points.length; i++) {
+          const [lxi, lyi] = worldToScreen(points[i].x, points[i].y, c);
           ctx.lineTo(lxi, lyi);
         }
         ctx.strokeStyle = `${color.primary}50`;
@@ -772,9 +805,9 @@ export default function SpatialMap({
         ctx.stroke();
         ctx.setLineDash([]);
 
-        for (let i = 0; i < wps.length - 1; i++) {
-          const [ax1, ay1] = worldToScreen(wps[i].position.x, wps[i].position.y, c);
-          const [ax2, ay2] = worldToScreen(wps[i + 1].position.x, wps[i + 1].position.y, c);
+        for (let i = 0; i < points.length - 1; i++) {
+          const [ax1, ay1] = worldToScreen(points[i].x, points[i].y, c);
+          const [ax2, ay2] = worldToScreen(points[i + 1].x, points[i + 1].y, c);
           const mx = (ax1 + ax2) / 2;
           const my = (ay1 + ay2) / 2;
           const angle = Math.atan2(ay2 - ay1, ax2 - ax1);
@@ -809,7 +842,7 @@ export default function SpatialMap({
         ctx.fillStyle = color.primary;
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
-        ctx.fillText(`${wpIdx + 1}`, wpx, wpy - 12);
+        ctx.fillText(`${wpIdx + 1}`, wpx, wpy - 12); // Already starting from 1 in original code, confirmed.
 
         ctx.font = "500 9px 'Inter', sans-serif";
         ctx.fillStyle = `${color.primary}90`;
@@ -836,7 +869,7 @@ export default function SpatialMap({
 
     // Draw in-progress drawing
     if (drawingPoints.length > 0 && activeTool !== "select" && activeTool !== "waypoint") {
-      const toolType = activeTool === "zone" ? "zone" : activeTool;
+      const toolType = (activeTool === "zone" || activeTool === "zone_poly") ? "room" : activeTool;
       const style = SHAPE_STYLES[toolType] || SHAPE_STYLES.room;
 
       if (activeTool === "zone" && drawingPoints.length >= 1 && hoverWorld) {
@@ -872,7 +905,7 @@ export default function SpatialMap({
           }
           ctx.lineTo(hx2, hy2);
         }
-        ctx.strokeStyle = style.stroke;
+        ctx.strokeStyle = (activeTool === "zone_poly" || activeTool === "zone") ? "rgba(29, 107, 94, 0.5)" : style.stroke;
         ctx.lineWidth = 2;
         ctx.setLineDash([4, 4]);
         ctx.stroke();
@@ -882,7 +915,7 @@ export default function SpatialMap({
           const [vx, vy] = worldToScreen(wx, wy, c);
           ctx.beginPath();
           ctx.arc(vx, vy, 4, 0, Math.PI * 2);
-          ctx.fillStyle = style.stroke;
+          ctx.fillStyle = (activeTool === "zone_poly" || activeTool === "zone") ? "rgba(29, 107, 94, 0.8)" : style.stroke;
           ctx.fill();
           ctx.beginPath();
           ctx.arc(vx, vy, 2, 0, Math.PI * 2);
@@ -1155,6 +1188,10 @@ export default function SpatialMap({
         }
       }
     } else if (activeTool === "waypoint") {
+      if (!agentPositions[activeAgentIdx]) {
+        toast.error("Please place agent first before adding waypoints");
+        return;
+      }
       if (onAddWaypoint) {
         const existingWps = allWaypoints[activeAgentIdx] || [];
         const wpNum = existingWps.length + 1;
@@ -1194,7 +1231,7 @@ export default function SpatialMap({
       } else {
         setDrawingPoints(newPoints);
       }
-    } else if (activeTool === "room") {
+    } else if (activeTool === "room" || activeTool === "zone_poly") {
       setDrawingPoints([...drawingPoints, [snappedX, snappedY]]);
     } else if (activeTool === "window" || activeTool === "door") {
       // Window/Door: snap to wall
@@ -1254,6 +1291,30 @@ export default function SpatialMap({
       onAddShape(newShape);
       pushUndo({ type: "add_shape", payload: { shape: newShape, index: shapes.length } });
       toast.success(`Room created with ${drawingPoints.length} points`);
+      setDrawingPoints([]);
+      e.preventDefault();
+    } else if (activeTool === "zone_poly" && drawingPoints.length >= 3 && onAddZone) {
+      // Find bounding box for polygon zone
+      const minX = Math.min(...drawingPoints.map(p => p[0]));
+      const minY = Math.min(...drawingPoints.map(p => p[1]));
+      const maxX = Math.max(...drawingPoints.map(p => p[0]));
+      const maxY = Math.max(...drawingPoints.map(p => p[1]));
+      
+      const zone: Zone = {
+        id: `zone_${Date.now()}`,
+        label: `Zone ${zones.length + 1}`,
+        bounds: { 
+          x: minX, 
+          y: minY, 
+          width: maxX - minX, 
+          height: maxY - minY,
+          points: drawingPoints.map(p => [...p] as [number, number])
+        },
+        env: { ...defaultZoneEnv },
+      };
+      onAddZone(zone);
+      pushUndo({ type: "add_zone", payload: { zone } });
+      toast.success(`Polygon zone created with ${drawingPoints.length} points`);
       setDrawingPoints([]);
       e.preventDefault();
     }
@@ -1549,8 +1610,8 @@ export default function SpatialMap({
         <span>Alt+drag to pan</span>
         <span>Scroll to zoom (to cursor)</span>
         {activeTool === "select" && <span>Click shape to select · Drag to move · Del to delete · Click empty to place agent</span>}
-        {activeTool === "room" && <span>Double-click to close polygon</span>}
-        {activeTool === "waypoint" && <span>Click to place waypoint for P{activeAgentIdx + 1}</span>}
+        {(activeTool === "room" || activeTool === "zone_poly") && <span>Double-click to close polygon</span>}
+        {activeTool === "waypoint" && <span>Click to place waypoint for P{activeAgentIdx + 1} (requires agent placed)</span>}
         {(activeTool === "window" || activeTool === "door") && <span>Auto-snaps to nearest wall (within 500mm)</span>}
       </div>
     </div>
