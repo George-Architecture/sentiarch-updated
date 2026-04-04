@@ -743,7 +743,7 @@ export default function Home() {
               disabled={running || routeRunning}
               style={{ opacity: (running || routeRunning) ? 0.6 : 1 }}
             >
-              {running ? "Simulating..." : "Run Snapshot"}
+              {running ? "Calculating..." : "Run Current Calculation"}
             </button>
             <button
               className="sa-btn"

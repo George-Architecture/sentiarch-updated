@@ -46,7 +46,7 @@ export default function ComparisonView({ states }: { states: PersonaState[] }) {
           border: "1px solid #E8D48A",
           color: "#8A6D00",
         }}>
-          Some personas have not been simulated yet. Run "Calculate Current Respond" first.
+          Some personas have not been simulated yet. Run "Run Current Calculation" first.
         </div>
       )}
 

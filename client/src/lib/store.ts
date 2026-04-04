@@ -557,7 +557,7 @@ export function createNewPersona(index: number): PersonaData {
 
 export const defaultExperience: ExperienceData = {
   summary:
-    'Waiting for calculation... Click "Calculate Current Respond" to generate experience narrative.',
+    'Waiting for calculation... Click "Run Current Calculation" to generate experience narrative.',
   comfort_score: 0,
   trend: "stable",
 };
