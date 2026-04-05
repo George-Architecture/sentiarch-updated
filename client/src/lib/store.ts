@@ -99,6 +99,49 @@ function lineIntersect(
   return t >= 0 && t <= 1 && u >= 0 && u <= 1;
 }
 
+/**
+ * Compute the centroid (average of all points) of a shape.
+ * Used as the LOS target point for windows and doors.
+ */
+function shapeCentroid(pts: [number, number][]): [number, number] {
+  let sx = 0, sy = 0;
+  for (const p of pts) { sx += p[0]; sy += p[1]; }
+  return [sx / pts.length, sy / pts.length];
+}
+
+/**
+ * Line-of-sight check: returns true if no boundary wall segment
+ * intersects the line from (ax,ay) to (bx,by).
+ * Only boundary-type shapes block LOS (windows/doors are openings).
+ * Uses a small epsilon inset (t/u in [eps, 1-eps]) to avoid
+ * false-positive intersections at shared endpoints.
+ */
+export function hasLineOfSight(
+  ax: number, ay: number, bx: number, by: number, shapes: Shape[]
+): boolean {
+  const boundaries = shapes.filter(s => s.type === "boundary");
+  if (boundaries.length === 0) return true; // no walls → clear LOS
+
+  const EPS = 1e-4;
+  for (const boundary of boundaries) {
+    const pts = boundary.points;
+    for (let i = 0; i < pts.length; i++) {
+      const j = (i + 1) % pts.length;
+      // Inline intersection test with epsilon to avoid endpoint artifacts
+      const dxAB = bx - ax, dyAB = by - ay;
+      const dxCD = pts[j][0] - pts[i][0], dyCD = pts[j][1] - pts[i][1];
+      const denom = dxAB * dyCD - dyAB * dxCD;
+      if (Math.abs(denom) < 1e-10) continue; // parallel
+      const t = ((pts[i][0] - ax) * dyCD - (pts[i][1] - ay) * dxCD) / denom;
+      const u = ((pts[i][0] - ax) * dyAB - (pts[i][1] - ay) * dxAB) / denom;
+      if (t > EPS && t < 1 - EPS && u > EPS && u < 1 - EPS) {
+        return false; // wall segment blocks the line of sight
+      }
+    }
+  }
+  return true;
+}
+
 // ---- Zone Environment Data ----
 export interface ZoneBounds {
   x: number;      // top-left x in world coords (mm)
@@ -192,6 +235,10 @@ export function computeWindowInfluence(
   let totalAirBoost = 0;
 
   for (const win of windows) {
+    // LOS check: skip windows blocked by boundary walls
+    const [cx, cy] = shapeCentroid(win.points);
+    if (!hasLineOfSight(px, py, cx, cy, shapes)) continue;
+
     // Find closest distance from point to window segment
     let minDist = Infinity;
     for (let i = 0; i < win.points.length - 1; i++) {
@@ -721,7 +768,13 @@ export function distToShapeType(ax: number, ay: number, shapes: Shape[], type: s
   const types = [type];
   const filtered = shapes.filter((s) => types.includes(s.type));
   if (filtered.length === 0) return -1; // -1 = no shape of this type drawn
+  const needLOS = type === "window" || type === "door";
   for (const shape of filtered) {
+    // For windows/doors, skip shapes blocked by boundary walls
+    if (needLOS) {
+      const [cx, cy] = shapeCentroid(shape.points);
+      if (!hasLineOfSight(ax, ay, cx, cy, shapes)) continue;
+    }
     const pts = shape.points;
     const isPolygon = shape.type === "boundary" && pts.length > 2;
     for (let i = 0; i < pts.length; i++) {
@@ -795,7 +848,9 @@ export function computeSpatialFromAgent(
 }
 
 // ---- Vis.Agent Dynamic Calculation ----
-// Counts how many OTHER agents are in the same boundary as the given agent
+// Counts how many OTHER agents are visible to the given agent.
+// Uses boundary polygon containment as a first pass, then verifies
+// line-of-sight (no boundary wall between the two agents).
 export function computeVisibleAgents(
   agentIdx: number,
   allPositions: (AgentPosition | null)[],
@@ -809,24 +864,24 @@ export function computeVisibleAgents(
   const myBoundaries = boundaries.filter((r) => isPointInBoundary(myPos.x, myPos.y, r.points));
 
   if (myBoundaries.length === 0) {
-    // Agent is outside all boundaries — can see other agents also outside
+    // Agent is outside all boundaries — can see other agents also outside AND with clear LOS
     let count = 0;
     for (let i = 0; i < allPositions.length; i++) {
       if (i === agentIdx || !allPositions[i]) continue;
       const otherPos = allPositions[i]!;
       const otherInRoom = boundaries.some((r) => isPointInBoundary(otherPos.x, otherPos.y, r.points));
-      if (!otherInRoom) count++;
+      if (!otherInRoom && hasLineOfSight(myPos.x, myPos.y, otherPos.x, otherPos.y, shapes)) count++;
     }
     return count;
   }
 
-  // Agent is inside boundary(s) — count others in same boundary(s)
+  // Agent is inside boundary(s) — count others in same boundary(s) AND with clear LOS
   let count = 0;
   for (let i = 0; i < allPositions.length; i++) {
     if (i === agentIdx || !allPositions[i]) continue;
     const otherPos = allPositions[i]!;
     const sameRoom = myBoundaries.some((r) => isPointInBoundary(otherPos.x, otherPos.y, r.points));
-    if (sameRoom) count++;
+    if (sameRoom && hasLineOfSight(myPos.x, myPos.y, otherPos.x, otherPos.y, shapes)) count++;
   }
   return count;
 }
@@ -917,27 +972,39 @@ export function getLLMConfig(): { apiKey: string; apiUrl: string; model: string 
 }
 
 export function buildLLMPrompt(persona: PersonaData, computed: ComputedOutputs, shapes: Shape[], zones: Zone[] = []): string {
-  const hasWindows = shapes.some((s) => s.type === "window");
-  const hasDoors = shapes.some((s) => s.type === "door");
   const hasBoundaries = shapes.some((s) => s.type === "boundary");
-  const windowCount = shapes.filter((s) => s.type === "window").length;
-  const doorCount = shapes.filter((s) => s.type === "door").length;
   const boundaryCount = shapes.filter((s) => s.type === "boundary").length;
   // Determine current zone label from agent position (cell coords × 1000 = mm)
   const agentX = persona.position.cell[0] * 1000;
   const agentY = persona.position.cell[1] * 1000;
   const currentZoneLabel = getZoneLabelAtPosition(agentX, agentY, zones);
 
+  // LOS-filtered window and door counts: only count those visible to this agent
+  const visibleWindows = shapes.filter((s) => {
+    if (s.type !== "window") return false;
+    const [cx, cy] = shapeCentroid(s.points);
+    return hasLineOfSight(agentX, agentY, cx, cy, shapes);
+  });
+  const visibleDoors = shapes.filter((s) => {
+    if (s.type !== "door") return false;
+    const [cx, cy] = shapeCentroid(s.points);
+    return hasLineOfSight(agentX, agentY, cx, cy, shapes);
+  });
+  const hasWindows = visibleWindows.length > 0;
+  const hasDoors = visibleDoors.length > 0;
+  const windowCount = visibleWindows.length;
+  const doorCount = visibleDoors.length;
+
   const spatialContext = [
     `SPATIAL ELEMENTS ACTUALLY PRESENT ON MAP:`,
     `- Boundaries: ${boundaryCount} ${hasBoundaries ? "(agent is inside a defined boundary)" : "(NO boundaries defined)"}`,
-    `- Windows: ${windowCount} ${hasWindows ? `(nearest: ${persona.spatial.dist_to_window} m)` : "(NO windows exist — NO natural light, NO outside view)"}`,
-    `- Doors/Exits: ${doorCount} ${hasDoors ? `(nearest: ${persona.spatial.dist_to_exit} m)` : "(NO doors/exits defined)"}`,
+    `- Windows: ${windowCount} ${hasWindows ? `(nearest: ${persona.spatial.dist_to_window} m)` : "(NO windows visible to agent \u2014 NO natural light, NO outside view)"}`,
+    `- Doors/Exits: ${doorCount} ${hasDoors ? `(nearest: ${persona.spatial.dist_to_exit} m)` : "(NO doors/exits visible to agent)"}`,
   ].join("\n");
 
   const windowInstruction = hasWindows
     ? "The agent CAN perceive windows and natural light from them."
-    : "CRITICAL: There are NO windows. Do NOT mention windows, views, or natural light.";
+    : "CRITICAL: There are NO windows visible to this agent. Do NOT mention windows, views, or natural light.";
 
   return `You are simulating the subjective experience of a building occupant.
 
