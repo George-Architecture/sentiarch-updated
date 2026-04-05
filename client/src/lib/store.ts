@@ -71,7 +71,7 @@ export interface ComputedOutputs {
 }
 
 export interface Shape {
-  type: "boundary" | "wall" | "window" | "door";
+  type: "boundary" | "window" | "door";
   points: [number, number][];
   label?: string;
 }
@@ -223,30 +223,21 @@ export function computeWindowInfluence(
 }
 
 /**
- * Extract collision boundaries from wall and room shapes.
+ * Extract collision boundaries from boundary shapes.
  * Returns an array of line segments that agents cannot cross.
  */
 export interface CollisionSegment {
   x1: number; y1: number;
   x2: number; y2: number;
-  type: "wall" | "boundary";
+  type: "boundary";
 }
 
 export function getCollisionBoundaries(shapes: Shape[]): CollisionSegment[] {
   const segments: CollisionSegment[] = [];
 
   for (const shape of shapes) {
-    if (shape.type === "wall") {
-      // Wall: each consecutive pair of points is a collision segment
-      for (let i = 0; i < shape.points.length - 1; i++) {
-        segments.push({
-          x1: shape.points[i][0], y1: shape.points[i][1],
-          x2: shape.points[i + 1][0], y2: shape.points[i + 1][1],
-          type: "wall",
-        });
-      }
-    } else if (shape.type === "boundary") {
-      // Room polygon edges are also collision boundaries
+    if (shape.type === "boundary") {
+      // Boundary polygon edges are collision boundaries
       for (let i = 0; i < shape.points.length; i++) {
         const j = (i + 1) % shape.points.length;
         segments.push({
@@ -727,8 +718,7 @@ export function computePerceptualLoad(persona: PersonaData, computed: ComputedOu
 
 export function distToShapeType(ax: number, ay: number, shapes: Shape[], type: string): number {
   let minDist = Infinity;
-  // For wall distance, also include actual wall shapes
-  const types = type === "boundary" ? ["boundary", "wall"] : [type];
+  const types = [type];
   const filtered = shapes.filter((s) => types.includes(s.type));
   if (filtered.length === 0) return -1; // -1 = no shape of this type drawn
   for (const shape of filtered) {
@@ -747,8 +737,7 @@ export function distToShapeType(ax: number, ay: number, shapes: Shape[], type: s
 
 export function computeEnclosure(ax: number, ay: number, shapes: Shape[]): number {
   const boundaries = shapes.filter((s) => s.type === "boundary");
-  const walls = shapes.filter((s) => s.type === "wall");
-  if (boundaries.length === 0 && walls.length === 0) return 0;
+  if (boundaries.length === 0) return 0;
   const rays = 16;
   let hits = 0;
   const reach = 10000;
@@ -768,18 +757,7 @@ export function computeEnclosure(ax: number, ay: number, shapes: Shape[]): numbe
         }
       }
     }
-    // Check wall segments
-    if (!rayHit) {
-      for (const wall of walls) {
-        if (rayHit) break;
-        const pts = wall.points;
-        for (let j = 0; j < pts.length - 1; j++) {
-          if (lineIntersect(ax, ay, ex, ey, pts[j][0], pts[j][1], pts[j + 1][0], pts[j + 1][1])) {
-            rayHit = true; break;
-          }
-        }
-      }
-    }
+
     if (rayHit) hits++;
   }
   return Math.round((hits / rays) * 100) / 100;

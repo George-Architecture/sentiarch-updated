@@ -219,8 +219,8 @@ export default function Home() {
   const addShape = useCallback((shape: Shape) => {
     setShapes((s) => {
       const next = [...s, shape];
-      // Auto-zone: trigger detection when boundary or wall is added
-      if (shape.type === "boundary" || shape.type === "wall") {
+      // Auto-zone: trigger detection when boundary is added
+      if (shape.type === "boundary") {
         setTimeout(() => {
           setZones((prevZones) => {
             const autoZones = generateAutoZones(next, prevZones);

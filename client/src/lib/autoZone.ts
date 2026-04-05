@@ -1,28 +1,33 @@
 // ============================================================
-// Auto-Zone Detection — Grid-based flood fill (v3)
-// Detects enclosed spaces formed by boundary + wall shapes.
+// Auto-Zone Detection — Walkable-space approach (v4)
 //
-// Key design decisions:
-// 1. Exclude regions that touch the grid boundary (= open/exterior space)
-// 2. Each flood-fill region = one independent zone (NO dedup by boundary)
-//    → walls correctly split a boundary into multiple zones
-// 3. Zone bounds use the flood-fill region's ACTUAL cell bounding box
-//    converted back to world coordinates (not the enclosing boundary bbox)
-// 4. enclosingBoundary is used only to verify the region is inside a
-//    boundary (not exterior), NOT for deduplication or bounds
+// New spatial model:
+//   - Boundary polygon INTERIOR = solid / inaccessible
+//   - Walkable space = inside the OUTERMOST boundary but NOT
+//     inside any boundary polygon
+//   - Auto-zones are generated only in walkable space
+//
+// Algorithm:
+//   1. Find the outermost boundary (largest area)
+//   2. Build a grid covering the outermost boundary bbox
+//   3. Mark cells INSIDE any boundary polygon as SOLID
+//   4. Mark cells OUTSIDE the outermost boundary as EXTERIOR
+//   5. Flood-fill remaining EMPTY cells → each connected region
+//      is a walkable zone
+//   6. Convert regions to Zone objects, preserving user edits
 // ============================================================
 
 import type { Shape, Zone } from "./store";
 import { defaultZoneEnv } from "./store";
 
 // ---- Configuration ----
-const CELL_SIZE = 500;      // mm per grid cell (resolution)
-const WALL_THICKNESS = 3;   // cells to rasterize wall/boundary edge thickness
-const MIN_REGION_CELLS = 9; // minimum cells for a region to become a zone
+const CELL_SIZE = 500;        // mm per grid cell
+const MIN_REGION_CELLS = 4;   // minimum cells for a valid zone
 
 // ---- Grid cell states ----
 const EMPTY = 0;
-const WALL_CELL = -1;
+const SOLID = -1;     // inside a boundary polygon (inaccessible)
+const EXTERIOR = -2;  // outside the outermost boundary
 
 // ---- Geometry helpers ----
 
@@ -48,63 +53,11 @@ function polygonArea(pts: [number, number][]): number {
   return Math.abs(area) / 2;
 }
 
-// ---- Rasterization ----
-
-function rasterizeLine(
-  grid: Int32Array,
-  cols: number,
-  rows: number,
-  x1g: number,
-  y1g: number,
-  x2g: number,
-  y2g: number,
-  thickness: number
-): void {
-  const dx = x2g - x1g;
-  const dy = y2g - y1g;
-  const steps = Math.max(Math.abs(dx), Math.abs(dy), 1);
-  const half = Math.floor(thickness / 2);
-  for (let s = 0; s <= steps; s++) {
-    const t = steps === 0 ? 0 : s / steps;
-    const cx = Math.round(x1g + dx * t);
-    const cy = Math.round(y1g + dy * t);
-    for (let ox = -half; ox <= half; ox++) {
-      for (let oy = -half; oy <= half; oy++) {
-        const gx = cx + ox;
-        const gy = cy + oy;
-        if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
-          grid[gy * cols + gx] = WALL_CELL;
-        }
-      }
-    }
-  }
-}
-
-function rasterizePolygonEdges(
-  grid: Int32Array,
-  cols: number,
-  rows: number,
-  points: [number, number][],
-  originX: number,
-  originY: number,
-  thickness: number
-): void {
-  for (let i = 0; i < points.length; i++) {
-    const j = (i + 1) % points.length;
-    const x1g = Math.round((points[i][0] - originX) / CELL_SIZE);
-    const y1g = Math.round((points[i][1] - originY) / CELL_SIZE);
-    const x2g = Math.round((points[j][0] - originX) / CELL_SIZE);
-    const y2g = Math.round((points[j][1] - originY) / CELL_SIZE);
-    rasterizeLine(grid, cols, rows, x1g, y1g, x2g, y2g, thickness);
-  }
-}
-
 // ---- Flood fill ----
 
 interface FloodFillResult {
   count: number;
   touchesBorder: boolean;
-  /** Grid-coordinate bounding box of all cells in this region */
   gMinX: number;
   gMinY: number;
   gMaxX: number;
@@ -136,13 +89,11 @@ function floodFill(
     const cx = ci % cols;
     const cy = (ci - cx) / cols;
 
-    // Track bounding box
     if (cx < gMinX) gMinX = cx;
     if (cx > gMaxX) gMaxX = cx;
     if (cy < gMinY) gMinY = cy;
     if (cy > gMaxY) gMaxY = cy;
 
-    // Check if this cell is on the grid border → exterior space
     if (cx === 0 || cx === cols - 1 || cy === 0 || cy === rows - 1) {
       touchesBorder = true;
     }
@@ -193,42 +144,37 @@ export interface DetectedRegion {
   id: number;
   cellCount: number;
   centroid: [number, number];
-  /** The smallest boundary polygon that directly encloses this region */
-  enclosingBoundary: Shape;
-  /**
-   * Bounding box in world coords derived from the flood-fill region's
-   * ACTUAL cell bounding box (NOT the enclosing boundary's bbox).
-   * This correctly reflects sub-divisions created by walls.
-   */
   bounds: { x: number; y: number; width: number; height: number };
 }
 
 // ---- Main detection ----
 
 /**
- * Detect enclosed regions formed by boundary + wall shapes.
- * Returns one DetectedRegion per enclosed space.
- * Walls that subdivide a boundary produce multiple regions.
+ * Detect walkable regions:
+ *   - Inside the outermost boundary (largest area)
+ *   - NOT inside any boundary polygon interior
+ *
+ * Each connected walkable region becomes a zone.
  */
 export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
   const boundaries = shapes.filter((s) => s.type === "boundary" && s.points.length >= 3);
-  const walls = shapes.filter((s) => s.type === "wall" && s.points.length >= 2);
-
   if (boundaries.length === 0) return [];
 
-  // ---- Build grid ----
+  // Find the outermost boundary (largest area)
+  const sorted = [...boundaries].sort((a, b) => polygonArea(b.points) - polygonArea(a.points));
+  const outermost = sorted[0];
+  const innerBoundaries = sorted.slice(1);
+
+  // ---- Build grid covering the outermost boundary bbox ----
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const s of [...boundaries, ...walls]) {
-    for (const [px, py] of s.points) {
-      if (px < minX) minX = px;
-      if (py < minY) minY = py;
-      if (px > maxX) maxX = px;
-      if (py > maxY) maxY = py;
-    }
+  for (const [px, py] of outermost.points) {
+    if (px < minX) minX = px;
+    if (py < minY) minY = py;
+    if (px > maxX) maxX = px;
+    if (py > maxY) maxY = py;
   }
 
-  // Padding: enough to ensure exterior space is fully connected across the grid
-  const pad = CELL_SIZE * 6;
+  const pad = CELL_SIZE * 2;
   const originX = minX - pad;
   const originY = minY - pad;
   const cols = Math.ceil((maxX + pad - originX) / CELL_SIZE) + 2;
@@ -241,22 +187,35 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
 
   const grid = new Int32Array(cols * rows); // 0 = EMPTY
 
-  // Rasterize boundary edges
-  for (const b of boundaries) {
-    rasterizePolygonEdges(grid, cols, rows, b.points, originX, originY, WALL_THICKNESS);
-  }
-  // Rasterize walls
-  for (const w of walls) {
-    for (let i = 0; i < w.points.length - 1; i++) {
-      const x1g = Math.round((w.points[i][0] - originX) / CELL_SIZE);
-      const y1g = Math.round((w.points[i][1] - originY) / CELL_SIZE);
-      const x2g = Math.round((w.points[i + 1][0] - originX) / CELL_SIZE);
-      const y2g = Math.round((w.points[i + 1][1] - originY) / CELL_SIZE);
-      rasterizeLine(grid, cols, rows, x1g, y1g, x2g, y2g, WALL_THICKNESS);
+  // ---- Classify each cell ----
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      // Cell center in world coordinates
+      const wx = originX + (gx + 0.5) * CELL_SIZE;
+      const wy = originY + (gy + 0.5) * CELL_SIZE;
+
+      // Check if outside outermost boundary → EXTERIOR
+      if (!pointInPolygon(wx, wy, outermost.points)) {
+        grid[gy * cols + gx] = EXTERIOR;
+        continue;
+      }
+
+      // Check if inside any inner boundary polygon → SOLID (inaccessible)
+      let isSolid = false;
+      for (const b of innerBoundaries) {
+        if (pointInPolygon(wx, wy, b.points)) {
+          isSolid = true;
+          break;
+        }
+      }
+      if (isSolid) {
+        grid[gy * cols + gx] = SOLID;
+      }
+      // else: remains EMPTY = walkable
     }
   }
 
-  // ---- Flood fill all empty regions ----
+  // ---- Flood fill all walkable (EMPTY) cells ----
   let nextId = 1;
   const regionMeta: Map<number, FloodFillResult> = new Map();
 
@@ -270,38 +229,17 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
     }
   }
 
-  // ---- Filter and classify regions ----
-
-  // Sort boundaries by area ascending (smallest first) for "smallest enclosing" lookup
-  const boundariesByArea = [...boundaries].sort(
-    (a, b) => polygonArea(a.points) - polygonArea(b.points)
-  );
-
+  // ---- Build results ----
   const results: DetectedRegion[] = [];
 
   for (const [regionId, meta] of regionMeta) {
-    // Skip: too small
     if (meta.count < MIN_REGION_CELLS) continue;
-    // Skip: touches grid border = exterior/open space
+    // Skip regions that touch the grid border (shouldn't happen with EXTERIOR marking, but safety check)
     if (meta.touchesBorder) continue;
 
     const centroid = regionCentroid(grid, cols, regionId, originX, originY);
 
-    // Find the SMALLEST boundary polygon that contains the centroid.
-    // This is used only to confirm the region is inside a boundary (not exterior).
-    // It is NOT used for deduplication or bounds computation.
-    let enclosing: Shape | null = null;
-    for (const b of boundariesByArea) {
-      if (pointInPolygon(centroid[0], centroid[1], b.points)) {
-        enclosing = b;
-        break;
-      }
-    }
-    if (!enclosing) continue;
-
-    // ---- Zone bounds = flood-fill region's ACTUAL cell bounding box ----
-    // Convert grid cell coordinates back to world coordinates.
-    // Each cell spans [gx * CELL_SIZE + originX, (gx+1) * CELL_SIZE + originX).
+    // Zone bounds = flood-fill region's actual cell bounding box in world coords
     const wx1 = originX + meta.gMinX * CELL_SIZE;
     const wy1 = originY + meta.gMinY * CELL_SIZE;
     const wx2 = originX + (meta.gMaxX + 1) * CELL_SIZE;
@@ -311,7 +249,6 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
       id: regionId,
       cellCount: meta.count,
       centroid,
-      enclosingBoundary: enclosing,
       bounds: { x: wx1, y: wy1, width: wx2 - wx1, height: wy2 - wy1 },
     });
   }
@@ -329,7 +266,7 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
 // ---- Zone generation ----
 
 /**
- * Generate auto-zones from detected regions, preserving user-modified zones.
+ * Generate auto-zones from detected walkable regions, preserving user-modified zones.
  * Auto-zones are identified by the "auto_zone_" prefix in their ID.
  */
 export function generateAutoZones(shapes: Shape[], existingZones: Zone[]): Zone[] {

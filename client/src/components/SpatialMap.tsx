@@ -14,7 +14,7 @@ import { getPersonaColor, defaultZoneEnv, isPointInBoundary } from "@/lib/store"
 import { toast } from "sonner";
 
 // ---- Types ----
-type ToolMode = "select" | "wall" | "window" | "door" | "boundary" | "zone" | "zone_poly" | "waypoint";
+type ToolMode = "select" | "window" | "door" | "boundary" | "rect_boundary" | "zone" | "zone_poly" | "waypoint";
 
 // ---- Undo action types ----
 interface UndoAction {
@@ -102,9 +102,9 @@ function findNearestWallSnap(
   let best: { point: [number, number]; dist: number; wallIdx: number; segIdx: number } | null = null;
 
   shapes.forEach((shape, shapeIdx) => {
-    if (shape.type !== "wall" && shape.type !== "boundary") return;
+    if (shape.type !== "boundary") return;
     const pts = shape.points;
-    const len = shape.type === "boundary" ? pts.length : pts.length - 1;
+    const len = pts.length;
     for (let i = 0; i < len; i++) {
       const j = (i + 1) % pts.length;
       const d = distToSegment(px, py, pts[i][0], pts[i][1], pts[j][0], pts[j][1]);
@@ -121,7 +121,6 @@ function findNearestWallSnap(
 // ---- Shape styles ----
 const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string; lineWidth: number; dash: number[] }> = {
   boundary: { fill: "rgba(29, 107, 94, 0.06)", stroke: "#1D6B5E", label: "Boundary", lineWidth: 2, dash: [] },
-  wall: { fill: "rgba(80, 80, 80, 0.08)", stroke: "#555555", label: "Wall", lineWidth: 3, dash: [] },
   window: { fill: "rgba(59, 130, 246, 0.08)", stroke: "#3B82F6", label: "Window", lineWidth: 2.5, dash: [6, 4] },
   door: { fill: "rgba(180, 120, 70, 0.08)", stroke: "#B47846", label: "Door", lineWidth: 2.5, dash: [8, 3] },
 };
@@ -130,7 +129,7 @@ const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string
 const TOOLS: { mode: ToolMode; label: string; icon: string; hint: string }[] = [
   { mode: "select", label: "Select", icon: "↖", hint: "Click to place agent · Click shape to select · Drag to move" },
   { mode: "boundary", label: "Boundary", icon: "□", hint: "Click points to draw boundary polygon, double-click to close" },
-  { mode: "wall", label: "Wall", icon: "▬", hint: "Click 2 points to draw wall segment" },
+  { mode: "rect_boundary", label: "Rect Boundary", icon: "▨", hint: "Click-drag to draw rectangular boundary" },
   { mode: "window", label: "Window", icon: "▭", hint: "Click 2 points — auto-snaps to nearest wall" },
   { mode: "door", label: "Door", icon: "◫", hint: "Click 2 points — auto-snaps to nearest wall" },
   { mode: "zone", label: "Zone", icon: "▭", hint: "Click 2 corners to define zone rectangle" },
@@ -942,7 +941,24 @@ export default function SpatialMap({
       const toolType = (activeTool === "zone" || activeTool === "zone_poly") ? "boundary" : activeTool;
       const style = SHAPE_STYLES[toolType] || SHAPE_STYLES.boundary;
 
-      if (activeTool === "zone" && drawingPoints.length >= 1 && hoverWorld) {
+      if (activeTool === "rect_boundary" && drawingPoints.length >= 1 && hoverWorld) {
+        // Rect Boundary preview: draw rectangle from first point to hover
+        const p0 = drawingPoints[0];
+        const p1: [number, number] = [snapToGrid(hoverWorld.x), snapToGrid(hoverWorld.y)];
+        const minXr = Math.min(p0[0], p1[0]);
+        const minYr = Math.min(p0[1], p1[1]);
+        const maxXr = Math.max(p0[0], p1[0]);
+        const maxYr = Math.max(p0[1], p1[1]);
+        const [rx1, ry1] = worldToScreen(minXr, maxYr, c);
+        const [rx2, ry2] = worldToScreen(maxXr, minYr, c);
+        ctx.fillStyle = "rgba(29, 107, 94, 0.06)";
+        ctx.fillRect(rx1, ry1, rx2 - rx1, ry2 - ry1);
+        ctx.strokeStyle = "#1D6B5E";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(rx1, ry1, rx2 - rx1, ry2 - ry1);
+        ctx.setLineDash([]);
+      } else if (activeTool === "zone" && drawingPoints.length >= 1 && hoverWorld) {
         const p0 = drawingPoints[0];
         const p1: [number, number] = [snapToGrid(hoverWorld.x), snapToGrid(hoverWorld.y)];
         const minXz = Math.min(p0[0], p1[0]);
@@ -1401,18 +1417,26 @@ export default function SpatialMap({
       } else {
         setDrawingPoints(newPoints);
       }
-    } else {
-      // Wall
+    } else if (activeTool === "rect_boundary") {
+      // Rect Boundary: first click = start corner, second click = opposite corner
       const newPoints = [...drawingPoints, [snappedX, snappedY] as [number, number]];
       if (newPoints.length >= 2) {
         if (onAddShape) {
+          const [x1, y1] = newPoints[0];
+          const [x2, y2] = newPoints[1];
+          const rectPoints: [number, number][] = [
+            [Math.min(x1, x2), Math.min(y1, y2)],
+            [Math.max(x1, x2), Math.min(y1, y2)],
+            [Math.max(x1, x2), Math.max(y1, y2)],
+            [Math.min(x1, x2), Math.max(y1, y2)],
+          ];
           const newShape: Shape = {
-            type: activeTool as "wall",
-            points: newPoints,
+            type: "boundary",
+            points: rectPoints,
           };
           onAddShape(newShape);
           pushUndo({ type: "add_shape", payload: { shape: newShape, index: shapes.length } });
-          toast.success(`${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} added`);
+          toast.success(`Rectangular boundary created`);
         }
         setDrawingPoints([]);
       } else {
@@ -1774,7 +1798,7 @@ export default function SpatialMap({
         {(activeTool === "boundary" || activeTool === "zone_poly") && <span>Click first point (or double-click) to close polygon · Hold Shift to snap to 0°/45°/90°</span>}
         {activeTool === "waypoint" && <span>Click to place waypoint for P{activeAgentIdx + 1} (requires agent placed)</span>}
         {(activeTool === "window" || activeTool === "door") && <span>Auto-snaps to nearest wall (within 500mm) · Hold Shift to snap to 0°/45°/90°</span>}
-        {activeTool === "wall" && <span>Click 2 points to draw wall · Hold Shift to snap to 0°/45°/90°</span>}
+        {activeTool === "rect_boundary" && <span>Click 2 opposite corners to draw rectangular boundary · Hold Shift to snap to 0°/45°/90°</span>}
       </div>
     </div>
   );
