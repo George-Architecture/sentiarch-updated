@@ -2,6 +2,7 @@
 // SentiArch Store - State Management & Computation Logic
 // Multi-Agent System + Baseline Reset + Intervention Feedback Loop
 // ============================================================
+import defaultLayoutData from "./defaultLayout.json";
 
 // ---- Types ----
 export interface AgentData {
@@ -856,13 +857,20 @@ export function posToCell(x: number, y: number, cellSize = 1000): [number, numbe
   return [Math.floor(x / cellSize), Math.floor(y / cellSize)];
 }
 
+// ---- Default Layout ----
+export const DEFAULT_LAYOUT = defaultLayoutData as {
+  shapes: Shape[];
+  zones: Zone[];
+  agentPositions: (AgentPosition | null)[];
+  waypoints: Record<number, Waypoint[]>;
+};
+
 // ---- LocalStorage Persistence ----
 // Version bump forces all clients to reset to new default personas
 const STORE_VERSION = "v3";
 const SHAPES_KEY = `thesis_spatial_shapes_${STORE_VERSION}`;
 const MULTI_AGENT_KEY = `thesis_multi_agent_${STORE_VERSION}`;
 const ZONES_KEY = `thesis_zones_${STORE_VERSION}`;
-
 // Clear any old versioned keys on load
 if (typeof window !== "undefined") {
   ["thesis_spatial_shapes", "thesis_multi_agent",
@@ -871,18 +879,27 @@ if (typeof window !== "undefined") {
     try { localStorage.removeItem(k); } catch {}
   });
 }
-
 export function saveShapes(shapes: Shape[]) {
   try { localStorage.setItem(SHAPES_KEY, JSON.stringify(shapes)); } catch {}
 }
 export function loadShapes(): Shape[] {
-  try { const s = localStorage.getItem(SHAPES_KEY); return s ? JSON.parse(s) : []; } catch { return []; }
+  try {
+    const s = localStorage.getItem(SHAPES_KEY);
+    if (s) return JSON.parse(s);
+    // No saved data — return default layout shapes
+    return DEFAULT_LAYOUT.shapes;
+  } catch { return DEFAULT_LAYOUT.shapes; }
 }
 export function saveZones(zones: Zone[]) {
   try { localStorage.setItem(ZONES_KEY, JSON.stringify(zones)); } catch {}
 }
 export function loadZones(): Zone[] {
-  try { const s = localStorage.getItem(ZONES_KEY); return s ? JSON.parse(s) : []; } catch { return []; }
+  try {
+    const s = localStorage.getItem(ZONES_KEY);
+    if (s) return JSON.parse(s);
+    // No saved data — return default layout zones
+    return DEFAULT_LAYOUT.zones;
+  } catch { return DEFAULT_LAYOUT.zones; }
 }
 export function saveMultiAgent(data: { personas: PersonaData[]; positions: (AgentPosition | null)[] }) {
   try { localStorage.setItem(MULTI_AGENT_KEY, JSON.stringify(data)); } catch {}

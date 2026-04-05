@@ -53,6 +53,8 @@ import {
   getPersonaColor,
   createNewPersona,
   type HeatmapPoint,
+  DEFAULT_LAYOUT,
+  loadAllWaypoints,
 } from "@/lib/store";
 
 function createDefaultState(persona: PersonaData): PersonaState {
@@ -99,7 +101,11 @@ export default function Home() {
         };
       });
     }
-    return defaultPersonas.map((p) => createDefaultState(p));
+    // No saved multi-agent data — use default layout agent positions
+    return defaultPersonas.map((p, i) => ({
+      ...createDefaultState(p),
+      agentPos: DEFAULT_LAYOUT.agentPositions[i] ?? null,
+    }));
   });
 
   const [shapes, setShapes] = useState<Shape[]>(() => loadShapes());
