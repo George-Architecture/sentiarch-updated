@@ -43,6 +43,8 @@ function ZoneEditor({
   const [newLabel, setNewLabel] = useState("");
   const [newBounds, setNewBounds] = useState({ x: "0", y: "0", width: "5000", height: "5000" });
   const [newEnv, setNewEnv] = useState<ZoneEnv>({ ...defaultZoneEnv });
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [editingLabelValue, setEditingLabelValue] = useState("");
 
   const handleAddZone = () => {
     const bounds = {
@@ -86,9 +88,49 @@ function ZoneEditor({
           {zones.map((z) => (
             <div key={z.id} className="sa-card p-3" style={{ background: "var(--background)" }}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-                  {z.label || z.id}
-                </span>
+                {editingLabelId === z.id ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editingLabelValue}
+                    onChange={(e) => setEditingLabelValue(e.target.value)}
+                    onBlur={() => {
+                      const trimmed = editingLabelValue.trim();
+                      if (trimmed) onUpdateZone(z.id, { label: trimmed });
+                      setEditingLabelId(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const trimmed = editingLabelValue.trim();
+                        if (trimmed) onUpdateZone(z.id, { label: trimmed });
+                        setEditingLabelId(null);
+                      } else if (e.key === "Escape") {
+                        setEditingLabelId(null);
+                      }
+                    }}
+                    className="text-sm font-semibold px-1 py-0.5 rounded"
+                    style={{
+                      color: "var(--foreground)",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      fontFamily: "inherit",
+                      minWidth: "80px",
+                      maxWidth: "160px",
+                    }}
+                  />
+                ) : (
+                  <span
+                    className="text-sm font-semibold cursor-pointer hover:underline"
+                    style={{ color: "var(--foreground)" }}
+                    title="Click to rename"
+                    onClick={() => {
+                      setEditingLabelId(z.id);
+                      setEditingLabelValue(z.label || z.id);
+                    }}
+                  >
+                    {z.label || z.id} ✎
+                  </span>
+                )}
                 <div className="flex items-center gap-2">
                   <span className="text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
                     ({z.bounds.x}, {z.bounds.y}) {z.bounds.width}×{z.bounds.height}mm
