@@ -676,14 +676,14 @@ export default function SpatialMap({
         ctx.arc(hx, hy, radius, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.font = "bold 11px 'JetBrains Mono', monospace";
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.9)`;
+        ctx.font = "bold 16px 'JetBrains Mono', monospace";
+        ctx.fillStyle = "rgba(200, 30, 30, 0.95)";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(hp.value.toFixed(1), hx, hy - radius * 0.15);
-        ctx.font = "8px 'Inter', sans-serif";
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.7)`;
-        ctx.fillText("stress", hx, hy + radius * 0.15);
+        ctx.fillText(hp.value.toFixed(1), hx, hy - radius * 0.18);
+        ctx.font = "bold 11px 'Inter', sans-serif";
+        ctx.fillStyle = "rgba(200, 30, 30, 0.8)";
+        ctx.fillText("stress", hx, hy + radius * 0.18);
         ctx.textBaseline = "alphabetic";
       }
     }
