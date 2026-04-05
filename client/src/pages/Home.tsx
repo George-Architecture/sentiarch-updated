@@ -388,7 +388,7 @@ export default function Home() {
   const simulateSingle = async (idx: number): Promise<boolean> => {
     const s = states[idx];
     if (!s) return false;
-    const result = await callLLM(s.persona, s.computed, shapes);
+    const result = await callLLM(s.persona, s.computed, shapes, zones);
     if (!result) return false;
 
     setStates((prev) => {
@@ -492,7 +492,7 @@ export default function Home() {
         ? { id: "agent-start", position: fromPos, dwell_minutes: 0, label: "Agent Start" }
         : wps[i-1];
 
-      const walkPrompt = buildWalkPrompt(walkPersona, walkComputed, shapes, dummyFromWP, targetWP, midPos);
+      const walkPrompt = buildWalkPrompt(walkPersona, walkComputed, shapes, dummyFromWP, targetWP, midPos, zones);
       const walkResult = await callLLMWithPrompt(walkPrompt);
 
       const walkEntry: PerceptionLogEntry = {
@@ -537,7 +537,7 @@ export default function Home() {
       const dwellPersona = { ...s.persona, environment: dwellEnvData, spatial: dwellSpatial };
       const dwellComputed = computeOutputs(dwellPersona);
 
-      const dwellPrompt = buildDwellPrompt(dwellPersona, dwellComputed, shapes, targetWP, targetWP.dwell_minutes);
+      const dwellPrompt = buildDwellPrompt(dwellPersona, dwellComputed, shapes, targetWP, targetWP.dwell_minutes, zones);
       const dwellResult = await callLLMWithPrompt(dwellPrompt);
 
       const dwellEntry: PerceptionLogEntry = {

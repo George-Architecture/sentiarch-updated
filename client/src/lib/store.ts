@@ -358,6 +358,21 @@ export function getEnvAtPosition(px: number, py: number, zones: Zone[], shapes?:
   return baseEnv;
 }
 
+/**
+ * Get the label(s) of zone(s) containing a given world position.
+ * Returns a descriptive string for use in LLM prompts.
+ */
+export function getZoneLabelAtPosition(px: number, py: number, zones: Zone[]): string {
+  const containingZones = zones.filter((z) => isPointInZone(px, py, z.bounds));
+  if (containingZones.length === 0) return "Not in any defined zone";
+  if (containingZones.length === 1) {
+    return containingZones[0].label || containingZones[0].id;
+  }
+  // Multiple overlapping zones
+  const labels = containingZones.map((z) => z.label || z.id).join(" / ");
+  return labels;
+}
+
 /** Convert ZoneEnv to EnvironmentData (field name mapping) */
 export function zoneEnvToEnvironment(ze: ZoneEnv): EnvironmentData {
   return {
@@ -906,13 +921,17 @@ export function getLLMConfig(): { apiKey: string; apiUrl: string; model: string 
   return cfg.apiKey ? cfg : null;
 }
 
-export function buildLLMPrompt(persona: PersonaData, computed: ComputedOutputs, shapes: Shape[]): string {
+export function buildLLMPrompt(persona: PersonaData, computed: ComputedOutputs, shapes: Shape[], zones: Zone[] = []): string {
   const hasWindows = shapes.some((s) => s.type === "window");
   const hasDoors = shapes.some((s) => s.type === "door");
   const hasBoundaries = shapes.some((s) => s.type === "boundary");
   const windowCount = shapes.filter((s) => s.type === "window").length;
   const doorCount = shapes.filter((s) => s.type === "door").length;
   const boundaryCount = shapes.filter((s) => s.type === "boundary").length;
+  // Determine current zone label from agent position (cell coords × 1000 = mm)
+  const agentX = persona.position.cell[0] * 1000;
+  const agentY = persona.position.cell[1] * 1000;
+  const currentZoneLabel = getZoneLabelAtPosition(agentX, agentY, zones);
 
   const spatialContext = [
     `SPATIAL ELEMENTS ACTUALLY PRESENT ON MAP:`,
@@ -932,7 +951,7 @@ AGENT:
 - MBTI: ${persona.agent.mbti} (infer ALL personality-driven preferences from this)
 - Mobility: ${persona.agent.mobility}, Hearing: ${persona.agent.hearing}, Vision: ${persona.agent.vision}
 - Met: ${persona.agent.metabolic_rate}, Clo: ${persona.agent.clothing_insulation}
-
+CURRENT ZONE: ${currentZoneLabel}
 POSITION: Cell [${persona.position.cell.join(", ")}], Time: ${persona.position.timestamp}, Duration: ${persona.position.duration_in_cell} min
 
 ENVIRONMENT: ${persona.environment.lux} lux, ${persona.environment.dB} dB, ${persona.environment.air_temp}°C, ${persona.environment.humidity}% RH, ${persona.environment.air_velocity} m/s
@@ -956,9 +975,9 @@ As ${persona.agent.mbti}, reflect cognitive functions and emotional tendencies. 
 // ---- Walk / Dwell LLM Prompts ----
 export function buildWalkPrompt(
   persona: PersonaData, computed: ComputedOutputs, shapes: Shape[],
-  fromWP: Waypoint, toWP: Waypoint, currentPos: AgentPosition
+  fromWP: Waypoint, toWP: Waypoint, currentPos: AgentPosition, zones: Zone[] = []
 ): string {
-  const base = buildLLMPrompt(persona, computed, shapes);
+  const base = buildLLMPrompt(persona, computed, shapes, zones);
   return `${base}
 
 CONTEXT: The agent is currently WALKING from "${fromWP.label}" (${fromWP.position.x}, ${fromWP.position.y}) to "${toWP.label}" (${toWP.position.x}, ${toWP.position.y}).
@@ -969,9 +988,9 @@ Keep the narrative brief (2-3 sentences) and first-person.`;
 
 export function buildDwellPrompt(
   persona: PersonaData, computed: ComputedOutputs, shapes: Shape[],
-  waypoint: Waypoint, dwellMinutes: number
+  waypoint: Waypoint, dwellMinutes: number, zones: Zone[] = []
 ): string {
-  const base = buildLLMPrompt(persona, computed, shapes);
+  const base = buildLLMPrompt(persona, computed, shapes, zones);
   return `${base}
 
 CONTEXT: The agent has arrived at "${waypoint.label}" and is STAYING here for ${dwellMinutes} minutes.
@@ -1025,7 +1044,7 @@ export async function callLLMWithPrompt(
 }
 
 export async function callLLM(
-  persona: PersonaData, computed: ComputedOutputs, shapes: Shape[] = []
+  persona: PersonaData, computed: ComputedOutputs, shapes: Shape[] = [], zones: Zone[] = []
 ): Promise<{
   experience: ExperienceData;
   accumulatedState: AccumulatedState;
@@ -1042,7 +1061,7 @@ export async function callLLM(
         model: config.model,
         messages: [
           { role: "system", content: "You are an agent-based environmental experience model. Simulate how MBTI personality types experience architectural spaces. CRITICAL: Only reference spatial elements that are explicitly listed as present. Always respond with valid JSON only, no markdown." },
-          { role: "user", content: buildLLMPrompt(persona, computed, shapes) },
+          { role: "user", content: buildLLMPrompt(persona, computed, shapes, zones) },
         ],
         temperature: 0.8,
         max_tokens: 1200,
