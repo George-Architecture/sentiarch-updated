@@ -628,6 +628,40 @@ function DataRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** Read-only color bar for environment values — similar to SliderField but non-interactive */
+function EnvReadOnlyBar({
+  label, value, min, max, suffix, color,
+}: {
+  label: string; value: number; min: number; max: number; suffix?: string; color: string;
+}) {
+  const pct = max > min ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100)) : 0;
+  const decimals = value % 1 !== 0 ? (value < 1 ? 2 : 1) : 0;
+  return (
+    <div className="py-1.5">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>{label}</span>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: "12px", color: "var(--foreground)" }}>
+          {value.toFixed(decimals)}
+          {suffix && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 2 }}>{suffix}</span>}
+        </span>
+      </div>
+      <div style={{ position: "relative", height: 6, borderRadius: 4, background: "var(--muted)" }}>
+        <div style={{
+          position: "absolute", top: 0, left: 0, height: "100%",
+          width: `${pct}%`,
+          background: `linear-gradient(90deg, ${color}90, ${color})`,
+          borderRadius: 4,
+          transition: "width 0.4s ease",
+        }} />
+      </div>
+      <div className="flex justify-between mt-1">
+        <span style={{ fontSize: "9px", color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>{min}</span>
+        <span style={{ fontSize: "9px", color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>{max}</span>
+      </div>
+    </div>
+  );
+}
+
 function StaticRow({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
   return (
     <div className="flex items-center justify-between py-1.5 px-1" style={{ borderBottom: "1px solid var(--border)" }}>
@@ -1391,16 +1425,11 @@ export default function PersonaMindMap({
                   Agent not placed — default values
                 </div>
               )}
-              <SliderField label="Lux" value={environment.lux} min={0} max={2000} step={10}
-                onChange={(v) => updateEnv("lux", String(v))} color="#D4A017" />
-              <SliderField label="Noise" value={environment.dB} min={0} max={120} step={1} suffix="dB"
-                onChange={(v) => updateEnv("dB", String(v))} color="#C44040" />
-              <SliderField label="Temp" value={environment.air_temp} min={10} max={35} step={0.5} suffix="°C"
-                onChange={(v) => updateEnv("air_temp", String(v))} color="#1D6B5E" />
-              <SliderField label="RH" value={environment.humidity} min={0} max={100} step={1} suffix="%"
-                onChange={(v) => updateEnv("humidity", String(v))} color="#4A90B8" />
-              <SliderField label="Air V." value={environment.air_velocity} min={0} max={2} step={0.01} suffix="m/s"
-                onChange={(v) => updateEnv("air_velocity", String(v))} color="#2E8B6A" />
+              <EnvReadOnlyBar label="Lux" value={environment.lux} min={0} max={2000} color="#D4A017" />
+              <EnvReadOnlyBar label="Noise" value={environment.dB} min={0} max={120} suffix="dB" color="#C44040" />
+              <EnvReadOnlyBar label="Temp" value={environment.air_temp} min={10} max={35} suffix="°C" color="#1D6B5E" />
+              <EnvReadOnlyBar label="RH" value={environment.humidity} min={0} max={100} suffix="%" color="#4A90B8" />
+              <EnvReadOnlyBar label="Air V." value={environment.air_velocity} min={0} max={2} suffix="m/s" color="#2E8B6A" />
             </Panel>
           </div>
         </DS>
