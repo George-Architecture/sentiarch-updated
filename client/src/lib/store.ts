@@ -454,7 +454,7 @@ export function computeStressScore(acc: AccumulatedState): number {
     acc.social_overload * weights.social_overload +
     acc.fatigue * weights.fatigue +
     acc.wayfinding_anxiety * weights.wayfinding_anxiety
-  );
+  ) * 10; // acc values are 0-1, multiply by 10 to get 0-10 scale
   return Math.round(Math.min(10, Math.max(0, score)) * 10) / 10;
 }
 

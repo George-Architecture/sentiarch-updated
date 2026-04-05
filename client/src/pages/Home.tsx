@@ -1251,7 +1251,7 @@ export default function Home() {
                                 { key: "wayfinding_anxiety", label: "Wayfinding" },
                               ] as const).map(({ key, label }) => {
                                 const val = entry.accState[key];
-                                const barColor = val <= 3 ? "#1D9E75" : val <= 6 ? "#E67E22" : "#D94F4F";
+                                const barColor = val <= 0.3 ? "#1D9E75" : val <= 0.6 ? "#E67E22" : "#D94F4F";
                                 return (
                                   <div key={key}>
                                     <div className="flex items-center justify-between mb-0.5">
@@ -1264,7 +1264,7 @@ export default function Home() {
                                     </div>
                                     <div className="w-full h-1.5 rounded-full" style={{ background: "var(--border)" }}>
                                       <div className="h-full rounded-full transition-all" style={{
-                                        width: `${Math.min(100, val * 10)}%`,
+                                        width: `${Math.min(100, val * 100)}%`,
                                         background: barColor,
                                         opacity: 0.7,
                                       }} />
