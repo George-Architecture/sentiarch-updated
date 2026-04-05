@@ -121,6 +121,9 @@ export default function Home() {
   const [pathTrails, setPathTrails] = useState<Record<number, AgentPosition[]>>({});
   const [routeRunning, setRouteRunning] = useState(false);
   const routeAbortRef = useRef(false);
+  // Stores each agent's position as it was just before a route simulation started.
+  // Used by resetAgents to restore the pre-route starting position.
+  const originalAgentPositionsRef = useRef<Record<number, AgentPosition | null>>({});
 
   // Current active persona state
   const current = states[activeTab];
@@ -276,17 +279,20 @@ export default function Home() {
     toast.info("Map cleared");
   }, []);
 
-  // ---- Reset All Agents to Starting Positions ----
+  // ---- Reset All Agents to Pre-Route Starting Positions ----
   const resetAgents = useCallback(() => {
     // Abort any running route simulation
     routeAbortRef.current = true;
     setRouteRunning(false);
 
-    setStates((prev) => prev.map((s, i) => {
-      // Restore original starting position from DEFAULT_LAYOUT (or null if beyond layout length)
-      const startPos = DEFAULT_LAYOUT.agentPositions[i] ?? null;
+    const savedPositions = originalAgentPositionsRef.current;
 
-      // Recompute spatial and environment from the starting position
+    setStates((prev) => prev.map((s, i) => {
+      // Use the pre-route snapshot if available; otherwise keep the current position unchanged
+      const hasSnapshot = Object.prototype.hasOwnProperty.call(savedPositions, i);
+      const startPos = hasSnapshot ? savedPositions[i] : s.agentPos;
+
+      // Recompute spatial and environment from the restored position
       let updatedPersona = s.persona;
       if (startPos) {
         const cell = posToCell(startPos.x, startPos.y);
@@ -674,6 +680,13 @@ export default function Home() {
       toast.error("No agents have waypoint routes defined (need agent placed and at least 1 waypoint)");
       return;
     }
+
+    // Snapshot each participating agent's current position before any movement
+    const snapshot: Record<number, AgentPosition | null> = {};
+    agentsWithRoutes.forEach(({ idx }) => {
+      snapshot[idx] = states[idx]?.agentPos ?? null;
+    });
+    originalAgentPositionsRef.current = snapshot;
 
     setRouteRunning(true);
     routeAbortRef.current = false;
