@@ -467,9 +467,7 @@ export default function SpatialMap({
     setCam({ ...newCam });
   }, [shapes, zones, allWaypoints, canvasW, canvasH]);
 
-  useEffect(() => {
-    fitToContent();
-  }, [shapes.length, zones.length, canvasW, canvasH]);
+  // Auto fit-to-content removed — only triggered by manual Fit View button click.
 
   // ---- Export Layout as JSON ----
   const handleExportLayout = useCallback(() => {
