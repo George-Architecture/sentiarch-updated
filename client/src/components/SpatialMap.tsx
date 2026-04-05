@@ -130,8 +130,8 @@ const TOOLS: { mode: ToolMode; label: string; icon: string; hint: string }[] = [
   { mode: "select", label: "Select", icon: "↖", hint: "Click to place agent · Click shape to select · Drag to move" },
   { mode: "boundary", label: "Boundary", icon: "□", hint: "Click points to draw boundary polygon, double-click to close" },
   { mode: "rect_boundary", label: "Rect Boundary", icon: "▨", hint: "Click-drag to draw rectangular boundary" },
-  { mode: "window", label: "Window", icon: "▭", hint: "Click 2 points — auto-snaps to nearest wall" },
-  { mode: "door", label: "Door", icon: "◫", hint: "Click 2 points — auto-snaps to nearest wall" },
+  { mode: "window", label: "Window", icon: "▭", hint: "Click 2 corner points to draw a rectangle window" },
+  { mode: "door", label: "Door", icon: "◫", hint: "Click 2 corner points to draw a rectangle door" },
   { mode: "zone", label: "Zone", icon: "▭", hint: "Click 2 corners to define zone rectangle" },
   { mode: "zone_poly", label: "Zone Poly", icon: "▦", hint: "Click points to draw zone polygon, double-click to close" },
   { mode: "waypoint", label: "Waypoint", icon: "◉", hint: "Click to place waypoint for active agent's route" },
@@ -697,7 +697,7 @@ export default function SpatialMap({
         const [px, py] = worldToScreen(shape.points[i][0], shape.points[i][1], c);
         ctx.lineTo(px, py);
       }
-      if (shape.type === "boundary") {
+      if (shape.type === "boundary" || shape.type === "window" || shape.type === "door") {
         ctx.closePath();
         ctx.fillStyle = isSelected ? style.fill.replace("0.06", "0.15") : style.fill;
         ctx.fill();
@@ -716,7 +716,7 @@ export default function SpatialMap({
           const [px, py] = worldToScreen(shape.points[i][0], shape.points[i][1], c);
           ctx.lineTo(px, py);
         }
-        if (shape.type === "boundary") ctx.closePath();
+        if (shape.type === "boundary" || shape.type === "window" || shape.type === "door") ctx.closePath();
         ctx.strokeStyle = "rgba(255, 107, 53, 0.25)";
         ctx.lineWidth = style.lineWidth + 6;
         ctx.stroke();
@@ -955,6 +955,24 @@ export default function SpatialMap({
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 4]);
         ctx.strokeRect(rx1, ry1, rx2 - rx1, ry2 - ry1);
+        ctx.setLineDash([]);
+      } else if ((activeTool === "window" || activeTool === "door") && drawingPoints.length >= 1 && hoverWorld) {
+        // Door/Window preview: draw rectangle from first point to hover
+        const dwStyle = SHAPE_STYLES[activeTool];
+        const p0dw = drawingPoints[0];
+        const p1dw: [number, number] = [snapToGrid(hoverWorld.x), snapToGrid(hoverWorld.y)];
+        const minXdw = Math.min(p0dw[0], p1dw[0]);
+        const minYdw = Math.min(p0dw[1], p1dw[1]);
+        const maxXdw = Math.max(p0dw[0], p1dw[0]);
+        const maxYdw = Math.max(p0dw[1], p1dw[1]);
+        const [dwx1, dwy1] = worldToScreen(minXdw, maxYdw, c);
+        const [dwx2, dwy2] = worldToScreen(maxXdw, minYdw, c);
+        ctx.fillStyle = dwStyle.fill;
+        ctx.fillRect(dwx1, dwy1, dwx2 - dwx1, dwy2 - dwy1);
+        ctx.strokeStyle = dwStyle.stroke;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(dwx1, dwy1, dwx2 - dwx1, dwy2 - dwy1);
         ctx.setLineDash([]);
       } else if (activeTool === "zone" && drawingPoints.length >= 1 && hoverWorld) {
         const p0 = drawingPoints[0];
@@ -1214,17 +1232,8 @@ export default function SpatialMap({
     }
     setHoverWorld({ x: finalX, y: finalY });
 
-    // Wall snap preview for window/door tools
-    if (activeTool === "window" || activeTool === "door") {
-      const snap = findNearestWallSnap(wx, wy, shapes);
-      if (snap && snap.dist <= WALL_SNAP_DIST) {
-        setWallSnapPreview({ point: snap.point, wallIdx: snap.wallIdx });
-      } else {
-        setWallSnapPreview(null);
-      }
-    } else {
-      setWallSnapPreview(null);
-    }
+    // Wall snap preview removed for window/door (now rect mode)
+    setWallSnapPreview(null);
 
     // Check hover over agents (only in select mode)
     if (activeTool === "select") {
@@ -1387,29 +1396,25 @@ export default function SpatialMap({
       }
       setDrawingPoints([...drawingPoints, [snappedX, snappedY]]);
     } else if (activeTool === "window" || activeTool === "door") {
-      // Window/Door: snap to wall
-      let pointToAdd: [number, number];
-      if (wallSnapPreview) {
-        pointToAdd = [Math.round(wallSnapPreview.point[0]), Math.round(wallSnapPreview.point[1])];
-      } else {
-        // No wall nearby — still allow placement but warn
-        pointToAdd = [snappedX, snappedY];
-      }
-
-      const newPoints = [...drawingPoints, pointToAdd];
+      // Window/Door: click-drag rectangle (same as rect_boundary)
+      const newPoints = [...drawingPoints, [snappedX, snappedY] as [number, number]];
       if (newPoints.length >= 2) {
         if (onAddShape) {
+          const [x1dw, y1dw] = newPoints[0];
+          const [x2dw, y2dw] = newPoints[1];
+          const rectPointsDW: [number, number][] = [
+            [Math.min(x1dw, x2dw), Math.min(y1dw, y2dw)],
+            [Math.max(x1dw, x2dw), Math.min(y1dw, y2dw)],
+            [Math.max(x1dw, x2dw), Math.max(y1dw, y2dw)],
+            [Math.min(x1dw, x2dw), Math.max(y1dw, y2dw)],
+          ];
           const newShape: Shape = {
             type: activeTool,
-            points: newPoints,
+            points: rectPointsDW,
           };
           onAddShape(newShape);
           pushUndo({ type: "add_shape", payload: { shape: newShape, index: shapes.length } });
-          if (!wallSnapPreview) {
-            toast.warning(`${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} placed (not snapped to wall)`);
-          } else {
-            toast.success(`${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} snapped to wall`);
-          }
+          toast.success(`${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} rectangle created`);
         }
         setDrawingPoints([]);
       } else {
@@ -1795,7 +1800,7 @@ export default function SpatialMap({
         {activeTool === "select" && <span>Click shape to select · Drag to move · Del to delete · Click empty to place agent</span>}
         {(activeTool === "boundary" || activeTool === "zone_poly") && <span>Click first point (or double-click) to close polygon · Hold Shift to snap to 0°/45°/90°</span>}
         {activeTool === "waypoint" && <span>Click to place waypoint for P{activeAgentIdx + 1} (requires agent placed)</span>}
-        {(activeTool === "window" || activeTool === "door") && <span>Auto-snaps to nearest wall (within 500mm) · Hold Shift to snap to 0°/45°/90°</span>}
+        {(activeTool === "window" || activeTool === "door") && <span>Click 2 opposite corners to draw a rectangle · Hold Shift to snap to 0°/45°/90°</span>}
         {activeTool === "rect_boundary" && <span>Click 2 opposite corners to draw rectangular boundary · Hold Shift to snap to 0°/45°/90°</span>}
       </div>
     </div>
