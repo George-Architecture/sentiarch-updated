@@ -651,39 +651,45 @@ export default function SpatialMap({
     if (showHeatmap && heatmapPoints.length > 0) {
       for (const hp of heatmapPoints) {
         const [hx, hy] = worldToScreen(hp.x, hp.y, c);
-        const radius = Math.max(30, 2000 * c.zoom);
+        const radius = Math.max(50, 3500 * c.zoom);
         const intensity = Math.min(1, hp.value / 10);
 
+        // Green (low stress / positive) → Red (high stress / negative)
         let r: number, g: number, b: number;
-        if (intensity < 0.4) {
-          const t = intensity / 0.4;
-          r = Math.round(29 + (230 - 29) * t);
-          g = Math.round(107 + (126 - 107) * t);
-          b = Math.round(94 + (34 - 94) * t);
+        if (intensity < 0.3) {
+          // Low stress: green
+          r = 60; g = 180; b = 90;
+        } else if (intensity < 0.6) {
+          // Medium: interpolate green → orange
+          const t = (intensity - 0.3) / 0.3;
+          r = Math.round(60 + (230 - 60) * t);
+          g = Math.round(180 + (140 - 180) * t);
+          b = Math.round(90 + (30 - 90) * t);
         } else {
-          const t = (intensity - 0.4) / 0.6;
-          r = Math.round(230 + (217 - 230) * t);
-          g = Math.round(126 + (79 - 126) * t);
-          b = Math.round(34 + (79 - 34) * t);
+          // High stress: interpolate orange → red
+          const t = (intensity - 0.6) / 0.4;
+          r = Math.round(230 + (210 - 230) * t);
+          g = Math.round(140 + (40 - 140) * t);
+          b = Math.round(30 + (40 - 30) * t);
         }
 
         const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, radius);
-        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.35)`);
-        grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.15)`);
+        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.4)`);
+        grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.18)`);
         grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(hx, hy, radius, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.font = "bold 16px 'JetBrains Mono', monospace";
-        ctx.fillStyle = "rgba(200, 30, 30, 0.95)";
+        ctx.font = "bold 22px 'JetBrains Mono', monospace";
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.95)`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(hp.value.toFixed(1), hx, hy - radius * 0.18);
-        ctx.font = "bold 11px 'Inter', sans-serif";
-        ctx.fillStyle = "rgba(200, 30, 30, 0.8)";
-        ctx.fillText("stress", hx, hy + radius * 0.18);
+        ctx.fillText(hp.value.toFixed(1), hx, hy - radius * 0.15);
+        ctx.font = "bold 14px 'Inter', sans-serif";
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
+        ctx.fillText("stress", hx, hy + radius * 0.15);
         ctx.textBaseline = "alphabetic";
       }
     }
