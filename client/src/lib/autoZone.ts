@@ -294,6 +294,64 @@ export interface DetectedRegion {
   polygon: [number, number][];
 }
 
+// ---- Bresenham's line rasterization ----
+
+/**
+ * Rasterize a line segment from world coordinates (x0,y0) to (x1,y1)
+ * onto the grid, marking every cell the line passes through as SOLID.
+ * Uses Bresenham's line algorithm in grid space.
+ */
+function rasterizeSegment(
+  grid: Int32Array,
+  cols: number,
+  rows: number,
+  originX: number,
+  originY: number,
+  wx0: number, wy0: number,
+  wx1: number, wy1: number
+): void {
+  // Convert world coords to grid coords (integer cell indices)
+  let gx0 = Math.floor((wx0 - originX) / CELL_SIZE);
+  let gy0 = Math.floor((wy0 - originY) / CELL_SIZE);
+  const gx1 = Math.floor((wx1 - originX) / CELL_SIZE);
+  const gy1 = Math.floor((wy1 - originY) / CELL_SIZE);
+
+  const dx = Math.abs(gx1 - gx0);
+  const dy = Math.abs(gy1 - gy0);
+  const sx = gx0 < gx1 ? 1 : -1;
+  const sy = gy0 < gy1 ? 1 : -1;
+  let err = dx - dy;
+
+  while (true) {
+    if (gx0 >= 0 && gx0 < cols && gy0 >= 0 && gy0 < rows) {
+      grid[gy0 * cols + gx0] = SOLID;
+    }
+    if (gx0 === gx1 && gy0 === gy1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; gx0 += sx; }
+    if (e2 < dx)  { err += dx; gy0 += sy; }
+  }
+}
+
+/**
+ * Rasterize all edges of a boundary polygon onto the grid.
+ * This ensures thin boundaries (thinner than CELL_SIZE) still block flood-fill.
+ */
+function rasterizeBoundaryEdges(
+  grid: Int32Array,
+  cols: number,
+  rows: number,
+  originX: number,
+  originY: number,
+  pts: [number, number][]
+): void {
+  for (let i = 0; i < pts.length; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[(i + 1) % pts.length];
+    rasterizeSegment(grid, cols, rows, originX, originY, x0, y0, x1, y1);
+  }
+}
+
 // ---- Outermost boundary detection (v6: containment-based) ----
 
 /**
@@ -390,6 +448,16 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
       }
     }
   }
+
+  // ---- Rasterize boundary edges (v7: handle thin boundaries < CELL_SIZE) ----
+  // After polygon-fill classification, rasterize all boundary edges so that
+  // thin boundaries (narrower than one cell) still block flood-fill.
+  // Rasterize inner boundaries (walls) and also the outermost boundary edges.
+  for (const b of innerBoundaries) {
+    rasterizeBoundaryEdges(grid, cols, rows, originX, originY, b.points);
+  }
+  // Also rasterize the outermost boundary's inner edge to ensure clean separation
+  rasterizeBoundaryEdges(grid, cols, rows, originX, originY, outermost.points);
 
   // ---- Flood fill all walkable (EMPTY) cells ----
   let nextId = 1;
