@@ -859,7 +859,16 @@ export default function SpatialMap({
 
       const agentPos = agentPositions[idx];
       const points: AgentPosition[] = [];
-      if (agentPos) points.push(agentPos);
+      // Only prepend agentPos when it is not coinciding with any waypoint
+      // (threshold: 500 mm). After a route run the agent ends up at the last
+      // waypoint, which would otherwise create a loop back to that position.
+      const WAYPOINT_COINCIDE_THRESHOLD = 500;
+      const agentNearWaypoint = agentPos && wps.some(wp => {
+        const dx = wp.position.x - agentPos.x;
+        const dy = wp.position.y - agentPos.y;
+        return Math.sqrt(dx * dx + dy * dy) < WAYPOINT_COINCIDE_THRESHOLD;
+      });
+      if (agentPos && !agentNearWaypoint) points.push(agentPos);
       wps.forEach(wp => points.push(wp.position));
 
       if (points.length >= 2) {
