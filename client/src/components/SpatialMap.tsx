@@ -472,6 +472,32 @@ export default function SpatialMap({
     fitToContent();
   }, [shapes.length, zones.length, canvasW, canvasH]);
 
+  // ---- Export Layout as JSON ----
+  const handleExportLayout = useCallback(() => {
+    const layoutData = {
+      shapes,
+      zones,
+      agentPositions,
+      waypoints: allWaypoints,
+      exportedAt: new Date().toISOString(),
+    };
+    const json = JSON.stringify(layoutData, null, 2);
+    // Copy to clipboard
+    navigator.clipboard.writeText(json).then(() => {
+      toast.success("Layout JSON copied to clipboard!");
+    }).catch(() => {
+      // Fallback: open in a new window
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sentiarch-layout-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Layout JSON downloaded!");
+    });
+  }, [shapes, zones, agentPositions, allWaypoints]);
+
   // ---- Keyboard: Escape to cancel, Ctrl+Z to undo, Delete to remove selected ----
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1640,6 +1666,28 @@ export default function SpatialMap({
           title="Fit view to content"
         >
           Fit View
+        </button>
+        {/* Export Layout button */}
+        <button
+          onClick={handleExportLayout}
+          className="sa-tool-btn"
+          style={{
+            background: "var(--card)",
+            color: "var(--primary)",
+            border: "1.5px solid var(--primary)",
+            boxShadow: "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8)",
+            padding: "6px 12px",
+            borderRadius: "8px",
+            fontSize: "12px",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+          }}
+          title="Export layout data as JSON (shapes, zones, agents, waypoints)"
+        >
+          <span style={{ fontSize: "13px" }}>⬇</span>
+          Export Layout
         </button>
       </div>
 

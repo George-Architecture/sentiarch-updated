@@ -1308,8 +1308,7 @@ export default function PersonaMindMap({
 
 
 
-      {/* SVG Connection Lines */}
-      <ConnectionLines containerRef={containerRef} />
+      {/* SVG Connection Lines removed for cleaner layout */}
 
       {/* 12-COLUMN TAILWIND GRID */}
       <div className="relative grid grid-cols-12 gap-3 md:gap-4" style={{ zIndex: 1 }}>
