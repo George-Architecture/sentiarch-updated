@@ -56,6 +56,7 @@ import {
   DEFAULT_LAYOUT,
   loadAllWaypoints,
 } from "@/lib/store";
+import { generateAutoZones } from "@/lib/autoZone";
 
 function createDefaultState(persona: PersonaData): PersonaState {
   return {
@@ -216,15 +217,37 @@ export default function Home() {
 
   // Shape management
   const addShape = useCallback((shape: Shape) => {
-    setShapes((s) => [...s, shape]);
+    setShapes((s) => {
+      const next = [...s, shape];
+      // Auto-zone: trigger detection when boundary or wall is added
+      if (shape.type === "boundary" || shape.type === "wall") {
+        setTimeout(() => {
+          setZones((prevZones) => {
+            const autoZones = generateAutoZones(next, prevZones);
+            return autoZones;
+          });
+        }, 0);
+      }
+      return next;
+    });
   }, []);
 
-  const updateShapes = useCallback((newShapes: Shape[]) => {
+   const updateShapes = useCallback((newShapes: Shape[]) => {
     setShapes(newShapes);
+    // Auto-zone: re-detect when shapes are updated (e.g. drag-move)
+    setTimeout(() => {
+      setZones((prevZones) => generateAutoZones(newShapes, prevZones));
+    }, 0);
   }, []);
-
   const deleteShape = useCallback((idx: number) => {
-    setShapes((prev) => prev.filter((_, i) => i !== idx));
+    setShapes((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      // Auto-zone: re-detect when a shape is deleted
+      setTimeout(() => {
+        setZones((prevZones) => generateAutoZones(next, prevZones));
+      }, 0);
+      return next;
+    });
   }, []);
 
   // Zone management
