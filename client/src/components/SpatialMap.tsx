@@ -1041,41 +1041,53 @@ export default function SpatialMap({
         const radius = Math.max(50, 3500 * c.zoom);
         const intensity = Math.min(1, hp.value / 10);
 
-        // Green (low stress / positive) → Red (high stress / negative)
+        // Green (low stress) → Yellow → Orange → Red (high stress)
         let r: number, g: number, b: number;
-        if (intensity < 0.3) {
-          // Low stress: green
-          r = 60; g = 180; b = 90;
-        } else if (intensity < 0.6) {
-          // Medium: interpolate green → orange
-          const t = (intensity - 0.3) / 0.3;
-          r = Math.round(60 + (230 - 60) * t);
-          g = Math.round(180 + (140 - 180) * t);
-          b = Math.round(90 + (30 - 90) * t);
+        if (intensity < 0.2) {
+          // Low stress: vivid green
+          r = 30; g = 200; b = 60;
+        } else if (intensity < 0.4) {
+          // Green → Yellow
+          const t = (intensity - 0.2) / 0.2;
+          r = Math.round(30 + (240 - 30) * t);
+          g = Math.round(200 + (200 - 200) * t);
+          b = Math.round(60 + (0 - 60) * t);
+        } else if (intensity < 0.65) {
+          // Yellow → Orange
+          const t = (intensity - 0.4) / 0.25;
+          r = Math.round(240 + (240 - 240) * t);
+          g = Math.round(200 + (100 - 200) * t);
+          b = Math.round(0 + (0 - 0) * t);
         } else {
-          // High stress: interpolate orange → red
-          const t = (intensity - 0.6) / 0.4;
-          r = Math.round(230 + (210 - 230) * t);
-          g = Math.round(140 + (40 - 140) * t);
-          b = Math.round(30 + (40 - 30) * t);
+          // Orange → Deep red
+          const t = (intensity - 0.65) / 0.35;
+          r = Math.round(240 + (200 - 240) * t);
+          g = Math.round(100 + (20 - 100) * t);
+          b = Math.round(0 + (20 - 0) * t);
         }
 
         const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, radius);
-        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.4)`);
-        grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.18)`);
+        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.65)`);
+        grad.addColorStop(0.4, `rgba(${r}, ${g}, ${b}, 0.35)`);
+        grad.addColorStop(0.7, `rgba(${r}, ${g}, ${b}, 0.12)`);
         grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(hx, hy, radius, 0, Math.PI * 2);
         ctx.fill();
 
+        // Text with dark outline for readability
         ctx.font = "bold 22px 'JetBrains Mono', monospace";
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.95)`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.lineWidth = 3;
+        ctx.strokeText(hp.value.toFixed(1), hx, hy - radius * 0.15);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.fillText(hp.value.toFixed(1), hx, hy - radius * 0.15);
         ctx.font = "bold 14px 'Inter', sans-serif";
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
+        ctx.strokeText("stress", hx, hy + radius * 0.15);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.fillText("stress", hx, hy + radius * 0.15);
         ctx.textBaseline = "alphabetic";
       }
