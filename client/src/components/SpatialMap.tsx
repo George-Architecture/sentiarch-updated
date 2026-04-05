@@ -350,6 +350,7 @@ export default function SpatialMap({
 
   // Animation pulse
   const [animPulse, setAnimPulse] = useState(0);
+  const [showZoneLabels, setShowZoneLabels] = useState(true);
   const hasAnimating = Object.keys(animatingAgents).length > 0;
 
   useEffect(() => {
@@ -631,16 +632,19 @@ export default function SpatialMap({
         ctx.setLineDash([]);
       }
 
-      const zlabel = zone.label || zone.id;
-      ctx.font = "500 10px 'Inter', sans-serif";
-      ctx.fillStyle = "rgba(29, 107, 94, 0.6)";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      ctx.fillText(zlabel, zx1 + 4, zy1 + 4);
-      ctx.font = "9px 'JetBrains Mono', monospace";
-      ctx.fillStyle = "rgba(29, 107, 94, 0.45)";
-      ctx.fillText(`${zone.env.temperature}°C  ${zone.env.light}lx  ${zone.env.noise}dB`, zx1 + 4, zy1 + 18);
-      ctx.textBaseline = "alphabetic";
+      if (showZoneLabels) {
+        const zlabel = zone.label || zone.id;
+        ctx.font = "bold 14px 'Inter', sans-serif";
+        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(zlabel, zx1, zy1);
+        ctx.font = "11px 'JetBrains Mono', monospace";
+        ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+        ctx.fillText(`${zone.env.temperature}°C  ${zone.env.light}lx  ${zone.env.noise}dB`, zx1, zy1 + 18);
+        ctx.textBaseline = "alphabetic";
+        ctx.textAlign = "left";
+      }
     });
 
     // ---- Draw heatmap overlay ----
@@ -1119,7 +1123,7 @@ export default function SpatialMap({
       ctx.textAlign = "left";
       ctx.fillText(txt, tx, ty);
     }
-  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam, drawingPoints, activeTool, allWaypoints, animatingAgents, pathTrails, animPulse, heatmapPoints, showHeatmap, selectedShapeIdx, wallSnapPreview]);
+  }, [shapes, zones, agentPositions, activeAgentIdx, hoverWorld, canvasW, canvasH, cam, drawingPoints, activeTool, allWaypoints, animatingAgents, pathTrails, animPulse, heatmapPoints, showHeatmap, selectedShapeIdx, wallSnapPreview, showZoneLabels]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -1715,6 +1719,28 @@ export default function SpatialMap({
         >
           <span style={{ fontSize: "13px" }}>⬇</span>
           Export Layout
+        </button>
+        {/* Zone Labels toggle */}
+        <button
+          onClick={() => setShowZoneLabels((v) => !v)}
+          className="sa-tool-btn"
+          style={{
+            background: showZoneLabels ? "var(--primary)" : "var(--card)",
+            color: showZoneLabels ? "#fff" : "var(--muted-foreground)",
+            border: `1.5px solid ${showZoneLabels ? "var(--primary)" : "var(--border)"}`,
+            boxShadow: "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8)",
+            padding: "6px 12px",
+            borderRadius: "8px",
+            fontSize: "12px",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+          }}
+          title={showZoneLabels ? "Hide zone labels" : "Show zone labels"}
+        >
+          <span style={{ fontSize: "13px" }}>{showZoneLabels ? "💬" : "🔇"}</span>
+          Zone Labels
         </button>
       </div>
 
