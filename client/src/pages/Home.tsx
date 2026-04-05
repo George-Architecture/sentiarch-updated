@@ -534,9 +534,6 @@ export default function Home() {
     const log: PerceptionLogEntry[] = [];
     // Full path: Agent Position -> Waypoint 1 -> Waypoint 2 ...
     const fullPath: AgentPosition[] = [s.agentPos, ...wps.map(w => w.position)];
-    const trail: AgentPosition[] = [fullPath[0]];
-    const WALK_SPEED = 1200;
-    const ANIM_INTERVAL = 50;
 
     for (let i = 0; i < fullPath.length - 1; i++) {
       if (routeAbortRef.current) break;
@@ -547,21 +544,6 @@ export default function Home() {
       const fromID = i === 0 ? "agent-start" : wps[i - 1].id;
       const toID = wps[i].id;
       const targetWP = wps[i];
-      const dist = posDist(fromPos, toPos);
-      const walkDuration = (dist / WALK_SPEED) * 1000;
-      const steps = Math.max(1, Math.floor(walkDuration / ANIM_INTERVAL));
-
-      for (let step = 0; step <= steps; step++) {
-        if (routeAbortRef.current) break;
-        const t = step / steps;
-        const pos = lerpPos(fromPos, toPos, t);
-        setAnimatingAgents((prev) => ({ ...prev, [idx]: pos }));
-        trail.push(pos);
-        setPathTrails((prev) => ({ ...prev, [idx]: [...trail] }));
-        await new Promise((r) => setTimeout(r, ANIM_INTERVAL));
-      }
-
-      if (routeAbortRef.current) break;
 
       const midPos = lerpPos(fromPos, toPos, 0.5);
       const walkEnv = getEnvAtPosition(midPos.x, midPos.y, zones, shapes);
@@ -612,7 +594,6 @@ export default function Home() {
       if (routeAbortRef.current) break;
 
       const arrivalPos = targetWP.position;
-      setAnimatingAgents((prev) => ({ ...prev, [idx]: arrivalPos }));
 
       const dwellEnv = getEnvAtPosition(arrivalPos.x, arrivalPos.y, zones, shapes);
       const dwellEnvData = zoneEnvToEnvironment(dwellEnv);
@@ -652,15 +633,7 @@ export default function Home() {
           return next;
         });
       }
-
-      await new Promise((r) => setTimeout(r, 800));
     }
-
-    setAnimatingAgents((prev) => {
-      const next = { ...prev };
-      delete next[idx];
-      return next;
-    });
 
     return log;
   };
