@@ -1037,27 +1037,47 @@ As ${persona.agent.mbti}, reflect cognitive functions and emotional tendencies. 
 // ---- Walk / Dwell LLM Prompts ----
 export function buildWalkPrompt(
   persona: PersonaData, computed: ComputedOutputs, shapes: Shape[],
-  fromWP: Waypoint, toWP: Waypoint, currentPos: AgentPosition, zones: Zone[] = []
+  fromWP: Waypoint, toWP: Waypoint, currentPos: AgentPosition, zones: Zone[] = [],
+  prevAccState?: AccumulatedState
 ): string {
   const base = buildLLMPrompt(persona, computed, shapes, zones);
-  return `${base}
+  const accBlock = prevAccState ? `
+PREVIOUS ACCUMULATED STRESS STATE (from prior steps — these stresses carry forward and should influence current perception):
+- Thermal discomfort: ${prevAccState.thermal_discomfort.toFixed(2)}
+- Visual strain: ${prevAccState.visual_strain.toFixed(2)}
+- Noise stress: ${prevAccState.noise_stress.toFixed(2)}
+- Social overload: ${prevAccState.social_overload.toFixed(2)}
+- Fatigue: ${prevAccState.fatigue.toFixed(2)}
+- Wayfinding anxiety: ${prevAccState.wayfinding_anxiety.toFixed(2)}
+IMPORTANT: The agent has already accumulated these stress levels. New accumulated_state values should build upon (not reset) these prior levels unless conditions have genuinely improved.` : '';
+  return `${base}${accBlock}
 
 CONTEXT: The agent is currently WALKING from "${fromWP.label}" (${fromWP.position.x}, ${fromWP.position.y}) to "${toWP.label}" (${toWP.position.x}, ${toWP.position.y}).
 Current position along the path: (${currentPos.x}, ${currentPos.y}).
-The agent is in transit — focus on the MOVEMENT EXPERIENCE: how the spatial transition feels, changes in light/sound/temperature as they walk, wayfinding clarity, and the emotional quality of the journey between spaces.
+The agent is in transit. Describe the walking experience objectively: spatial transitions, environmental changes (light, sound, temperature), wayfinding difficulty, and any discomfort or relief. Do NOT default to positive — if conditions are poor (dim, noisy, hot, enclosed, crowded), the experience should reflect genuine discomfort.
 Keep the narrative brief (2-3 sentences) and first-person.`;
 }
 
 export function buildDwellPrompt(
   persona: PersonaData, computed: ComputedOutputs, shapes: Shape[],
-  waypoint: Waypoint, dwellMinutes: number, zones: Zone[] = []
+  waypoint: Waypoint, dwellMinutes: number, zones: Zone[] = [],
+  prevAccState?: AccumulatedState
 ): string {
   const base = buildLLMPrompt(persona, computed, shapes, zones);
-  return `${base}
+  const accBlock = prevAccState ? `
+PREVIOUS ACCUMULATED STRESS STATE (from prior steps — these stresses carry forward and should influence current perception):
+- Thermal discomfort: ${prevAccState.thermal_discomfort.toFixed(2)}
+- Visual strain: ${prevAccState.visual_strain.toFixed(2)}
+- Noise stress: ${prevAccState.noise_stress.toFixed(2)}
+- Social overload: ${prevAccState.social_overload.toFixed(2)}
+- Fatigue: ${prevAccState.fatigue.toFixed(2)}
+- Wayfinding anxiety: ${prevAccState.wayfinding_anxiety.toFixed(2)}
+IMPORTANT: The agent has already accumulated these stress levels. New accumulated_state values should build upon (not reset) these prior levels unless conditions have genuinely improved.` : '';
+  return `${base}${accBlock}
 
 CONTEXT: The agent has arrived at "${waypoint.label}" and is STAYING here for ${dwellMinutes} minutes.
 Position: (${waypoint.position.x}, ${waypoint.position.y}).
-Focus on the DWELLING EXPERIENCE: how the space feels after settling in, comfort level over time, sensory adaptation, social awareness, and overall satisfaction with this location.
+Describe the dwelling experience objectively: how the space actually feels given the environmental data, any sensory discomfort or adaptation, social pressure, and overall condition. Do NOT default to positive — if conditions are poor, the experience should reflect genuine discomfort.
 Keep the narrative brief (2-3 sentences) and first-person.`;
 }
 

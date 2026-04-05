@@ -534,6 +534,8 @@ export default function Home() {
     const log: PerceptionLogEntry[] = [];
     // Full path: Agent Position -> Waypoint 1 -> Waypoint 2 ...
     const fullPath: AgentPosition[] = [s.agentPos, ...wps.map(w => w.position)];
+    // Track accumulated state across steps
+    let currentAccState: typeof s.accState = { ...s.accState };
 
     for (let i = 0; i < fullPath.length - 1; i++) {
       if (routeAbortRef.current) break;
@@ -557,7 +559,7 @@ export default function Home() {
         ? { id: "agent-start", position: fromPos, dwell_minutes: 0, label: "Agent Start" }
         : wps[i-1];
 
-      const walkPrompt = buildWalkPrompt(walkPersona, walkComputed, shapes, dummyFromWP, targetWP, midPos, zones);
+      const walkPrompt = buildWalkPrompt(walkPersona, walkComputed, shapes, dummyFromWP, targetWP, midPos, zones, currentAccState);
       const walkResult = await callLLMWithPrompt(walkPrompt);
 
       const walkEntry: PerceptionLogEntry = {
@@ -570,13 +572,14 @@ export default function Home() {
         spatial: walkSpatial,
         computed: walkComputed,
         experience: walkResult?.experience || { summary: "Walking...", comfort_score: 5, trend: "stable" },
-        accState: walkResult?.accumulatedState || s.accState,
+        accState: walkResult?.accumulatedState || currentAccState,
         triggers: walkResult?.ruleTriggers || [],
         timestamp: new Date().toISOString(),
       };
       log.push(walkEntry);
 
       if (walkResult) {
+        currentAccState = walkResult.accumulatedState;
         setStates((prev) => {
           const next = [...prev];
           if (!next[idx]) return prev;
@@ -601,7 +604,7 @@ export default function Home() {
       const dwellPersona = { ...s.persona, environment: dwellEnvData, spatial: dwellSpatial };
       const dwellComputed = computeOutputs(dwellPersona);
 
-      const dwellPrompt = buildDwellPrompt(dwellPersona, dwellComputed, shapes, targetWP, targetWP.dwell_minutes, zones);
+      const dwellPrompt = buildDwellPrompt(dwellPersona, dwellComputed, shapes, targetWP, targetWP.dwell_minutes, zones, currentAccState);
       const dwellResult = await callLLMWithPrompt(dwellPrompt);
 
       const dwellEntry: PerceptionLogEntry = {
@@ -612,13 +615,14 @@ export default function Home() {
         spatial: dwellSpatial,
         computed: dwellComputed,
         experience: dwellResult?.experience || { summary: "Dwelling...", comfort_score: 5, trend: "stable" },
-        accState: dwellResult?.accumulatedState || s.accState,
+        accState: dwellResult?.accumulatedState || currentAccState,
         triggers: dwellResult?.ruleTriggers || [],
         timestamp: new Date().toISOString(),
       };
       log.push(dwellEntry);
 
       if (dwellResult) {
+        currentAccState = dwellResult.accumulatedState;
         setStates((prev) => {
           const next = [...prev];
           if (!next[idx]) return prev;
