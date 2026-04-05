@@ -647,53 +647,6 @@ export default function SpatialMap({
       }
     });
 
-    // ---- Draw heatmap overlay ----
-    if (showHeatmap && heatmapPoints.length > 0) {
-      for (const hp of heatmapPoints) {
-        const [hx, hy] = worldToScreen(hp.x, hp.y, c);
-        const radius = Math.max(50, 3500 * c.zoom);
-        const intensity = Math.min(1, hp.value / 10);
-
-        // Green (low stress / positive) → Red (high stress / negative)
-        let r: number, g: number, b: number;
-        if (intensity < 0.3) {
-          // Low stress: green
-          r = 60; g = 180; b = 90;
-        } else if (intensity < 0.6) {
-          // Medium: interpolate green → orange
-          const t = (intensity - 0.3) / 0.3;
-          r = Math.round(60 + (230 - 60) * t);
-          g = Math.round(180 + (140 - 180) * t);
-          b = Math.round(90 + (30 - 90) * t);
-        } else {
-          // High stress: interpolate orange → red
-          const t = (intensity - 0.6) / 0.4;
-          r = Math.round(230 + (210 - 230) * t);
-          g = Math.round(140 + (40 - 140) * t);
-          b = Math.round(30 + (40 - 30) * t);
-        }
-
-        const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, radius);
-        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.4)`);
-        grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.18)`);
-        grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(hx, hy, radius, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.font = "bold 22px 'JetBrains Mono', monospace";
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.95)`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(hp.value.toFixed(1), hx, hy - radius * 0.15);
-        ctx.font = "bold 14px 'Inter', sans-serif";
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
-        ctx.fillText("stress", hx, hy + radius * 0.15);
-        ctx.textBaseline = "alphabetic";
-      }
-    }
-
     // Draw shapes
     shapes.forEach((shape, shapeIdx) => {
       if (shape.points.length < 2) return;
@@ -1079,6 +1032,53 @@ export default function SpatialMap({
       const idx = parseInt(idxStr);
       const [ax, ay] = worldToScreen(pos.x, pos.y, c);
       drawAnimatedAgent(ctx, ax, ay, idx, c.zoom, animPulse);
+    }
+
+    // ---- Draw heatmap overlay (on top of agents) ----
+    if (showHeatmap && heatmapPoints.length > 0) {
+      for (const hp of heatmapPoints) {
+        const [hx, hy] = worldToScreen(hp.x, hp.y, c);
+        const radius = Math.max(50, 3500 * c.zoom);
+        const intensity = Math.min(1, hp.value / 10);
+
+        // Green (low stress / positive) → Red (high stress / negative)
+        let r: number, g: number, b: number;
+        if (intensity < 0.3) {
+          // Low stress: green
+          r = 60; g = 180; b = 90;
+        } else if (intensity < 0.6) {
+          // Medium: interpolate green → orange
+          const t = (intensity - 0.3) / 0.3;
+          r = Math.round(60 + (230 - 60) * t);
+          g = Math.round(180 + (140 - 180) * t);
+          b = Math.round(90 + (30 - 90) * t);
+        } else {
+          // High stress: interpolate orange → red
+          const t = (intensity - 0.6) / 0.4;
+          r = Math.round(230 + (210 - 230) * t);
+          g = Math.round(140 + (40 - 140) * t);
+          b = Math.round(30 + (40 - 30) * t);
+        }
+
+        const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, radius);
+        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.4)`);
+        grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, 0.18)`);
+        grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(hx, hy, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.font = "bold 22px 'JetBrains Mono', monospace";
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.95)`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(hp.value.toFixed(1), hx, hy - radius * 0.15);
+        ctx.font = "bold 14px 'Inter', sans-serif";
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
+        ctx.fillText("stress", hx, hy + radius * 0.15);
+        ctx.textBaseline = "alphabetic";
+      }
     }
 
     // Hover crosshair
