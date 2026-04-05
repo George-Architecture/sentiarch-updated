@@ -276,6 +276,54 @@ export default function Home() {
     toast.info("Map cleared");
   }, []);
 
+  // ---- Reset All Agents to Starting Positions ----
+  const resetAgents = useCallback(() => {
+    // Abort any running route simulation
+    routeAbortRef.current = true;
+    setRouteRunning(false);
+
+    setStates((prev) => prev.map((s, i) => {
+      // Restore original starting position from DEFAULT_LAYOUT (or null if beyond layout length)
+      const startPos = DEFAULT_LAYOUT.agentPositions[i] ?? null;
+
+      // Recompute spatial and environment from the starting position
+      let updatedPersona = s.persona;
+      if (startPos) {
+        const cell = posToCell(startPos.x, startPos.y);
+        const spatial = computeSpatialFromAgent(startPos, shapes, s.persona.spatial);
+        const zoneEnv = getEnvAtPosition(startPos.x, startPos.y, zones, shapes);
+        const newEnv = zoneEnvToEnvironment(zoneEnv);
+        updatedPersona = {
+          ...s.persona,
+          position: { ...s.persona.position, cell },
+          spatial,
+          environment: newEnv,
+        };
+      }
+
+      return {
+        ...s,
+        persona: updatedPersona,
+        agentPos: startPos,
+        // Clear perception log but keep waypoints so routes can be re-run
+        route: { ...s.route, perceptionLog: [] },
+        // Reset experience/perception state so agents are fresh
+        experience: defaultExperience,
+        accState: defaultAccumulatedState,
+        triggers: [],
+        prevExperience: null,
+        prevAccState: null,
+        hasSimulated: false,
+      };
+    }));
+
+    // Clear animation overlays and path trails
+    setPathTrails({});
+    setAnimatingAgents({});
+
+    toast.success("All agents reset to starting positions");
+  }, [shapes, zones]);
+
   // ---- Waypoint Management ----
   const addWaypoint = useCallback((agentIdx: number, wp: Waypoint) => {
     setStates((prev) => {
@@ -951,6 +999,15 @@ export default function Home() {
                 }}
               >
                 {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
+              </button>
+              <button
+                onClick={resetAgents}
+                className="sa-btn text-xs px-3 py-1"
+                disabled={routeRunning}
+                style={{ opacity: routeRunning ? 0.6 : 1 }}
+                title="Reset all agents to their original starting positions"
+              >
+                Reset Agents
               </button>
             </div>
           </div>
