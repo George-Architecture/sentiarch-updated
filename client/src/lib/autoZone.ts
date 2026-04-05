@@ -1,5 +1,5 @@
 // ============================================================
-// Auto-Zone Detection — Walkable-space with contour tracing (v5)
+// Auto-Zone Detection — Walkable-space with contour tracing (v6)
 //
 // Spatial model:
 //   - Boundary polygon INTERIOR = solid / inaccessible
@@ -9,11 +9,16 @@
 //   - Zone shapes are polygons traced from flood-fill contours
 //
 // Every boundary change triggers a FULL re-computation:
-//   1. Find outermost boundary (largest area)
+//   1. Find outermost boundary (contains all others, not just largest area)
 //   2. Grid: mark EXTERIOR / SOLID / EMPTY cells
 //   3. Flood-fill EMPTY → connected walkable regions
 //   4. Contour-trace each region → polygon vertices
-//   5. Merge with existing zones (preserve user edits by centroid match)
+//   5. Merge with existing zones (preserve user edits by closest centroid distance)
+//
+// v6 fixes:
+//   - Bug 1: Centroid matching uses nearest-distance instead of key-hash
+//   - Bug 2: Outermost boundary uses containment check, not just largest area
+//   - Bug 3: Grid padding increased to 6 cells to avoid touchesBorder false positives
 // ============================================================
 
 import type { Shape, Zone } from "./store";
@@ -23,6 +28,8 @@ import { defaultZoneEnv } from "./store";
 const CELL_SIZE = 500;        // mm per grid cell
 const MIN_REGION_CELLS = 4;   // minimum cells for a valid zone
 const SIMPLIFY_TOLERANCE = 0.8; // Douglas-Peucker tolerance in grid cells
+const GRID_PAD_CELLS = 6;     // padding around outermost boundary (increased from 2)
+const CENTROID_MATCH_DIST = 3000; // mm — max distance to match old zone centroid
 
 // ---- Grid cell states ----
 const EMPTY = 0;
@@ -49,6 +56,13 @@ function polygonArea(pts: [number, number][]): number {
     area += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
   }
   return Math.abs(area) / 2;
+}
+
+/**
+ * Check if polygon A contains all vertices of polygon B.
+ */
+function polygonContainsAll(outer: [number, number][], inner: [number, number][]): boolean {
+  return inner.every(([px, py]) => pointInPolygon(px, py, outer));
 }
 
 // ---- Douglas-Peucker line simplification ----
@@ -90,20 +104,14 @@ function simplifyDP(pts: [number, number][], tolerance: number): [number, number
 
 // ---- Contour tracing (Moore neighborhood) ----
 
-/**
- * Trace the outer contour of a region in the grid using Moore neighborhood tracing.
- * Returns polygon vertices in grid coordinates.
- */
 function traceContour(
   grid: Int32Array,
   cols: number,
   rows: number,
   regionId: number,
-  startX: number,
-  startY: number
+  _startX: number,
+  _startY: number
 ): [number, number][] {
-  // Moore neighborhood: 8 directions (clockwise from left)
-  // 0=left, 1=up-left, 2=up, 3=up-right, 4=right, 5=down-right, 6=down, 7=down-left
   const dx = [-1, -1, 0, 1, 1, 1, 0, -1];
   const dy = [0, -1, -1, -1, 0, 1, 1, 1];
 
@@ -113,7 +121,7 @@ function traceContour(
   };
 
   // Find the topmost-leftmost cell of the region as start
-  let sx = startX, sy = startY;
+  let sx = _startX, sy = _startY;
   outer:
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
@@ -127,19 +135,15 @@ function traceContour(
 
   const contourPoints: [number, number][] = [];
   let cx = sx, cy = sy;
-  let dir = 0; // start looking left (entering from the left)
+  let dir = 0;
 
-  // Jacob's stopping criterion: stop when we return to start cell
-  // entering from the same direction
-  const maxSteps = grid.length * 2; // safety limit
+  const maxSteps = grid.length * 2;
   let steps = 0;
   let firstDir = -1;
 
   do {
     contourPoints.push([cx, cy]);
 
-    // Look for next boundary cell by scanning Moore neighborhood
-    // Start from (dir + 5) % 8 — i.e., backtrack direction + 1
     const startDir = (dir + 5) % 8;
     let found = false;
 
@@ -156,7 +160,7 @@ function traceContour(
       }
     }
 
-    if (!found) break; // isolated cell
+    if (!found) break;
 
     if (contourPoints.length === 1) {
       firstDir = dir;
@@ -166,7 +170,6 @@ function traceContour(
     if (steps > maxSteps) break;
   } while (!(cx === sx && cy === sy && dir === firstDir) && steps < maxSteps);
 
-  // Remove duplicate last point if it equals start
   if (contourPoints.length > 1) {
     const last = contourPoints[contourPoints.length - 1];
     if (last[0] === contourPoints[0][0] && last[1] === contourPoints[0][1]) {
@@ -177,29 +180,18 @@ function traceContour(
   return contourPoints;
 }
 
-/**
- * Convert grid-coordinate contour to world-coordinate polygon.
- * Each grid cell center is at (originX + (gx + 0.5) * CELL_SIZE, originY + (gy + 0.5) * CELL_SIZE).
- * We trace the OUTER EDGE of the cells, so we use cell corners, not centers.
- *
- * Alternative simpler approach: use cell centers as polygon vertices,
- * then simplify with Douglas-Peucker.
- */
 function contourToWorldPolygon(
   contour: [number, number][],
   originX: number,
   originY: number
 ): [number, number][] {
-  // Convert grid coords to world coords (cell centers)
   const worldPts: [number, number][] = contour.map(([gx, gy]) => [
     originX + (gx + 0.5) * CELL_SIZE,
     originY + (gy + 0.5) * CELL_SIZE,
   ]);
 
-  // Simplify to reduce vertex count
   const simplified = simplifyDP(worldPts, SIMPLIFY_TOLERANCE * CELL_SIZE);
 
-  // Ensure at least 3 points
   if (simplified.length < 3) return worldPts.length >= 3 ? worldPts : [];
 
   return simplified;
@@ -214,7 +206,6 @@ interface FloodFillResult {
   gMinY: number;
   gMaxX: number;
   gMaxY: number;
-  /** First cell found (for contour tracing start) */
   startX: number;
   startY: number;
 }
@@ -300,8 +291,48 @@ export interface DetectedRegion {
   cellCount: number;
   centroid: [number, number];
   bounds: { x: number; y: number; width: number; height: number };
-  /** Polygon vertices in world coordinates */
   polygon: [number, number][];
+}
+
+// ---- Outermost boundary detection (v6: containment-based) ----
+
+/**
+ * Find the outermost boundary: the one that contains all other boundaries.
+ * Falls back to largest-area if no single boundary contains all others.
+ */
+function findOutermostBoundary(boundaries: Shape[]): { outermost: Shape; inner: Shape[] } {
+  if (boundaries.length === 1) {
+    return { outermost: boundaries[0], inner: [] };
+  }
+
+  // Try to find a boundary that contains all other boundaries' centroids
+  for (const candidate of boundaries) {
+    const others = boundaries.filter((b) => b !== candidate);
+    const containsAll = others.every((other) => {
+      // Check if the candidate contains the centroid of the other boundary
+      const cx = other.points.reduce((s, p) => s + p[0], 0) / other.points.length;
+      const cy = other.points.reduce((s, p) => s + p[1], 0) / other.points.length;
+      return pointInPolygon(cx, cy, candidate.points);
+    });
+    if (containsAll) {
+      return { outermost: candidate, inner: others };
+    }
+  }
+
+  // Fallback: try containment of all vertices
+  for (const candidate of boundaries) {
+    const others = boundaries.filter((b) => b !== candidate);
+    const containsAll = others.every((other) =>
+      polygonContainsAll(candidate.points, other.points)
+    );
+    if (containsAll) {
+      return { outermost: candidate, inner: others };
+    }
+  }
+
+  // Final fallback: largest area
+  const sorted = [...boundaries].sort((a, b) => polygonArea(b.points) - polygonArea(a.points));
+  return { outermost: sorted[0], inner: sorted.slice(1) };
 }
 
 // ---- Main detection ----
@@ -310,10 +341,8 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
   const boundaries = shapes.filter((s) => s.type === "boundary" && s.points.length >= 3);
   if (boundaries.length === 0) return [];
 
-  // Find the outermost boundary (largest area)
-  const sorted = [...boundaries].sort((a, b) => polygonArea(b.points) - polygonArea(a.points));
-  const outermost = sorted[0];
-  const innerBoundaries = sorted.slice(1);
+  // v6: Use containment-based outermost detection
+  const { outermost, inner: innerBoundaries } = findOutermostBoundary(boundaries);
 
   // ---- Build grid covering the outermost boundary bbox ----
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -324,7 +353,8 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
     if (py > maxY) maxY = py;
   }
 
-  const pad = CELL_SIZE * 2;
+  // v6: Increased padding to avoid touchesBorder false positives
+  const pad = CELL_SIZE * GRID_PAD_CELLS;
   const originX = minX - pad;
   const originY = minY - pad;
   const cols = Math.ceil((maxX + pad - originX) / CELL_SIZE) + 2;
@@ -335,7 +365,7 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
     return [];
   }
 
-  const grid = new Int32Array(cols * rows);
+  const grid = new Int32Array(cols * rows); // all EMPTY (0)
 
   // ---- Classify each cell ----
   for (let gy = 0; gy < rows; gy++) {
@@ -384,13 +414,11 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
 
     const centroid = regionCentroid(grid, cols, regionId, originX, originY);
 
-    // Bounding box in world coords
     const wx1 = originX + meta.gMinX * CELL_SIZE;
     const wy1 = originY + meta.gMinY * CELL_SIZE;
     const wx2 = originX + (meta.gMaxX + 1) * CELL_SIZE;
     const wy2 = originY + (meta.gMaxY + 1) * CELL_SIZE;
 
-    // Trace contour and convert to world polygon
     const contour = traceContour(grid, cols, rows, regionId, meta.startX, meta.startY);
     const polygon = contourToWorldPolygon(contour, originX, originY);
 
@@ -415,12 +443,32 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
   return results;
 }
 
-// ---- Zone generation ----
+// ---- Zone generation (v6: distance-based centroid matching) ----
+
+/**
+ * Compute centroid of an existing auto-zone from its polygon or bounds.
+ */
+function zoneCentroid(z: Zone): [number, number] {
+  if (z.bounds.points && z.bounds.points.length >= 3) {
+    const pts = z.bounds.points;
+    const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+    const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+    return [cx, cy];
+  }
+  return [z.bounds.x + z.bounds.width / 2, z.bounds.y + z.bounds.height / 2];
+}
+
+/**
+ * Euclidean distance between two points.
+ */
+function dist2d(a: [number, number], b: [number, number]): number {
+  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2);
+}
 
 /**
  * Generate auto-zones from detected walkable regions.
  * FULL re-computation: all auto-zones are replaced.
- * User edits (label, env) are preserved by matching centroids.
+ * User edits (label, env) are preserved by matching closest centroids (v6).
  */
 export function generateAutoZones(shapes: Shape[], existingZones: Zone[]): Zone[] {
   const regions = detectEnclosedRegions(shapes);
@@ -428,37 +476,36 @@ export function generateAutoZones(shapes: Shape[], existingZones: Zone[]): Zone[
   const manualZones = existingZones.filter((z) => !z.id.startsWith("auto_zone_"));
   const autoZones   = existingZones.filter((z) =>  z.id.startsWith("auto_zone_"));
 
-  // Build lookup of existing auto-zones by approximate centroid key
-  // so user edits (label, env) are preserved across re-detections.
-  // Use a coarser key (round to nearest 2000mm) for better matching
-  // when boundaries shift slightly.
-  const existingByKey = new Map<string, Zone>();
-  for (const az of autoZones) {
-    // Compute centroid from polygon if available, else from bounds center
-    let cx: number, cy: number;
-    if (az.bounds.points && az.bounds.points.length >= 3) {
-      cx = az.bounds.points.reduce((s, p) => s + p[0], 0) / az.bounds.points.length;
-      cy = az.bounds.points.reduce((s, p) => s + p[1], 0) / az.bounds.points.length;
-    } else {
-      cx = az.bounds.x + az.bounds.width / 2;
-      cy = az.bounds.y + az.bounds.height / 2;
-    }
-    const key = `${Math.round(cx / 2000)}_${Math.round(cy / 2000)}`;
-    existingByKey.set(key, az);
-  }
+  // v6: Build list of existing auto-zones with their centroids for distance matching
+  const availableOld: { zone: Zone; centroid: [number, number]; matched: boolean }[] =
+    autoZones.map((z) => ({ zone: z, centroid: zoneCentroid(z), matched: false }));
 
   const newAutoZones: Zone[] = [];
   let labelCounter = 1;
 
   for (const region of regions) {
-    const cx = region.centroid[0];
-    const cy = region.centroid[1];
-    const key = `${Math.round(cx / 2000)}_${Math.round(cy / 2000)}`;
+    const rc = region.centroid;
 
-    const existing = existingByKey.get(key);
-    if (existing) {
-      // Preserve user edits (label, env); update bounds + polygon
+    // v6: Find the closest unmatched existing auto-zone within threshold
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < availableOld.length; i++) {
+      if (availableOld[i].matched) continue;
+      const d = dist2d(rc, availableOld[i].centroid);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx >= 0 && bestDist <= CENTROID_MATCH_DIST) {
+      // Matched an existing zone — preserve user edits
+      const existing = availableOld[bestIdx].zone;
+      availableOld[bestIdx].matched = true;
+
       const userModifiedLabel = existing.label && !existing.label.match(/^Zone \d+$/);
+      const userModifiedEnv = JSON.stringify(existing.env) !== JSON.stringify(defaultZoneEnv);
+
       newAutoZones.push({
         ...existing,
         bounds: {
@@ -468,11 +515,11 @@ export function generateAutoZones(shapes: Shape[], existingZones: Zone[]): Zone[
           height: region.bounds.height,
           points: region.polygon,
         },
-        // Keep user-modified label, otherwise will be re-numbered below
         label: userModifiedLabel ? existing.label : `Zone ${labelCounter}`,
+        env: userModifiedEnv ? existing.env : { ...defaultZoneEnv },
       });
-      existingByKey.delete(key);
     } else {
+      // New zone
       newAutoZones.push({
         id:    `auto_zone_${Date.now()}_${labelCounter}`,
         label: `Zone ${labelCounter}`,
