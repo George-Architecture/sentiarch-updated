@@ -8,7 +8,7 @@ import type { Shape, Zone, ZoneEnv } from "@/lib/store";
 import { defaultZoneEnv } from "@/lib/store";
 import { toast } from "sonner";
 
-const ROOM_EXAMPLE = `0. {5000, 0}
+const BOUNDARY_EXAMPLE = `0. {5000, 0}
 1. {5000, 5000}
 2. {0, 5000}
 3. {0, 0}`;
@@ -227,7 +227,7 @@ export default function CoordinateInput({
   onRemoveZone?: (id: string) => void;
 }) {
   const [text, setText] = useState("");
-  const [shapeType, setShapeType] = useState<"room" | "window" | "door">("room");
+  const [shapeType, setShapeType] = useState<"boundary" | "window" | "door">("boundary");
   const [label, setLabel] = useState("");
   const [activeSection, setActiveSection] = useState<"shapes" | "zones">("shapes");
 
@@ -277,8 +277,8 @@ export default function CoordinateInput({
               RHINO/GH COORDINATE DATA
             </span>
             <div className="flex gap-2">
-              <button className="sa-btn text-xs" onClick={() => setText(ROOM_EXAMPLE)}>
-                ROOM EXAMPLE
+              <button className="sa-btn text-xs" onClick={() => setText(BOUNDARY_EXAMPLE)}>
+                BOUNDARY EXAMPLE
               </button>
               <button className="sa-btn text-xs" onClick={() => setText(WINDOW_EXAMPLE)}>
                 WINDOW EXAMPLE
@@ -287,13 +287,13 @@ export default function CoordinateInput({
           </div>
 
           <div className="text-[10px] mb-1" style={{ color: "var(--muted-foreground)", letterSpacing: "0.5px" }}>
-            FORMAT: INDEX. {"{X, Y}"} — ONE POINT PER LINE — LAST POINT CONNECTS BACK TO FIRST (ROOM)
+            FORMAT: INDEX. {"{X, Y}"} — ONE POINT PER LINE — LAST POINT CONNECTS BACK TO FIRST (BOUNDARY)
           </div>
 
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={`Paste Rhino/GH coordinates...\n0. {5000, 0}\n1. {5000, 5000}\n2. {0, 5000}\n3. {0, 0}\n\nPoints connect in order. Rooms close automatically.`}
+            placeholder={`Paste Rhino/GH coordinates...\n0. {5000, 0}\n1. {5000, 5000}\n2. {0, 5000}\n3. {0, 0}\n\nPoints connect in order. Boundaries close automatically.`}
             className="w-full h-32 text-sm p-3 resize-none rounded-lg"
             style={{
               background: "var(--background)",
@@ -306,7 +306,7 @@ export default function CoordinateInput({
 
           <div className="flex items-center gap-3">
             <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>SHAPE TYPE</span>
-            {(["room", "window", "door"] as const).map((t) => (
+            {((["boundary", "window", "door"] as const)).map((t) => (
               <button
                 key={t}
                 className="sa-btn text-xs"

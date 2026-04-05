@@ -10,11 +10,11 @@
 
 import { useRef, useCallback, useEffect, useState } from "react";
 import type { Shape, AgentPosition, Zone, Waypoint, HeatmapPoint } from "@/lib/store";
-import { getPersonaColor, defaultZoneEnv } from "@/lib/store";
+import { getPersonaColor, defaultZoneEnv, isPointInBoundary } from "@/lib/store";
 import { toast } from "sonner";
 
 // ---- Types ----
-type ToolMode = "select" | "wall" | "window" | "door" | "room" | "zone" | "zone_poly" | "waypoint";
+type ToolMode = "select" | "wall" | "window" | "door" | "boundary" | "zone" | "zone_poly" | "waypoint";
 
 // ---- Undo action types ----
 interface UndoAction {
@@ -102,9 +102,9 @@ function findNearestWallSnap(
   let best: { point: [number, number]; dist: number; wallIdx: number; segIdx: number } | null = null;
 
   shapes.forEach((shape, shapeIdx) => {
-    if (shape.type !== "wall" && shape.type !== "room") return;
+    if (shape.type !== "wall" && shape.type !== "boundary") return;
     const pts = shape.points;
-    const len = shape.type === "room" ? pts.length : pts.length - 1;
+    const len = shape.type === "boundary" ? pts.length : pts.length - 1;
     for (let i = 0; i < len; i++) {
       const j = (i + 1) % pts.length;
       const d = distToSegment(px, py, pts[i][0], pts[i][1], pts[j][0], pts[j][1]);
@@ -120,7 +120,7 @@ function findNearestWallSnap(
 
 // ---- Shape styles ----
 const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string; lineWidth: number; dash: number[] }> = {
-  room: { fill: "rgba(29, 107, 94, 0.06)", stroke: "#1D6B5E", label: "Room", lineWidth: 2, dash: [] },
+  boundary: { fill: "rgba(29, 107, 94, 0.06)", stroke: "#1D6B5E", label: "Boundary", lineWidth: 2, dash: [] },
   wall: { fill: "rgba(80, 80, 80, 0.08)", stroke: "#555555", label: "Wall", lineWidth: 3, dash: [] },
   window: { fill: "rgba(59, 130, 246, 0.08)", stroke: "#3B82F6", label: "Window", lineWidth: 2.5, dash: [6, 4] },
   door: { fill: "rgba(180, 120, 70, 0.08)", stroke: "#B47846", label: "Door", lineWidth: 2.5, dash: [8, 3] },
@@ -129,7 +129,7 @@ const SHAPE_STYLES: Record<string, { fill: string; stroke: string; label: string
 // ---- Tool definitions ----
 const TOOLS: { mode: ToolMode; label: string; icon: string; hint: string }[] = [
   { mode: "select", label: "Select", icon: "↖", hint: "Click to place agent · Click shape to select · Drag to move" },
-  { mode: "room", label: "Room", icon: "□", hint: "Click points to draw room polygon, double-click to close" },
+  { mode: "boundary", label: "Boundary", icon: "□", hint: "Click points to draw boundary polygon, double-click to close" },
   { mode: "wall", label: "Wall", icon: "▬", hint: "Click 2 points to draw wall segment" },
   { mode: "window", label: "Window", icon: "▭", hint: "Click 2 points — auto-snaps to nearest wall" },
   { mode: "door", label: "Door", icon: "◫", hint: "Click 2 points — auto-snaps to nearest wall" },
@@ -154,8 +154,8 @@ function hitTestShape(
     const d = distToSegmentScreen(sx, sy, ax, ay, bx, by);
     if (d < HIT_THRESHOLD) return true;
   }
-  // For rooms, also test closing segment
-  if (shape.type === "room" && pts.length >= 3) {
+  // For boundaries, also test closing segment
+  if (shape.type === "boundary" && pts.length >= 3) {
     const [ax, ay] = worldToScreen(pts[pts.length - 1][0], pts[pts.length - 1][1], cam);
     const [bx, by] = worldToScreen(pts[0][0], pts[0][1], cam);
     const d = distToSegmentScreen(sx, sy, ax, ay, bx, by);
@@ -664,7 +664,7 @@ export default function SpatialMap({
     // Draw shapes
     shapes.forEach((shape, shapeIdx) => {
       if (shape.points.length < 2) return;
-      const style = SHAPE_STYLES[shape.type] || SHAPE_STYLES.room;
+      const style = SHAPE_STYLES[shape.type] || SHAPE_STYLES.boundary;
       const isSelected = shapeIdx === selectedShapeIdx;
 
       ctx.beginPath();
@@ -674,7 +674,7 @@ export default function SpatialMap({
         const [px, py] = worldToScreen(shape.points[i][0], shape.points[i][1], c);
         ctx.lineTo(px, py);
       }
-      if (shape.type === "room") {
+      if (shape.type === "boundary") {
         ctx.closePath();
         ctx.fillStyle = isSelected ? style.fill.replace("0.06", "0.15") : style.fill;
         ctx.fill();
@@ -693,7 +693,7 @@ export default function SpatialMap({
           const [px, py] = worldToScreen(shape.points[i][0], shape.points[i][1], c);
           ctx.lineTo(px, py);
         }
-        if (shape.type === "room") ctx.closePath();
+        if (shape.type === "boundary") ctx.closePath();
         ctx.strokeStyle = "rgba(255, 107, 53, 0.25)";
         ctx.lineWidth = style.lineWidth + 6;
         ctx.stroke();
@@ -712,41 +712,61 @@ export default function SpatialMap({
         ctx.fill();
       });
 
-      // Shape label
-      const label = shape.label || style.label;
-      const cx2 = shape.points.reduce((s, p) => s + p[0], 0) / shape.points.length;
-      const cy2 = shape.points.reduce((s, p) => s + p[1], 0) / shape.points.length;
-      const [lx, ly] = worldToScreen(cx2, cy2, c);
-      ctx.font = "500 11px 'Inter', sans-serif";
-      const tw = ctx.measureText(label);
-      ctx.fillStyle = isSelected ? "rgba(255,252,247,0.95)" : "rgba(255,252,247,0.85)";
-      const pad = 5;
-      const rx = lx - tw.width / 2 - pad;
-      const ry = ly - 8;
-      const rw = tw.width + pad * 2;
-      const rh = 18;
-      const rr = 4;
-      ctx.beginPath();
-      ctx.moveTo(rx + rr, ry);
-      ctx.lineTo(rx + rw - rr, ry);
-      ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + rr);
-      ctx.lineTo(rx + rw, ry + rh - rr);
-      ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - rr, ry + rh);
-      ctx.lineTo(rx + rr, ry + rh);
-      ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - rr);
-      ctx.lineTo(rx, ry + rr);
-      ctx.quadraticCurveTo(rx, ry, rx + rr, ry);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = isSelected ? "#FF6B35" : style.stroke;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.fillStyle = isSelected ? "#FF6B35" : style.stroke;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(label, lx, ly + 1);
-      ctx.textBaseline = "alphabetic";
+      // Shape labels removed for cleaner map display
     });
+
+    // ---- Draw boundary overlap (inaccessible zones) ----
+    {
+      const boundaries = shapes.filter((s) => s.type === "boundary" && s.points.length >= 3);
+      if (boundaries.length >= 2) {
+        // For each pair of boundaries, find their intersection and draw hatched overlay
+        for (let i = 0; i < boundaries.length; i++) {
+          for (let j = i + 1; j < boundaries.length; j++) {
+            const bA = boundaries[i];
+            const bB = boundaries[j];
+            // Sample a grid of points to find overlap region and draw hatching
+            // Use canvas clip intersection approach: clip to bA, then clip to bB, draw hatch
+            ctx.save();
+            // Clip to boundary A
+            ctx.beginPath();
+            const [a0x, a0y] = worldToScreen(bA.points[0][0], bA.points[0][1], c);
+            ctx.moveTo(a0x, a0y);
+            for (let k = 1; k < bA.points.length; k++) {
+              const [ax, ay] = worldToScreen(bA.points[k][0], bA.points[k][1], c);
+              ctx.lineTo(ax, ay);
+            }
+            ctx.closePath();
+            ctx.clip();
+            // Clip to boundary B
+            ctx.beginPath();
+            const [b0x, b0y] = worldToScreen(bB.points[0][0], bB.points[0][1], c);
+            ctx.moveTo(b0x, b0y);
+            for (let k = 1; k < bB.points.length; k++) {
+              const [bx, by] = worldToScreen(bB.points[k][0], bB.points[k][1], c);
+              ctx.lineTo(bx, by);
+            }
+            ctx.closePath();
+            ctx.clip();
+            // Draw dark semi-transparent fill
+            ctx.fillStyle = "rgba(40, 30, 20, 0.22)";
+            ctx.fillRect(0, 0, canvasW, canvasH);
+            // Draw diagonal hatch lines
+            ctx.strokeStyle = "rgba(40, 30, 20, 0.35)";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            const hatchSpacing = 10;
+            const diagLen = Math.sqrt(canvasW * canvasW + canvasH * canvasH);
+            for (let d = -diagLen; d < diagLen * 2; d += hatchSpacing) {
+              ctx.beginPath();
+              ctx.moveTo(d, 0);
+              ctx.lineTo(d + canvasH, canvasH);
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+        }
+      }
+    }
 
     // ---- Draw wall snap preview (for window/door tools) ----
     if (wallSnapPreview && (activeTool === "window" || activeTool === "door")) {
@@ -761,7 +781,7 @@ export default function SpatialMap({
           const [wpx, wpy] = worldToScreen(wall.points[i][0], wall.points[i][1], c);
           ctx.lineTo(wpx, wpy);
         }
-        if (wall.type === "room") ctx.closePath();
+        if (wall.type === "boundary") ctx.closePath();
         ctx.strokeStyle = "#FF6B3580";
         ctx.lineWidth = 4;
         ctx.setLineDash([8, 4]);
@@ -893,8 +913,8 @@ export default function SpatialMap({
 
     // Draw in-progress drawing
     if (drawingPoints.length > 0 && activeTool !== "select" && activeTool !== "waypoint") {
-      const toolType = (activeTool === "zone" || activeTool === "zone_poly") ? "room" : activeTool;
-      const style = SHAPE_STYLES[toolType] || SHAPE_STYLES.room;
+      const toolType = (activeTool === "zone" || activeTool === "zone_poly") ? "boundary" : activeTool;
+      const style = SHAPE_STYLES[toolType] || SHAPE_STYLES.boundary;
 
       if (activeTool === "zone" && drawingPoints.length >= 1 && hoverWorld) {
         const p0 = drawingPoints[0];
@@ -938,7 +958,7 @@ export default function SpatialMap({
         drawingPoints.forEach(([wx, wy], idx) => {
           const [vx, vy] = worldToScreen(wx, wy, c);
           const isFirst = idx === 0;
-          const isPolyTool = activeTool === "zone_poly" || activeTool === "room";
+          const isPolyTool = activeTool === "zone_poly" || activeTool === "boundary";
           // Highlight first point when polygon can be closed (>= 3 points)
           if (isFirst && isPolyTool && drawingPoints.length >= 3) {
             ctx.beginPath();
@@ -1023,7 +1043,7 @@ export default function SpatialMap({
 
       ctx.beginPath();
       ctx.arc(hx, hy, 5, 0, Math.PI * 2);
-      ctx.strokeStyle = SHAPE_STYLES[activeTool === "zone" ? "room" : activeTool]?.stroke || "#555";
+      ctx.strokeStyle = SHAPE_STYLES[activeTool === "zone" ? "boundary" : activeTool]?.stroke || "#555";
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
@@ -1235,8 +1255,15 @@ export default function SpatialMap({
         if (selectedShapeIdx !== null) {
           setSelectedShapeIdx(null);
         } else {
-          // Place agent only if nothing is selected and clicking empty space
-          onAgentPlace({ x: snappedX, y: snappedY });
+          // Check if point is in a boundary overlap (inaccessible zone)
+          const boundaries = shapes.filter((s) => s.type === "boundary" && s.points.length >= 3);
+          const containingBoundaries = boundaries.filter((b) => isPointInBoundary(snappedX, snappedY, b.points));
+          if (containingBoundaries.length >= 2) {
+            toast.error("Cannot place agent in an overlap zone (inaccessible area)");
+          } else {
+            // Place agent only if nothing is selected and clicking empty space
+            onAgentPlace({ x: snappedX, y: snappedY });
+          }
         }
       }
     } else if (activeTool === "waypoint") {
@@ -1283,7 +1310,7 @@ export default function SpatialMap({
       } else {
         setDrawingPoints(newPoints);
       }
-    } else if (activeTool === "room" || activeTool === "zone_poly") {
+    } else if (activeTool === "boundary" || activeTool === "zone_poly") {
       // Check if clicking near the first point to auto-close the polygon
       if (drawingPoints.length >= 3) {
         const firstPt = drawingPoints[0];
@@ -1292,11 +1319,11 @@ export default function SpatialMap({
         const dy = snappedY - firstPt[1];
         if (Math.sqrt(dx * dx + dy * dy) <= CLOSE_DIST) {
           // Auto-close: treat as double-click to finish
-          if (activeTool === "room" && onAddShape) {
-            const newShape: Shape = { type: "room", points: drawingPoints };
+          if (activeTool === "boundary" && onAddShape) {
+            const newShape: Shape = { type: "boundary", points: drawingPoints };
             onAddShape(newShape);
             pushUndo({ type: "add_shape", payload: { shape: newShape, index: shapes.length } });
-            toast.success(`Room created with ${drawingPoints.length} points`);
+            toast.success(`Boundary created with ${drawingPoints.length} points`);
             setDrawingPoints([]);
             return;
           } else if (activeTool === "zone_poly" && onAddZone) {
@@ -1369,14 +1396,14 @@ export default function SpatialMap({
   };
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (activeTool === "room" && drawingPoints.length >= 3 && onAddShape) {
+    if (activeTool === "boundary" && drawingPoints.length >= 3 && onAddShape) {
       const newShape: Shape = {
-        type: "room",
+        type: "boundary",
         points: drawingPoints,
       };
       onAddShape(newShape);
       pushUndo({ type: "add_shape", payload: { shape: newShape, index: shapes.length } });
-      toast.success(`Room created with ${drawingPoints.length} points`);
+      toast.success(`Boundary created with ${drawingPoints.length} points`);
       setDrawingPoints([]);
       e.preventDefault();
     } else if (activeTool === "zone_poly" && drawingPoints.length >= 3 && onAddZone) {
@@ -1696,7 +1723,7 @@ export default function SpatialMap({
         <span>Alt+drag to pan</span>
         <span>Scroll to zoom (to cursor)</span>
         {activeTool === "select" && <span>Click shape to select · Drag to move · Del to delete · Click empty to place agent</span>}
-        {(activeTool === "room" || activeTool === "zone_poly") && <span>Click first point (or double-click) to close polygon · Hold Shift to snap to 0°/45°/90°</span>}
+        {(activeTool === "boundary" || activeTool === "zone_poly") && <span>Click first point (or double-click) to close polygon · Hold Shift to snap to 0°/45°/90°</span>}
         {activeTool === "waypoint" && <span>Click to place waypoint for P{activeAgentIdx + 1} (requires agent placed)</span>}
         {(activeTool === "window" || activeTool === "door") && <span>Auto-snaps to nearest wall (within 500mm) · Hold Shift to snap to 0°/45°/90°</span>}
         {activeTool === "wall" && <span>Click 2 points to draw wall · Hold Shift to snap to 0°/45°/90°</span>}

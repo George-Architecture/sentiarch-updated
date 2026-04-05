@@ -70,7 +70,7 @@ export interface ComputedOutputs {
 }
 
 export interface Shape {
-  type: "room" | "wall" | "window" | "door";
+  type: "boundary" | "wall" | "window" | "door";
   points: [number, number][];
   label?: string;
 }
@@ -228,7 +228,7 @@ export function computeWindowInfluence(
 export interface CollisionSegment {
   x1: number; y1: number;
   x2: number; y2: number;
-  type: "wall" | "room";
+  type: "wall" | "boundary";
 }
 
 export function getCollisionBoundaries(shapes: Shape[]): CollisionSegment[] {
@@ -244,14 +244,14 @@ export function getCollisionBoundaries(shapes: Shape[]): CollisionSegment[] {
           type: "wall",
         });
       }
-    } else if (shape.type === "room") {
+    } else if (shape.type === "boundary") {
       // Room polygon edges are also collision boundaries
       for (let i = 0; i < shape.points.length; i++) {
         const j = (i + 1) % shape.points.length;
         segments.push({
           x1: shape.points[i][0], y1: shape.points[i][1],
           x2: shape.points[j][0], y2: shape.points[j][1],
-          type: "room",
+          type: "boundary",
         });
       }
     }
@@ -712,12 +712,12 @@ export function computePerceptualLoad(persona: PersonaData, computed: ComputedOu
 export function distToShapeType(ax: number, ay: number, shapes: Shape[], type: string): number {
   let minDist = Infinity;
   // For wall distance, also include actual wall shapes
-  const types = type === "room" ? ["room", "wall"] : [type];
+  const types = type === "boundary" ? ["boundary", "wall"] : [type];
   const filtered = shapes.filter((s) => types.includes(s.type));
   if (filtered.length === 0) return -1; // -1 = no shape of this type drawn
   for (const shape of filtered) {
     const pts = shape.points;
-    const isPolygon = shape.type === "room" && pts.length > 2;
+    const isPolygon = shape.type === "boundary" && pts.length > 2;
     for (let i = 0; i < pts.length; i++) {
       const j = (i + 1) % pts.length;
       // For non-polygon shapes, don't wrap around
@@ -730,9 +730,9 @@ export function distToShapeType(ax: number, ay: number, shapes: Shape[], type: s
 }
 
 export function computeEnclosure(ax: number, ay: number, shapes: Shape[]): number {
-  const rooms = shapes.filter((s) => s.type === "room");
+  const boundaries = shapes.filter((s) => s.type === "boundary");
   const walls = shapes.filter((s) => s.type === "wall");
-  if (rooms.length === 0 && walls.length === 0) return 0;
+  if (boundaries.length === 0 && walls.length === 0) return 0;
   const rays = 16;
   let hits = 0;
   const reach = 10000;
@@ -741,10 +741,10 @@ export function computeEnclosure(ax: number, ay: number, shapes: Shape[]): numbe
     const ex = ax + Math.cos(angle) * reach;
     const ey = ay + Math.sin(angle) * reach;
     let rayHit = false;
-    // Check room polygon edges
-    for (const room of rooms) {
+    // Check boundary polygon edges
+    for (const boundary of boundaries) {
       if (rayHit) break;
-      const pts = room.points;
+      const pts = boundary.points;
       for (let j = 0; j < pts.length; j++) {
         const k = (j + 1) % pts.length;
         if (lineIntersect(ax, ay, ex, ey, pts[j][0], pts[j][1], pts[k][0], pts[k][1])) {
@@ -769,8 +769,8 @@ export function computeEnclosure(ax: number, ay: number, shapes: Shape[]): numbe
   return Math.round((hits / rays) * 100) / 100;
 }
 
-// ---- Point-in-Polygon (for vis.agent room detection) ----
-export function isPointInRoom(px: number, py: number, roomPoints: [number, number][]): boolean {
+// ---- Point-in-Polygon (for vis.agent boundary detection) ----
+export function isPointInBoundary(px: number, py: number, roomPoints: [number, number][]): boolean {
   let inside = false;
   for (let i = 0, j = roomPoints.length - 1; i < roomPoints.length; j = i++) {
     const xi = roomPoints[i][0], yi = roomPoints[i][1];
@@ -785,7 +785,7 @@ export function isPointInRoom(px: number, py: number, roomPoints: [number, numbe
 export function computeSpatialFromAgent(
   pos: AgentPosition, shapes: Shape[], currentSpatial: SpatialData
 ): SpatialData {
-  const distWall = distToShapeType(pos.x, pos.y, shapes, "room");
+  const distWall = distToShapeType(pos.x, pos.y, shapes, "boundary");
   const distWin = distToShapeType(pos.x, pos.y, shapes, "window");
   const distDoor = distToShapeType(pos.x, pos.y, shapes, "door");
   const enclosure = computeEnclosure(pos.x, pos.y, shapes);
@@ -801,7 +801,7 @@ export function computeSpatialFromAgent(
 }
 
 // ---- Vis.Agent Dynamic Calculation ----
-// Counts how many OTHER agents are in the same room as the given agent
+// Counts how many OTHER agents are in the same boundary as the given agent
 export function computeVisibleAgents(
   agentIdx: number,
   allPositions: (AgentPosition | null)[],
@@ -810,28 +810,28 @@ export function computeVisibleAgents(
   const myPos = allPositions[agentIdx];
   if (!myPos) return 0;
 
-  const rooms = shapes.filter((s) => s.type === "room");
-  // Find which room(s) this agent is in
-  const myRooms = rooms.filter((r) => isPointInRoom(myPos.x, myPos.y, r.points));
+  const boundaries = shapes.filter((s) => s.type === "boundary");
+  // Find which boundary(s) this agent is in
+  const myBoundaries = boundaries.filter((r) => isPointInBoundary(myPos.x, myPos.y, r.points));
 
-  if (myRooms.length === 0) {
-    // Agent is outside all rooms — can see other agents also outside
+  if (myBoundaries.length === 0) {
+    // Agent is outside all boundaries — can see other agents also outside
     let count = 0;
     for (let i = 0; i < allPositions.length; i++) {
       if (i === agentIdx || !allPositions[i]) continue;
       const otherPos = allPositions[i]!;
-      const otherInRoom = rooms.some((r) => isPointInRoom(otherPos.x, otherPos.y, r.points));
+      const otherInRoom = boundaries.some((r) => isPointInBoundary(otherPos.x, otherPos.y, r.points));
       if (!otherInRoom) count++;
     }
     return count;
   }
 
-  // Agent is inside room(s) — count others in same room(s)
+  // Agent is inside boundary(s) — count others in same boundary(s)
   let count = 0;
   for (let i = 0; i < allPositions.length; i++) {
     if (i === agentIdx || !allPositions[i]) continue;
     const otherPos = allPositions[i]!;
-    const sameRoom = myRooms.some((r) => isPointInRoom(otherPos.x, otherPos.y, r.points));
+    const sameRoom = myBoundaries.some((r) => isPointInBoundary(otherPos.x, otherPos.y, r.points));
     if (sameRoom) count++;
   }
   return count;
@@ -909,14 +909,14 @@ export function getLLMConfig(): { apiKey: string; apiUrl: string; model: string 
 export function buildLLMPrompt(persona: PersonaData, computed: ComputedOutputs, shapes: Shape[]): string {
   const hasWindows = shapes.some((s) => s.type === "window");
   const hasDoors = shapes.some((s) => s.type === "door");
-  const hasRooms = shapes.some((s) => s.type === "room");
+  const hasBoundaries = shapes.some((s) => s.type === "boundary");
   const windowCount = shapes.filter((s) => s.type === "window").length;
   const doorCount = shapes.filter((s) => s.type === "door").length;
-  const roomCount = shapes.filter((s) => s.type === "room").length;
+  const boundaryCount = shapes.filter((s) => s.type === "boundary").length;
 
   const spatialContext = [
     `SPATIAL ELEMENTS ACTUALLY PRESENT ON MAP:`,
-    `- Rooms: ${roomCount} ${hasRooms ? "(agent is inside a defined room)" : "(NO rooms defined)"}`,
+    `- Boundaries: ${boundaryCount} ${hasBoundaries ? "(agent is inside a defined boundary)" : "(NO boundaries defined)"}`,
     `- Windows: ${windowCount} ${hasWindows ? `(nearest: ${persona.spatial.dist_to_window} m)` : "(NO windows exist — NO natural light, NO outside view)"}`,
     `- Doors/Exits: ${doorCount} ${hasDoors ? `(nearest: ${persona.spatial.dist_to_exit} m)` : "(NO doors/exits defined)"}`,
   ].join("\n");
