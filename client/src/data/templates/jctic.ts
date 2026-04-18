@@ -22,6 +22,7 @@
 
 import {
   createAdjacencyRule,
+  PROGRAM_SPEC_SCHEMA_VERSION,
   type ProgramSpec,
   type SpaceType,
   type AdjacencyRule,
@@ -200,7 +201,6 @@ const spaces: SpaceType[] = [
     ],
     floorPreference: "low",
     floorMandatory: 1,
-    clusterGroup: "art",
     colorHex: COLORS.art,
   },
 
@@ -807,6 +807,7 @@ const now = new Date().toISOString();
  */
 export const jcticTemplate: ProgramSpec = {
   id: "tpl-jctic-v1",
+  schemaVersion: PROGRAM_SPEC_SCHEMA_VERSION,
   name: "賽馬會體藝中學 JCTIC",
   description:
     "Jockey Club Ti-I College — a secondary school emphasising " +
