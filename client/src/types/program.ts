@@ -187,6 +187,15 @@ export const SpaceTypeSchema = z
       .string()
       .regex(/^#[0-9A-Fa-f]{6}$/)
       .optional(),
+    /**
+     * Whether this space is an outdoor space (e.g. rooftop garden,
+     * open courtyard).  Defaults to `false` (indoor).
+     *
+     * Outdoor spaces receive different environmental defaults
+     * (natural ventilation, higher air velocity, variable temperature)
+     * in the simulation engine.
+     */
+    isOutdoor: z.boolean().optional(),
   })
   .refine(
     s => {
