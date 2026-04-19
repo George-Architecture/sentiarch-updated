@@ -5,6 +5,16 @@
 // Population of chromosomes (space → floor mappings) evolved
 // via tournament selection, crossover, and mutation.
 // Returns top N candidates sorted by fitness.
+//
+// v2 — Diversity-preserving improvements:
+//   1. Niche-based selection: penalises candidates too similar to
+//      already-selected elite individuals (sharing radius σ).
+//   2. Increased default population / mutation rate.
+//   3. smartSeedChromosome now adds random jitter so that seeds
+//      are not all identical when cluster groups have the same
+//      non-"any" preference.
+//   4. Final selection uses a minimum Hamming-distance threshold
+//      to ensure the returned top-N are meaningfully different.
 // ============================================================
 
 import type { ProgramSpec, SpaceType } from "@/types/program";
@@ -31,16 +41,25 @@ export interface GAParams {
   mutationRate: number;
   eliteCount: number;
   topN: number;
+  /** Minimum Hamming distance (# genes different) between returned candidates */
+  minHammingDistance?: number;
+  /** Niche radius: chromosomes within this Hamming distance share fitness penalty */
+  nicheRadius?: number;
+  /** Niche penalty strength (0 = disabled, 1 = full sharing) */
+  nichePenalty?: number;
 }
 
 export const DEFAULT_GA_PARAMS: GAParams = {
-  populationSize: 100,
-  generations: 200,
-  tournamentSize: 5,
+  populationSize: 150,   // ↑ was 100 — larger pool → more diversity
+  generations: 300,      // ↑ was 200 — more time to explore
+  tournamentSize: 4,     // ↓ was 5 — less selection pressure → more diversity
   crossoverRate: 0.8,
-  mutationRate: 0.15,
-  eliteCount: 5,
+  mutationRate: 0.22,    // ↑ was 0.15 — more exploration
+  eliteCount: 3,         // ↓ was 5 — fewer clones carried forward
   topN: 5,
+  minHammingDistance: 3, // NEW: returned candidates must differ by ≥3 genes
+  nicheRadius: 5,        // NEW: niche sharing radius (genes)
+  nichePenalty: 0.05,    // NEW: mild sharing penalty
 };
 
 // ---- Internal Types --------------------------------------------------
@@ -74,6 +93,11 @@ function randomChromosome(
 /**
  * Create a smart-seeded chromosome that respects cluster groups
  * and floor preferences in addition to mandatory constraints.
+ *
+ * v2: Adds random jitter so that seeds with the same cluster-group
+ * preference are NOT all identical.  Each cluster group is seeded
+ * to the preferred floor ± a random offset of 0 or 1 floor,
+ * giving multiple distinct starting points.
  */
 function smartSeedChromosome(
   spaces: SpaceType[],
@@ -97,16 +121,27 @@ function smartSeedChromosome(
   for (const s of unassigned) {
     if (s.clusterGroup) {
       if (!clusterFloors.has(s.clusterGroup)) {
-        // Pick a floor based on preference or random
-        const floor = preferenceToFloor(s.floorPreference, maxFloors);
+        // Pick a floor based on preference, then add random jitter
+        const base = preferenceToFloor(s.floorPreference, maxFloors);
+        // Jitter: ±1 floor with 50% probability, clamped to valid range
+        const jitter = Math.random() < 0.5
+          ? 0
+          : (Math.random() < 0.5 ? 1 : -1);
+        const floor = Math.max(0, Math.min(maxFloors - 1, base + jitter));
         clusterFloors.set(s.clusterGroup, floor);
       }
       chromosome[s.id] = clusterFloors.get(s.clusterGroup)!;
     } else {
-      chromosome[s.id] = preferenceToFloor(
-        s.floorPreference,
-        maxFloors
-      );
+      // For unclustered spaces, also add jitter to non-"any" preferences
+      const base = preferenceToFloor(s.floorPreference, maxFloors);
+      if (s.floorPreference && s.floorPreference !== "any") {
+        const jitter = Math.random() < 0.4
+          ? 0
+          : (Math.random() < 0.5 ? 1 : -1);
+        chromosome[s.id] = Math.max(0, Math.min(maxFloors - 1, base + jitter));
+      } else {
+        chromosome[s.id] = base;
+      }
     }
   }
 
@@ -117,7 +152,7 @@ function smartSeedChromosome(
  * Convert a floor preference to a concrete floor number.
  */
 function preferenceToFloor(
-  pref: string,
+  pref: string | undefined,
   maxFloors: number
 ): number {
   switch (pref) {
@@ -132,6 +167,54 @@ function preferenceToFloor(
     default:
       return Math.floor(Math.random() * maxFloors);
   }
+}
+
+// ---- Diversity Metrics -----------------------------------------------
+
+/**
+ * Compute Hamming distance between two chromosomes
+ * (number of genes that differ).
+ */
+function hammingDistance(
+  a: Chromosome,
+  b: Chromosome,
+  spaces: SpaceType[]
+): number {
+  let diff = 0;
+  for (const s of spaces) {
+    if (a[s.id] !== b[s.id]) diff++;
+  }
+  return diff;
+}
+
+/**
+ * Apply niche sharing: reduce effective fitness of a chromosome
+ * based on how many similar chromosomes already exist in the
+ * current elite set.
+ *
+ * This prevents the GA from converging to a single peak by
+ * penalising over-represented regions of the search space.
+ */
+function applyNicheSharing(
+  sc: ScoredChromosome,
+  elites: ScoredChromosome[],
+  spaces: SpaceType[],
+  nicheRadius: number,
+  nichePenalty: number
+): number {
+  if (elites.length === 0 || nichePenalty === 0) {
+    return sc.fitness.totalScore;
+  }
+  let sharingSum = 0;
+  for (const e of elites) {
+    const dist = hammingDistance(sc.chromosome, e.chromosome, spaces);
+    if (dist < nicheRadius) {
+      // Sharing function: linear decay within niche radius
+      sharingSum += 1 - dist / nicheRadius;
+    }
+  }
+  // Penalise proportionally to how crowded the niche is
+  return sc.fitness.totalScore * (1 - nichePenalty * sharingSum);
 }
 
 // ---- GA Operators ----------------------------------------------------
@@ -180,6 +263,11 @@ function crossover(
 /**
  * Mutation: for each non-mandatory space, with probability
  * `mutationRate`, assign a random floor.
+ *
+ * v2: Also supports a "preference-biased" mutation that has a
+ * 30% chance of mutating toward the preferred floor rather than
+ * fully random, preserving some architectural intent while still
+ * exploring alternatives.
  */
 function mutate(
   chromosome: Chromosome,
@@ -191,7 +279,15 @@ function mutate(
   for (const s of spaces) {
     if (s.floorMandatory !== undefined) continue;
     if (Math.random() < mutationRate) {
-      mutated[s.id] = Math.floor(Math.random() * maxFloors);
+      if (Math.random() < 0.3 && s.floorPreference && s.floorPreference !== "any") {
+        // 30%: mutate toward preferred floor ± 1 (keeps architectural intent)
+        const base = preferenceToFloor(s.floorPreference, maxFloors);
+        const jitter = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
+        mutated[s.id] = Math.max(0, Math.min(maxFloors - 1, base + jitter));
+      } else {
+        // 70%: fully random (explores new territory)
+        mutated[s.id] = Math.floor(Math.random() * maxFloors);
+      }
     }
   }
   return mutated;
@@ -265,6 +361,13 @@ export type GAProgressCallback = (
  * Runs entirely client-side. Uses `setTimeout` yielding every
  * N generations to keep the UI responsive.
  *
+ * v2 changes:
+ *   - Larger default population (150) and more generations (300)
+ *   - Higher mutation rate (0.22) for more exploration
+ *   - Niche sharing to prevent premature convergence
+ *   - Minimum Hamming distance between returned candidates
+ *   - Smart seeds include random jitter to avoid identical starts
+ *
  * @param spec - The ProgramSpec to zone
  * @param params - GA parameters (defaults provided)
  * @param weights - Fitness weights (defaults provided)
@@ -280,12 +383,16 @@ export async function runZoningGA(
   const startTime = performance.now();
   const { spaces, constraints } = spec;
   const maxFloors = constraints.maxFloors;
+  const nicheRadius = params.nicheRadius ?? 5;
+  const nichePenalty = params.nichePenalty ?? 0.05;
+  const minHamming = params.minHammingDistance ?? 3;
 
   // ---- Initialise population ----
   let population: ScoredChromosome[] = [];
 
-  // Seed 20% with smart chromosomes, 80% random
-  const smartCount = Math.floor(params.populationSize * 0.2);
+  // Seed 30% with smart chromosomes (with jitter), 70% random
+  // ↑ was 20% smart — more diverse seeds
+  const smartCount = Math.floor(params.populationSize * 0.3);
   for (let i = 0; i < params.populationSize; i++) {
     const chromosome =
       i < smartCount
@@ -295,8 +402,9 @@ export async function runZoningGA(
     population.push({ chromosome, fitness, generation: 0 });
   }
 
-  // Track all-time best individuals
+  // Track all-time best individuals (capped to avoid memory bloat)
   const allTimeBest: ScoredChromosome[] = [];
+  const ALL_TIME_BEST_CAP = params.topN * 20;
 
   // ---- Evolution loop ----
   const YIELD_INTERVAL = 20; // Yield to UI every N generations
@@ -307,8 +415,11 @@ export async function runZoningGA(
       (a, b) => b.fitness.totalScore - a.fitness.totalScore
     );
 
-    // Track best
-    if (population[0].fitness.totalScore > -999) {
+    // Track best (capped)
+    if (
+      population[0].fitness.totalScore > -999 &&
+      allTimeBest.length < ALL_TIME_BEST_CAP
+    ) {
       allTimeBest.push({ ...population[0], generation: gen });
     }
 
@@ -325,7 +436,7 @@ export async function runZoningGA(
     // ---- Create next generation ----
     const nextGen: ScoredChromosome[] = [];
 
-    // Elitism: keep top N
+    // Elitism: keep top N (fewer than before to allow more diversity)
     for (let i = 0; i < params.eliteCount && i < population.length; i++) {
       nextGen.push({ ...population[i], generation: gen + 1 });
     }
@@ -368,27 +479,75 @@ export async function runZoningGA(
     population = nextGen;
   }
 
-  // ---- Final sort and select top N ----
+  // ---- Final sort and select top N with diversity enforcement ----
   // Merge all-time best with final population
   const combined = [...population, ...allTimeBest];
   combined.sort(
     (a, b) => b.fitness.totalScore - a.fitness.totalScore
   );
 
-  // Deduplicate by chromosome fingerprint
+  // Deduplicate by exact chromosome fingerprint first
   const seen = new Set<string>();
-  const unique: ScoredChromosome[] = [];
+  const deduped: ScoredChromosome[] = [];
   for (const sc of combined) {
+    if (sc.fitness.totalScore <= -999) continue;
     const key = fingerprint(sc.chromosome, spaces);
     if (!seen.has(key)) {
       seen.add(key);
-      unique.push(sc);
+      deduped.push(sc);
     }
-    if (unique.length >= params.topN) break;
+  }
+
+  // Now apply diversity-enforced selection:
+  // Greedily pick the next candidate only if it is at least
+  // minHammingDistance genes away from ALL already-selected candidates.
+  // If we can't fill topN with this constraint, relax by 1 each time.
+  const selected: ScoredChromosome[] = [];
+  let currentMinHamming = minHamming;
+
+  while (selected.length < params.topN && currentMinHamming >= 0) {
+    for (const sc of deduped) {
+      if (selected.length >= params.topN) break;
+      // Apply niche sharing penalty based on already-selected
+      const nichedScore = applyNicheSharing(
+        sc,
+        selected,
+        spaces,
+        nicheRadius,
+        nichePenalty
+      );
+      if (nichedScore <= -999) continue;
+
+      // Check minimum Hamming distance from all already-selected
+      const tooClose = selected.some(
+        (sel) =>
+          hammingDistance(sc.chromosome, sel.chromosome, spaces) <
+          currentMinHamming
+      );
+      if (!tooClose) {
+        selected.push(sc);
+      }
+    }
+    // If we couldn't fill topN, relax the constraint
+    if (selected.length < params.topN) {
+      currentMinHamming--;
+    } else {
+      break;
+    }
+  }
+
+  // Fallback: if still not enough, just take top by fitness
+  if (selected.length < params.topN) {
+    for (const sc of deduped) {
+      if (selected.length >= params.topN) break;
+      if (!selected.includes(sc)) {
+        selected.push(sc);
+      }
+    }
   }
 
   // Convert to ZoningCandidates
-  const candidates: ZoningCandidate[] = unique.map((sc, i) =>
+  const candidates: ZoningCandidate[] = selected.map((sc, i) =>
     toCandidate(sc, i, spaces, maxFloors)
   );
 
