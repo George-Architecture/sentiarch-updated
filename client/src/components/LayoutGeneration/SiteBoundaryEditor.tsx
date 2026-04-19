@@ -9,6 +9,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import type { Point2D, Polygon2D } from "@/types/layout";
 import { polygonArea } from "@/engines/layout";
+import { JCTIC_SITE_BOUNDARY } from "@/data/templates/jctic";
 
 interface SiteBoundaryEditorProps {
   /** Initial polygon (if editing an existing boundary). */
@@ -319,6 +320,18 @@ export default function SiteBoundaryEditor({
     onChange(poly, polygonArea(poly));
   }, [onChange]);
 
+  // Preset: JCTIC site boundary (Fo Tan, ~100m × 70m L-shape)
+  const handlePresetJCTIC = useCallback(() => {
+    const verts: Point2D[] = JCTIC_SITE_BOUNDARY.vertices.map((v) => ({
+      x: v.x,
+      y: v.y,
+    }));
+    setVertices(verts);
+    setIsClosed(true);
+    const poly = { vertices: verts };
+    onChange(poly, polygonArea(poly));
+  }, [onChange]);
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
@@ -354,6 +367,19 @@ export default function SiteBoundaryEditor({
           style={{ padding: "2px 8px", fontSize: 10 }}
         >
           Preset: L-Shape
+        </button>
+        <button
+          className="sa-btn"
+          onClick={handlePresetJCTIC}
+          style={{
+            padding: "2px 8px",
+            fontSize: 10,
+            background: "rgba(29, 107, 94, 0.1)",
+            color: "var(--primary, #1D6B5E)",
+            border: "1px solid rgba(29, 107, 94, 0.3)",
+          }}
+        >
+          Load JCTIC Site
         </button>
         {isClosed && (
           <button

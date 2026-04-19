@@ -518,9 +518,23 @@ const STRATEGIES: SortStrategy[] = [
 ];
 
 /**
+ * Maximum fraction of floor area that may cantilever beyond the
+ * site boundary.  This reflects Hong Kong high-density school
+ * architecture practice where upper floors often overshoot the
+ * ground-level site envelope.
+ */
+const MAX_CANTILEVER_RATIO = 0.20;
+
+/**
  * Generate layout candidates for a single floor.
  *
- * @param boundary - Site boundary polygon
+ * The site boundary is treated as an **advisory** envelope:
+ * the treemap partitioner may use an expanded bounding box
+ * (up to `MAX_CANTILEVER_RATIO` additional area) so that rooms
+ * can cantilever beyond the polygon, while the scoring function
+ * penalises excessive overshoot via `boundaryContainment`.
+ *
+ * @param boundary - Site boundary polygon (advisory)
  * @param floorAssignment - Which spaces are on this floor
  * @param spec - Full ProgramSpec
  * @param candidateCount - Number of candidates to generate (default 5)
@@ -559,6 +573,17 @@ export function generateFloorLayouts(
   const corridorWidth = spec.constraints.minCorridorWidthM;
   const boundaryArea = polygonArea(boundary);
 
+  // Expand bounding box to allow cantilever overshoot.
+  // The expansion is proportional to MAX_CANTILEVER_RATIO so that
+  // the treemap has slightly more room than the strict polygon.
+  const expandFactor = Math.sqrt(1 + MAX_CANTILEVER_RATIO) - 1;
+  const expandX = bb.width * expandFactor * 0.5;
+  const expandY = bb.height * expandFactor * 0.5;
+  const layoutMinX = bb.minX - expandX;
+  const layoutMinY = bb.minY - expandY;
+  const layoutW = bb.width + expandX * 2;
+  const layoutH = bb.height + expandY * 2;
+
   const candidates: FloorLayoutCandidate[] = [];
 
   for (let ci = 0; ci < candidateCount; ci++) {
@@ -568,23 +593,25 @@ export function generateFloorLayouts(
 
     const sorted = sortRooms(roomSpecs, strategy, rng);
 
-    // Partition into rooms
+    // Partition into rooms using the expanded bounding box.
+    // Some rooms may extend beyond the original site boundary,
+    // which is acceptable as cantilever.
     const placedRooms = treemapPartition(
       sorted,
-      bb.minX,
-      bb.minY,
-      bb.width,
-      bb.height,
+      layoutMinX,
+      layoutMinY,
+      layoutW,
+      layoutH,
       corridorWidth * 0.3 // Thin internal gaps
     );
 
-    // Generate corridors
+    // Generate corridors (use expanded layout bounds)
     const corridors = generateCorridors(
       placedRooms,
-      bb.minX,
-      bb.minY,
-      bb.width,
-      bb.height,
+      layoutMinX,
+      layoutMinY,
+      layoutW,
+      layoutH,
       corridorWidth
     );
 

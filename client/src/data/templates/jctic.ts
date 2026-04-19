@@ -1041,3 +1041,30 @@ export const jcticTemplate: ProgramSpec = {
   createdAt: now,
   updatedAt: now,
 };
+
+// ---- JCTIC Site Boundary ─────────────────────────────────────────────
+
+/**
+ * Approximate site boundary for JCTIC (火炭).
+ *
+ * The school sits on an L-shaped plot of approximately 100m × 70m
+ * in Fo Tan, Sha Tin.  The boundary is a simplified polygon
+ * suitable for the layout solver.
+ *
+ * Important: this boundary represents the **advisory** site
+ * envelope.  The layout solver treats it as a soft constraint —
+ * up to 20% of a floor's area may cantilever beyond the boundary
+ * (a common design strategy in Hong Kong high-density school
+ * architecture), while the structural core must remain within.
+ */
+export const JCTIC_SITE_BOUNDARY = {
+  vertices: [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 40 },
+    { x: 70, y: 40 },
+    { x: 70, y: 70 },
+    { x: 0, y: 70 },
+  ],
+  areaM2: 9800,
+};
