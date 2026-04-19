@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import StepNavigator from "./components/StepNavigator";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import Legacy from "./pages/Legacy";
 import ProgramSpec from "./pages/ProgramSpec";
 import Settings from "./pages/Settings";
 import Zoning from "./pages/Zoning";
@@ -18,6 +19,7 @@ function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
+      <Route path={"/legacy"} component={Legacy} />
       <Route path={"/program-spec"} component={ProgramSpec} />
       <Route path={"/zoning"} component={Zoning} />
       <Route path={"/layout"} component={Layout} />
