@@ -5,7 +5,9 @@
  * from origin to destination, with:
  * - Cohort selector (reuses existing AgentCohort definitions)
  * - Origin / Destination space pickers
- * - 2D floor plan with route overlay (SVG)
+ * - 2D floor plan with **animated** agent dot moving along waypoints
+ * - Play / Pause / Reset controls
+ * - PMV/PPD tooltip at current agent position
  * - Comfort timeline chart (PMV, PPD, Perceptual Load along route)
  * - Waypoint detail table
  * - LLM experience narrative generation
@@ -52,6 +54,27 @@ interface RouteSimulationTabProps {
 }
 
 // ---------------------------------------------------------------------------
+// Animation helpers
+// ---------------------------------------------------------------------------
+
+/** Walking speed in metres per second */
+const WALKING_SPEED_MPS = 1.2;
+
+/** Interpolate between two 2D points */
+function lerp2D(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  t: number,
+): { x: number; y: number } {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/** Euclidean distance between two 2D points */
+function dist2D(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -73,6 +96,17 @@ export default function RouteSimulationTab({
   const [hoveredWaypoint, setHoveredWaypoint] = useState<number | null>(null);
   const narrativeRef = useRef<HTMLDivElement>(null);
 
+  // ---- Animation state ----
+  const [isPlaying, setIsPlaying] = useState(false);
+  /** Current segment index (agent is between waypoint[segIdx] and waypoint[segIdx+1]) */
+  const [segIdx, setSegIdx] = useState(0);
+  /** Progress within current segment [0, 1] */
+  const [segProgress, setSegProgress] = useState(0);
+  /** Animation speed multiplier */
+  const [speedMultiplier, setSpeedMultiplier] = useState(1);
+  const animFrameRef = useRef<number>(0);
+  const lastTimeRef = useRef<number>(0);
+
   // ---- Derived data ----
   const roomList = useMemo(
     () => rooms.filter((r) => !r.spaceId.startsWith("__")).sort((a, b) => a.name.localeCompare(b.name)),
@@ -88,6 +122,34 @@ export default function RouteSimulationTab({
     return groups;
   }, [roomList]);
 
+  // Pre-compute segment distances for animation timing
+  const segmentDistances = useMemo(() => {
+    if (!result || result.waypoints.length < 2) return [];
+    const dists: number[] = [];
+    for (let i = 0; i < result.waypoints.length - 1; i++) {
+      dists.push(dist2D(result.waypoints[i].position, result.waypoints[i + 1].position));
+    }
+    return dists;
+  }, [result]);
+
+  // Current agent position (interpolated)
+  const agentPosition = useMemo(() => {
+    if (!result || result.waypoints.length === 0) return null;
+    if (result.waypoints.length === 1) return result.waypoints[0].position;
+    const clampedSeg = Math.min(segIdx, result.waypoints.length - 2);
+    return lerp2D(
+      result.waypoints[clampedSeg].position,
+      result.waypoints[clampedSeg + 1].position,
+      segProgress,
+    );
+  }, [result, segIdx, segProgress]);
+
+  // Current waypoint (nearest) for tooltip
+  const currentWaypointIdx = useMemo(() => {
+    if (!result) return 0;
+    return segProgress < 0.5 ? segIdx : Math.min(segIdx + 1, result.waypoints.length - 1);
+  }, [result, segIdx, segProgress]);
+
   // Auto-select first rooms
   useEffect(() => {
     if (roomList.length > 0 && !originId) {
@@ -96,12 +158,75 @@ export default function RouteSimulationTab({
     }
   }, [roomList, originId]);
 
+  // ---- Animation loop ----
+  useEffect(() => {
+    if (!isPlaying || !result || result.waypoints.length < 2) return;
+
+    const animate = (timestamp: number) => {
+      if (lastTimeRef.current === 0) lastTimeRef.current = timestamp;
+      const dt = (timestamp - lastTimeRef.current) / 1000; // seconds
+      lastTimeRef.current = timestamp;
+
+      setSegIdx((prevSeg) => {
+        const segDist = segmentDistances[prevSeg] || 1;
+        // Time to traverse this segment at walking speed
+        const segTime = segDist / (WALKING_SPEED_MPS * speedMultiplier);
+
+        setSegProgress((prevProgress) => {
+          const newProgress = prevProgress + dt / segTime;
+          if (newProgress >= 1) {
+            // Move to next segment
+            const nextSeg = prevSeg + 1;
+            if (nextSeg >= result.waypoints.length - 1) {
+              // Reached end
+              setIsPlaying(false);
+              setSegProgress(1);
+              return 1;
+            }
+            setSegIdx(nextSeg);
+            return newProgress - 1; // carry over excess
+          }
+          return newProgress;
+        });
+
+        return prevSeg;
+      });
+
+      animFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    lastTimeRef.current = 0;
+    animFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [isPlaying, result, segmentDistances, speedMultiplier]);
+
+  // ---- Animation controls ----
+  const handlePlay = useCallback(() => {
+    if (!result || result.waypoints.length < 2) return;
+    setIsPlaying(true);
+  }, [result]);
+
+  const handlePause = useCallback(() => {
+    setIsPlaying(false);
+  }, []);
+
+  const handleReset = useCallback(() => {
+    setIsPlaying(false);
+    setSegIdx(0);
+    setSegProgress(0);
+    lastTimeRef.current = 0;
+  }, []);
+
   // ---- Run simulation ----
   const handleRun = useCallback(() => {
     if (!originId || !destId || originId === destId) return;
     setIsRunning(true);
     setNarrative(null);
     setNarrativeError(null);
+    handleReset();
 
     // Use setTimeout to allow UI to update
     setTimeout(() => {
@@ -122,7 +247,7 @@ export default function RouteSimulationTab({
         setIsRunning(false);
       }
     }, 50);
-  }, [originId, destId, selectedCohort, rooms, corridors, maxFloors, envOverrides]);
+  }, [originId, destId, selectedCohort, rooms, corridors, maxFloors, envOverrides, handleReset]);
 
   // ---- Generate LLM narrative ----
   const handleGenerateNarrative = useCallback(async () => {
@@ -163,8 +288,6 @@ export default function RouteSimulationTab({
       });
 
       if (!response.ok) {
-        // Fallback: call OpenAI-compatible API directly via fetch
-        // Using fetch instead of openai SDK to avoid CORS issues with extra headers
         const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
         const baseURL = import.meta.env.VITE_OPENAI_BASE_URL || "https://api.openai.com/v1";
 
@@ -226,22 +349,27 @@ export default function RouteSimulationTab({
 
   // ---- Render helpers ----
 
-  // SVG floor plan with route overlay
+  // SVG floor plan with animated route overlay
   const renderFloorPlan = () => {
     if (!result || result.waypoints.length === 0) return null;
 
-    // Determine bounds from all rooms
-    const allX = rooms.flatMap((r) => [r.centroidX ?? 0]);
-    const allY = rooms.flatMap((r) => [r.centroidY ?? 0]);
-    const minX = Math.min(...allX, ...result.waypoints.map((w) => w.position.x)) - 5;
-    const maxX = Math.max(...allX, ...result.waypoints.map((w) => w.position.x)) + 5;
-    const minY = Math.min(...allY, ...result.waypoints.map((w) => w.position.y)) - 5;
-    const maxY = Math.max(...allY, ...result.waypoints.map((w) => w.position.y)) + 5;
+    // Determine bounds from all rooms + waypoints
+    const allX = rooms.map((r) => r.centroidX ?? 0);
+    const allY = rooms.map((r) => r.centroidY ?? 0);
+    const wpX = result.waypoints.map((w) => w.position.x);
+    const wpY = result.waypoints.map((w) => w.position.y);
+    const minX = Math.min(...allX, ...wpX) - 5;
+    const maxX = Math.max(...allX, ...wpX) + 5;
+    const minY = Math.min(...allY, ...wpY) - 5;
+    const maxY = Math.max(...allY, ...wpY) + 5;
     const width = maxX - minX || 50;
     const height = maxY - minY || 35;
 
     // Get floors involved in route
     const routeFloors = new Set(result.waypoints.map((w) => w.floorIndex));
+
+    // Current waypoint for tooltip
+    const curWp = result.waypoints[currentWaypointIdx];
 
     return (
       <svg
@@ -287,20 +415,39 @@ export default function RouteSimulationTab({
             );
           })}
 
-        {/* Route path line */}
+        {/* Route path (dashed trail) */}
         {result.waypoints.length > 1 && (
           <polyline
             points={result.waypoints.map((w) => `${w.position.x},${w.position.y}`).join(" ")}
             fill="none"
             stroke="#fbbf24"
-            strokeWidth={0.5}
+            strokeWidth={0.3}
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeDasharray="1,0.5"
+            opacity={0.5}
           />
         )}
 
-        {/* Waypoint dots */}
+        {/* Traversed path (solid, up to current agent position) */}
+        {agentPosition && result.waypoints.length > 1 && (() => {
+          const traversedPoints = result.waypoints
+            .slice(0, segIdx + 1)
+            .map((w) => `${w.position.x},${w.position.y}`);
+          traversedPoints.push(`${agentPosition.x},${agentPosition.y}`);
+          return (
+            <polyline
+              points={traversedPoints.join(" ")}
+              fill="none"
+              stroke="#fbbf24"
+              strokeWidth={0.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
+        })()}
+
+        {/* Static waypoint dots */}
         {result.waypoints.map((wp, i) => {
           const isFirst = i === 0;
           const isLast = i === result.waypoints.length - 1;
@@ -309,12 +456,12 @@ export default function RouteSimulationTab({
           const isHovered = hoveredWaypoint === i;
 
           let fill = "#fbbf24";
-          let r = 0.6;
-          if (isFirst) { fill = "#22c55e"; r = 0.9; }
-          else if (isLast) { fill = "#3b82f6"; r = 0.9; }
-          else if (isWorst) { fill = "#ef4444"; r = 0.8; }
-          else if (isBest) { fill = "#10b981"; r = 0.8; }
-          if (isHovered) r += 0.3;
+          let r = 0.4;
+          if (isFirst) { fill = "#22c55e"; r = 0.7; }
+          else if (isLast) { fill = "#3b82f6"; r = 0.7; }
+          else if (isWorst) { fill = "#ef4444"; r = 0.6; }
+          else if (isBest) { fill = "#10b981"; r = 0.6; }
+          if (isHovered) r += 0.2;
 
           return (
             <g key={`wp-${i}`}>
@@ -324,7 +471,8 @@ export default function RouteSimulationTab({
                 r={r}
                 fill={fill}
                 stroke="#fff"
-                strokeWidth={0.15}
+                strokeWidth={0.1}
+                opacity={0.6}
                 style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHoveredWaypoint(i)}
                 onMouseLeave={() => setHoveredWaypoint(null)}
@@ -345,6 +493,81 @@ export default function RouteSimulationTab({
             </g>
           );
         })}
+
+        {/* Animated agent dot */}
+        {agentPosition && (
+          <g>
+            {/* Glow ring */}
+            <circle
+              cx={agentPosition.x}
+              cy={agentPosition.y}
+              r={1.4}
+              fill="none"
+              stroke="#fbbf24"
+              strokeWidth={0.15}
+              opacity={0.4}
+            >
+              <animate attributeName="r" values="1.2;1.6;1.2" dur="1.5s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.4;0.15;0.4" dur="1.5s" repeatCount="indefinite" />
+            </circle>
+            {/* Agent dot */}
+            <circle
+              cx={agentPosition.x}
+              cy={agentPosition.y}
+              r={0.9}
+              fill={curWp && curWp.isAlert ? "#ef4444" : "#fbbf24"}
+              stroke="#fff"
+              strokeWidth={0.2}
+            />
+            {/* Agent label */}
+            <text
+              x={agentPosition.x}
+              y={agentPosition.y - 1.5}
+              textAnchor="middle"
+              fill="#fff"
+              fontSize={0.9}
+              fontWeight="bold"
+              fontFamily="sans-serif"
+            >
+              {selectedCohort.profile.mbti}
+            </text>
+          </g>
+        )}
+
+        {/* Tooltip at agent position */}
+        {agentPosition && curWp && (isPlaying || segIdx > 0 || segProgress > 0) && (
+          <g>
+            <rect
+              x={agentPosition.x + 1.5}
+              y={agentPosition.y - 2.5}
+              width={12}
+              height={3.5}
+              rx={0.3}
+              fill="rgba(0,0,0,0.85)"
+              stroke="#555"
+              strokeWidth={0.1}
+            />
+            <text
+              x={agentPosition.x + 2}
+              y={agentPosition.y - 1.5}
+              fill="#fbbf24"
+              fontSize={0.85}
+              fontFamily="sans-serif"
+              fontWeight="bold"
+            >
+              {curWp.roomName}
+            </text>
+            <text
+              x={agentPosition.x + 2}
+              y={agentPosition.y - 0.3}
+              fill="#ccc"
+              fontSize={0.7}
+              fontFamily="sans-serif"
+            >
+              PMV {curWp.pmv > 0 ? "+" : ""}{curWp.pmv} | PPD {curWp.ppd}% | Load {curWp.aggregateLoad}
+            </text>
+          </g>
+        )}
       </svg>
     );
   };
@@ -383,6 +606,10 @@ export default function RouteSimulationTab({
       .map((wp) => `${toX(wp.cumulativeDistanceM)},${toY(wp.ppd, 0, 100)}`)
       .join(" ");
 
+    // Current position indicator on timeline
+    const currentDist = result.waypoints[currentWaypointIdx]?.cumulativeDistanceM ?? 0;
+    const curX = toX(currentDist);
+
     return (
       <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full">
         {/* Grid */}
@@ -413,14 +640,28 @@ export default function RouteSimulationTab({
         {/* PPD line (scaled to same visual range) */}
         <polyline points={ppdLine} fill="none" stroke="#8b5cf6" strokeWidth={1.5} strokeDasharray="2,2" />
 
+        {/* Current position indicator */}
+        {(isPlaying || segIdx > 0 || segProgress > 0) && (
+          <line
+            x1={curX}
+            y1={padT}
+            x2={curX}
+            y2={padT + plotH}
+            stroke="#fbbf24"
+            strokeWidth={1.5}
+            strokeDasharray="3,2"
+            opacity={0.8}
+          />
+        )}
+
         {/* Waypoint markers */}
         {result.waypoints.map((wp, i) => (
           <circle
             key={i}
             cx={toX(wp.cumulativeDistanceM)}
             cy={toY(wp.pmv, -3, 3)}
-            r={hoveredWaypoint === i ? 5 : 3}
-            fill={wp.isAlert ? "#ef4444" : "#f59e0b"}
+            r={hoveredWaypoint === i || currentWaypointIdx === i ? 5 : 3}
+            fill={wp.isAlert ? "#ef4444" : currentWaypointIdx === i ? "#fbbf24" : "#f59e0b"}
             stroke="#fff"
             strokeWidth={1}
             style={{ cursor: "pointer" }}
@@ -606,10 +847,55 @@ export default function RouteSimulationTab({
             </div>
           </div>
 
-          {/* Floor plan with route */}
+          {/* Floor plan with animated route */}
           <div className="sa-card p-4">
-            <h3 className="text-lg font-semibold text-white mb-3">Route Visualization</h3>
-            <div className="flex gap-2 mb-2 text-xs text-gray-400">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-white">Route Visualization</h3>
+              {/* Animation controls */}
+              <div className="flex items-center gap-2">
+                {!isPlaying ? (
+                  <button
+                    className="sa-btn sa-btn-primary text-sm"
+                    onClick={handlePlay}
+                    disabled={result.waypoints.length < 2}
+                    title="Play animation"
+                  >
+                    ▶ Play
+                  </button>
+                ) : (
+                  <button
+                    className="sa-btn text-sm"
+                    onClick={handlePause}
+                    title="Pause animation"
+                  >
+                    ⏸ Pause
+                  </button>
+                )}
+                <button
+                  className="sa-btn text-sm"
+                  onClick={handleReset}
+                  title="Reset to start"
+                >
+                  ⏹ Reset
+                </button>
+                {/* Speed control */}
+                <select
+                  className="sa-input text-sm"
+                  style={{ width: 80 }}
+                  value={speedMultiplier}
+                  onChange={(e) => setSpeedMultiplier(Number(e.target.value))}
+                >
+                  <option value={0.5}>0.5x</option>
+                  <option value={1}>1x</option>
+                  <option value={2}>2x</option>
+                  <option value={5}>5x</option>
+                  <option value={10}>10x</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="flex gap-3 mb-2 text-xs text-gray-400">
               <span className="flex items-center gap-1">
                 <span className="inline-block w-3 h-3 rounded-full bg-green-500" /> Start
               </span>
@@ -617,13 +903,19 @@ export default function RouteSimulationTab({
                 <span className="inline-block w-3 h-3 rounded-full bg-blue-500" /> End
               </span>
               <span className="flex items-center gap-1">
-                <span className="inline-block w-3 h-3 rounded-full bg-yellow-500" /> Waypoint
+                <span className="inline-block w-3 h-3 rounded-full bg-yellow-500" /> Agent
               </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block w-3 h-3 rounded-full bg-red-500" /> Alert
               </span>
+              <span className="text-gray-500 ml-2">
+                Speed: {WALKING_SPEED_MPS * speedMultiplier} m/s
+              </span>
             </div>
+
             {renderFloorPlan()}
+
+            {/* Hovered waypoint info */}
             {hoveredWaypoint !== null && result.waypoints[hoveredWaypoint] && (
               <div className="mt-2 p-2 bg-gray-800 rounded text-sm">
                 <strong className="text-white">
@@ -644,6 +936,11 @@ export default function RouteSimulationTab({
             <h3 className="text-lg font-semibold text-white mb-3">Comfort Timeline</h3>
             <p className="text-sm text-gray-400 mb-2">
               PMV, Perceptual Load, and PPD along the route. Green zone = PMV comfort range [-0.5, +0.5].
+              {(isPlaying || segIdx > 0) && (
+                <span className="text-yellow-400 ml-2">
+                  Yellow line = current agent position
+                </span>
+              )}
             </p>
             {renderComfortTimeline()}
           </div>
@@ -671,11 +968,19 @@ export default function RouteSimulationTab({
                       key={i}
                       className={`border-b border-gray-800 ${
                         hoveredWaypoint === i ? "bg-gray-800" : ""
-                      } ${wp.isAlert ? "bg-red-900/20" : ""}`}
+                      } ${currentWaypointIdx === i ? "bg-yellow-900/20" : ""} ${
+                        wp.isAlert ? "bg-red-900/20" : ""
+                      }`}
                       onMouseEnter={() => setHoveredWaypoint(i)}
                       onMouseLeave={() => setHoveredWaypoint(null)}
                     >
-                      <td className="py-1.5 px-2 text-gray-500">{i}</td>
+                      <td className="py-1.5 px-2 text-gray-500">
+                        {currentWaypointIdx === i ? (
+                          <span className="text-yellow-400">▸ {i}</span>
+                        ) : (
+                          i
+                        )}
+                      </td>
                       <td className="py-1.5 px-2">
                         <span className="flex items-center gap-1.5">
                           <span
@@ -756,7 +1061,7 @@ export default function RouteSimulationTab({
             </div>
             <p className="text-xs text-gray-500 mb-3">
               AI-generated first-person narrative based on the route simulation results.
-              Uses {selectedCohort.label}'s MBTI ({selectedCohort.profile.mbti}) personality for perspective.
+              Uses {selectedCohort.label}&apos;s MBTI ({selectedCohort.profile.mbti}) personality for perspective.
             </p>
             {narrative && (
               <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
@@ -770,7 +1075,7 @@ export default function RouteSimulationTab({
             )}
             {!narrative && !narrativeError && !isGeneratingNarrative && (
               <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700 border-dashed text-center text-gray-500">
-                Click "Generate with AI" to create an experience narrative
+                Click &quot;Generate with AI&quot; to create an experience narrative
               </div>
             )}
           </div>
