@@ -53,6 +53,7 @@ function makeNewSpace(existingIds: Set<string>): SpaceType {
     occupancy: 30,
     requiredFeatures: [],
     floorPreference: "any",
+    isOutdoor: false,
   };
 }
 
@@ -280,6 +281,7 @@ export default function SpacesTable() {
                 "Floor Pref",
                 "Floor #",
                 "Cluster",
+                "In/Out",
                 "",
               ].map(h => (
                 <th
@@ -446,6 +448,31 @@ export default function SpacesTable() {
                     }
                   />
                 </td>
+                {/* Indoor/Outdoor Toggle */}
+                <td className="px-2 py-1" style={{ width: 70 }}>
+                  <button
+                    className="sa-btn w-full"
+                    style={{
+                      fontSize: 11,
+                      padding: "3px 6px",
+                      background: (space.isOutdoor ?? false)
+                        ? "#e8f5e9"
+                        : "var(--muted)",
+                      color: (space.isOutdoor ?? false)
+                        ? "#2e7d32"
+                        : "var(--muted-foreground)",
+                      border: `1px solid ${(space.isOutdoor ?? false) ? "#a5d6a7" : "var(--border)"}`,
+                    }}
+                    onClick={() =>
+                      handleUpdate(idx, {
+                        isOutdoor: !(space.isOutdoor ?? false),
+                      })
+                    }
+                    title={(space.isOutdoor ?? false) ? "Outdoor space" : "Indoor space"}
+                  >
+                    {(space.isOutdoor ?? false) ? "Outdoor" : "Indoor"}
+                  </button>
+                </td>
                 {/* Actions */}
                 <td className="px-2 py-1">
                   <button
@@ -462,7 +489,7 @@ export default function SpacesTable() {
             {spaces.length === 0 && (
               <tr>
                 <td
-                  colSpan={14}
+                  colSpan={15}
                   className="text-center py-8"
                   style={{ color: "var(--muted-foreground)" }}
                 >
