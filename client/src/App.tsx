@@ -11,6 +11,7 @@ import Zoning from "./pages/Zoning";
 import Layout from "./pages/Layout";
 import Massing from "./pages/Massing";
 import Simulation from "./pages/Simulation";
+import Compare from "./pages/Compare";
 
 function Router() {
   return (
@@ -21,6 +22,7 @@ function Router() {
       <Route path={"/layout"} component={Layout} />
       <Route path={"/massing"} component={Massing} />
       <Route path={"/simulation"} component={Simulation} />
+      <Route path={"/compare"} component={Compare} />
       <Route path={"/settings"} component={Settings} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
