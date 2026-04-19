@@ -1,15 +1,19 @@
 /**
- * SentiArch — Agent Batch Simulation
+ * SentiArch — Agent Simulation (Step 5)
  *
- * Main component that orchestrates the Scenario Builder and Results Dashboard.
+ * Main component that orchestrates two simulation modes:
+ *   1. **Route Simulation** — animated agent pathfinding with MBTI-influenced A*
+ *   2. **Dwell Simulation** — batch scenario builder + results dashboard
+ *
  * Loads LayoutResult from localStorage (Step 3) and ProgramSpec (Step 1),
- * extracts room info, runs batch simulation, and displays results.
+ * extracts room info, and dispatches to the appropriate sub-component.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import ScenarioBuilder from "./ScenarioBuilder";
 import ResultsDashboard from "./ResultsDashboard";
+import RouteSimulationTab from "./RouteSimulationTab";
 import { runBatchSimulation, type LayoutRoomInfo } from "../../engines/simulation";
-import type { SimulationConfig, SimulationResult } from "../../types/simulation";
+import type { SimulationConfig, SimulationResult, RoomEnvironment } from "../../types/simulation";
 import type { ProgramSpec } from "../../types/program";
 
 // ---------------------------------------------------------------------------
@@ -40,6 +44,14 @@ interface RawLayoutResult {
   floors: RawFloorLayout[];
 }
 
+/** Compute polygon centroid for route graph positioning */
+function polygonCentroid(polygon: { x: number; y: number }[]): { x: number; y: number } {
+  if (polygon.length === 0) return { x: 0, y: 0 };
+  const cx = polygon.reduce((s, p) => s + p.x, 0) / polygon.length;
+  const cy = polygon.reduce((s, p) => s + p.y, 0) / polygon.length;
+  return { x: cx, y: cy };
+}
+
 function extractRoomInfo(
   layout: RawLayoutResult,
   spec: ProgramSpec | null,
@@ -56,6 +68,7 @@ function extractRoomInfo(
     const floorRoomIds = floor.rooms.map((r) => r.spaceId);
     for (const room of floor.rooms) {
       const info = spaceMap.get(room.spaceId);
+      const centroid = polygonCentroid(room.polygon);
       rooms.push({
         spaceId: room.spaceId,
         name: info?.name ?? room.spaceId,
@@ -65,6 +78,8 @@ function extractRoomInfo(
         touchesExterior: room.touchesExterior ?? false,
         colorHex: info?.colorHex ?? "#999999",
         adjacentRoomIds: floorRoomIds.filter((id) => id !== room.spaceId),
+        centroidX: centroid.x,
+        centroidY: centroid.y,
       });
     }
   }
@@ -83,7 +98,6 @@ function extractRoomInfoFromSpec(spec: ProgramSpec): LayoutRoomInfo[] {
     const zoningRaw = localStorage.getItem("sentiarch_zoning_result");
     if (zoningRaw) {
       const zoning = JSON.parse(zoningRaw);
-      // Could be SelectedZoning or ZoningCandidate
       const candidate = zoning.candidate ?? zoning;
       if (candidate.floorAssignments) {
         for (const fa of candidate.floorAssignments) {
@@ -117,24 +131,46 @@ function extractRoomInfoFromSpec(spec: ProgramSpec): LayoutRoomInfo[] {
     }
   }
 
-  return spec.spaces.map((s) => ({
-    spaceId: s.id,
-    name: s.name,
-    category: s.category,
-    floorIndex: floorAssignments.get(s.id) ?? (s.floorMandatory ?? 0),
-    areaM2: s.areaPerUnit * s.quantity,
-    touchesExterior: s.requiredFeatures?.includes("natural_light") ?? false,
-    colorHex: s.colorHex ?? "#999999",
-    adjacentRoomIds: [],
-  }));
+  // Generate grid-based centroid positions for fallback (no real polygon data)
+  const spacesPerFloor = new Map<number, number>();
+  const floorCounters = new Map<number, number>();
+
+  return spec.spaces.map((s) => {
+    const floor = floorAssignments.get(s.id) ?? (s.floorMandatory ?? 0);
+    const count = spacesPerFloor.get(floor) ?? 0;
+    spacesPerFloor.set(floor, count + 1);
+    const idx = floorCounters.get(floor) ?? 0;
+    floorCounters.set(floor, idx + 1);
+    // Grid layout: 5 columns
+    const col = idx % 5;
+    const row = Math.floor(idx / 5);
+    return {
+      spaceId: s.id,
+      name: s.name,
+      category: s.category,
+      floorIndex: floor,
+      areaM2: s.areaPerUnit * s.quantity,
+      touchesExterior: s.requiredFeatures?.includes("natural_light") ?? false,
+      colorHex: s.colorHex ?? "#999999",
+      adjacentRoomIds: [],
+      centroidX: col * 12 + 6,
+      centroidY: row * 10 + 5,
+    };
+  });
 }
+
+// ---------------------------------------------------------------------------
+// Tab type
+// ---------------------------------------------------------------------------
+
+type SimTab = "route" | "dwell-builder" | "dwell-results";
 
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
 export default function AgentSimulation() {
-  const [tab, setTab] = useState<"builder" | "results">("builder");
+  const [tab, setTab] = useState<SimTab>("route");
   const [rooms, setRooms] = useState<LayoutRoomInfo[]>([]);
   const [maxFloors, setMaxFloors] = useState(6);
   const [programSpecId, setProgramSpecId] = useState("unknown");
@@ -143,6 +179,27 @@ export default function AgentSimulation() {
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<string>("none");
+
+  // Empty env overrides map for route simulation (user can extend later)
+  const envOverrides = useMemo(() => new Map<string, RoomEnvironment>(), []);
+
+  // Generate corridor nodes from rooms (one per floor)
+  const corridors = useMemo(() => {
+    const floorSet = new Set(rooms.map((r) => r.floorIndex));
+    return Array.from(floorSet).map((f) => {
+      // Place corridor at average position of rooms on that floor
+      const floorRooms = rooms.filter((r) => r.floorIndex === f);
+      const avgX = floorRooms.reduce((s, r) => s + (r.centroidX ?? 0), 0) / (floorRooms.length || 1);
+      const avgY = floorRooms.reduce((s, r) => s + (r.centroidY ?? 0), 0) / (floorRooms.length || 1);
+      return {
+        id: `corridor-f${f}`,
+        x: avgX,
+        y: avgY + 5, // offset slightly
+        areaM2: 30,
+        floorIndex: f,
+      };
+    });
+  }, [rooms]);
 
   // Load data from localStorage
   useEffect(() => {
@@ -192,7 +249,6 @@ export default function AgentSimulation() {
       const resultRaw = localStorage.getItem(LS_SIMULATION_RESULT);
       if (resultRaw) {
         setResult(JSON.parse(resultRaw));
-        setTab("results");
       }
     } catch {
       // ignore
@@ -223,7 +279,7 @@ export default function AgentSimulation() {
         });
 
         setResult(simResult);
-        setTab("results");
+        setTab("dwell-results");
 
         // Save to localStorage
         localStorage.setItem(LS_SIMULATION_RESULT, JSON.stringify(simResult));
@@ -254,10 +310,10 @@ export default function AgentSimulation() {
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700 }}>
-          Step 5: Agent Batch Simulation
+          Step 5: Agent Simulation
         </h2>
         <p style={{ margin: 0, fontSize: 13, color: "var(--sa-text-secondary)" }}>
-          Run comfort simulations across multiple agent cohorts and tasks.
+          Simulate agent movement and comfort across the building design.
         </p>
       </div>
 
@@ -338,20 +394,30 @@ export default function AgentSimulation() {
       )}
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {/* Route Simulation tab */}
         <button
-          className={`sa-btn ${tab === "builder" ? "sa-btn-primary" : ""}`}
-          onClick={() => setTab("builder")}
+          className={`sa-btn ${tab === "route" ? "sa-btn-primary" : ""}`}
+          onClick={() => setTab("route")}
         >
-          Scenario Builder
+          Route Simulation
+        </button>
+
+        {/* Dwell Simulation tabs */}
+        <button
+          className={`sa-btn ${tab === "dwell-builder" ? "sa-btn-primary" : ""}`}
+          onClick={() => setTab("dwell-builder")}
+        >
+          Dwell Simulation
         </button>
         <button
-          className={`sa-btn ${tab === "results" ? "sa-btn-primary" : ""}`}
-          onClick={() => setTab("results")}
+          className={`sa-btn ${tab === "dwell-results" ? "sa-btn-primary" : ""}`}
+          onClick={() => setTab("dwell-results")}
           disabled={!result}
         >
-          Results Dashboard
+          Dwell Results
         </button>
+
         {result && (
           <>
             <div style={{ flex: 1 }} />
@@ -372,14 +438,31 @@ export default function AgentSimulation() {
       </div>
 
       {/* Tab Content */}
-      {dataSource !== "none" && tab === "builder" && (
+      {dataSource !== "none" && tab === "route" && (
+        <RouteSimulationTab
+          rooms={rooms}
+          corridors={corridors}
+          maxFloors={maxFloors}
+          envOverrides={envOverrides}
+        />
+      )}
+      {dataSource !== "none" && tab === "dwell-builder" && (
         <ScenarioBuilder
           availableRooms={availableRooms}
           onRunSimulation={handleRunSimulation}
           isRunning={isRunning}
         />
       )}
-      {tab === "results" && result && <ResultsDashboard result={result} />}
+      {tab === "dwell-results" && result && <ResultsDashboard result={result} />}
+
+      {/* Empty state for route tab */}
+      {dataSource === "none" && tab === "route" && (
+        <div className="sa-card p-8 text-center">
+          <p className="text-gray-400">
+            No layout or program data found. Please complete Steps 1-3 first to enable route simulation.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
