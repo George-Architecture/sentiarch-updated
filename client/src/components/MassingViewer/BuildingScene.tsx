@@ -3,11 +3,11 @@
 //
 // Three.js scene that renders the 3D building massing model.
 // Uses @react-three/fiber and @react-three/drei for React
-// integration with OrbitControls, hover, click, and floor
-// visibility toggles.
+// integration with OrbitControls, hover, click, floor
+// visibility toggles, and isometric/perspective camera modes.
 // ============================================================
 
-import { useRef, useState, useMemo, useCallback } from "react";
+import { useRef, useState, useMemo, useCallback, useEffect } from "react";
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   OrbitControls,
@@ -44,6 +44,10 @@ export interface SceneConfig {
   showDoors: boolean;
   /** Whether to show slabs. */
   showSlabs: boolean;
+  /** Whether to use isometric (orthographic) camera. */
+  isometric: boolean;
+  /** Whether to show floor labels beside each level. */
+  showFloorLabels: boolean;
 }
 
 export const DEFAULT_SCENE_CONFIG: SceneConfig = {
@@ -55,6 +59,8 @@ export const DEFAULT_SCENE_CONFIG: SceneConfig = {
   showCorridors: true,
   showDoors: true,
   showSlabs: true,
+  isometric: false,
+  showFloorLabels: false,
 };
 
 interface BuildingSceneProps {
@@ -272,6 +278,45 @@ function SlabMesh({ floor, config, buildingBBox }: SlabMeshProps) {
   );
 }
 
+// ---- Floor Label Component (for Isometric View) -------------------------
+
+interface FloorLabelProps {
+  floor: FloorInfo;
+  buildingBBox: { minX: number; maxX: number; minZ: number; maxZ: number };
+}
+
+function FloorLabel({ floor, buildingBBox }: FloorLabelProps) {
+  // Position label to the right of the building, at floor mid-height
+  const labelX = buildingBBox.maxX + 2;
+  const labelY = floor.elevationM + floor.heightM / 2;
+  const labelZ = (buildingBBox.minZ + buildingBBox.maxZ) / 2;
+
+  return (
+    <Html
+      position={[labelX, labelY, labelZ]}
+      center
+      style={{ pointerEvents: "none" }}
+    >
+      <div
+        style={{
+          background: "rgba(45, 106, 79, 0.9)",
+          color: "#fff",
+          padding: "3px 10px",
+          borderRadius: 4,
+          fontSize: 12,
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+          fontFamily: "system-ui, sans-serif",
+          letterSpacing: "0.03em",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+        }}
+      >
+        {floor.label}
+      </div>
+    </Html>
+  );
+}
+
 // ---- Section Cut Plane --------------------------------------------------
 
 interface SectionPlaneProps {
@@ -332,12 +377,13 @@ function GroundGrid({ size, centerX, centerZ }: { size: number; centerX: number;
   );
 }
 
-// ---- Camera Setup -------------------------------------------------------
+// ---- Camera Setup (Perspective) -----------------------------------------
 
-function CameraSetup({ building }: { building: BuildingMassing }) {
+function PerspectiveCameraSetup({ building }: { building: BuildingMassing }) {
   const { camera } = useThree();
 
   useMemo(() => {
+    if (camera instanceof THREE.OrthographicCamera) return;
     const bb = building.boundingBox;
     const cx = (bb.min.x + bb.max.x) / 2;
     const cy = (bb.min.y + bb.max.y) / 2;
@@ -352,6 +398,44 @@ function CameraSetup({ building }: { building: BuildingMassing }) {
     camera.position.set(cx + dist * 0.7, cy + dist * 0.5, cz + dist * 0.7);
     camera.lookAt(cx, cy, cz);
   }, [building, camera]);
+
+  return null;
+}
+
+// ---- Camera Setup (Isometric / Orthographic) ----------------------------
+
+function IsometricCameraSetup({ building }: { building: BuildingMassing }) {
+  const { camera, size } = useThree();
+
+  useEffect(() => {
+    if (!(camera instanceof THREE.OrthographicCamera)) return;
+
+    const bb = building.boundingBox;
+    const cx = (bb.min.x + bb.max.x) / 2;
+    const cy = (bb.min.y + bb.max.y) / 2;
+    const cz = (bb.min.z + bb.max.z) / 2;
+    const maxDim = Math.max(
+      bb.max.x - bb.min.x,
+      bb.max.y - bb.min.y,
+      bb.max.z - bb.min.z,
+    );
+
+    // Classic isometric angle: equal distance on all axes
+    const dist = maxDim * 1.2;
+    camera.position.set(cx + dist, cy + dist, cz + dist);
+    camera.lookAt(cx, cy, cz);
+
+    // Set zoom to fit the building
+    const aspect = size.width / size.height;
+    const frustumSize = maxDim * 1.4;
+    camera.left = (-frustumSize * aspect) / 2;
+    camera.right = (frustumSize * aspect) / 2;
+    camera.top = frustumSize / 2;
+    camera.bottom = -frustumSize / 2;
+    camera.near = -1000;
+    camera.far = 2000;
+    camera.updateProjectionMatrix();
+  }, [building, camera, size]);
 
   return null;
 }
@@ -385,11 +469,18 @@ function Scene({
 
   return (
     <>
-      <CameraSetup building={building} />
+      {/* Camera setup based on mode */}
+      {config.isometric ? (
+        <IsometricCameraSetup building={building} />
+      ) : (
+        <PerspectiveCameraSetup building={building} />
+      )}
+
       <OrbitControls
         makeDefault
         enableDamping
         dampingFactor={0.1}
+        enableRotate={!config.isometric}
         target={[
           centerX,
           building.totalHeightM / 2,
@@ -481,6 +572,14 @@ function Scene({
                 buildingBBox={buildingBBox}
               />
             )}
+
+            {/* Floor label (shown in isometric mode or when explicitly enabled) */}
+            {config.showFloorLabels && (
+              <FloorLabel
+                floor={floor}
+                buildingBBox={buildingBBox}
+              />
+            )}
           </group>
         );
       })}
@@ -500,13 +599,33 @@ function Scene({
 
 // ---- Exported Canvas Wrapper --------------------------------------------
 
-export default function BuildingScene({
+export default function BuildingSceneCanvas({
   building,
   config,
   onRoomClick,
   onRoomHover,
   canvasRef,
 }: BuildingSceneProps) {
+  // Switch between perspective and orthographic camera
+  if (config.isometric) {
+    return (
+      <Canvas
+        ref={canvasRef}
+        orthographic
+        style={{ width: "100%", height: "100%" }}
+        camera={{ zoom: 5, near: -1000, far: 2000, position: [100, 100, 100] }}
+        gl={{ preserveDrawingBuffer: true }}
+      >
+        <Scene
+          building={building}
+          config={config}
+          onRoomClick={onRoomClick}
+          onRoomHover={onRoomHover}
+        />
+      </Canvas>
+    );
+  }
+
   return (
     <Canvas
       ref={canvasRef}
