@@ -258,6 +258,39 @@ export default function ControlPanel({
         </div>
       </div>
 
+      {/* ---- Camera Mode ---- */}
+      <div style={sectionStyle}>
+        <span style={labelStyle}>Camera</span>
+        <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+          <button
+            style={btnStyle(!config.isometric)}
+            onClick={() => onConfigChange({ isometric: false })}
+          >
+            Perspective
+          </button>
+          <button
+            style={btnStyle(config.isometric)}
+            onClick={() =>
+              onConfigChange({ isometric: true, showFloorLabels: true })
+            }
+          >
+            Isometric
+          </button>
+        </div>
+        {config.isometric && (
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--sa-text-muted, #888)",
+              padding: "4px 0",
+              lineHeight: 1.4,
+            }}
+          >
+            Orthographic projection. Pan and zoom enabled; rotation locked.
+          </div>
+        )}
+      </div>
+
       {/* ---- Display Toggles ---- */}
       <div style={sectionStyle}>
         <span style={labelStyle}>Display</span>
@@ -301,6 +334,16 @@ export default function ControlPanel({
               }
             />
             Doors
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={config.showFloorLabels}
+              onChange={(e) =>
+                onConfigChange({ showFloorLabels: e.target.checked })
+              }
+            />
+            Floor Labels
           </label>
         </div>
       </div>
