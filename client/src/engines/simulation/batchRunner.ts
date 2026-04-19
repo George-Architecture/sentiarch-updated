@@ -49,6 +49,10 @@ export interface LayoutRoomInfo {
   colorHex: string;
   /** IDs of adjacent rooms (sharing a wall or connected by corridor) */
   adjacentRoomIds: string[];
+  /** Centroid X position in metres (from layout polygon) */
+  centroidX?: number;
+  /** Centroid Y position in metres (from layout polygon) */
+  centroidY?: number;
 }
 
 // ---------------------------------------------------------------------------
