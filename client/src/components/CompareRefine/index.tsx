@@ -4,6 +4,14 @@
  * Final step of the parametric design workflow. Aggregates data from all
  * previous steps, builds design candidates, and provides comparison,
  * refinement, and export tools.
+ *
+ * Data loading strategy:
+ *   - Program Spec (Step 1): required — sentiarch_program_spec
+ *   - Zoning (Step 2): optional — sentiarch_selected_zoning || sentiarch_zoning_result
+ *   - Layout (Step 3): optional — sentiarch_selected_layout || sentiarch_layout_result
+ *   - Simulation (Step 5): optional — sentiarch_simulation_result
+ *   - If at least Program Spec exists, we can build a basic comparison.
+ *   - Missing steps show "Step X data not available" instead of crashing.
  */
 import { useState, useCallback, useMemo, useEffect } from "react";
 import ComparisonDashboard from "./ComparisonDashboard";
@@ -25,13 +33,15 @@ import {
 } from "../../types/comparison";
 
 // ---------------------------------------------------------------------------
-// localStorage keys
+// localStorage keys — aligned with actual storage from each step
 // ---------------------------------------------------------------------------
 
 const LS_KEYS = {
   programSpec: "sentiarch_program_spec",
   zoningResult: "sentiarch_zoning_result",
+  selectedZoning: "sentiarch_selected_zoning",
   layoutResult: "sentiarch_layout_result",
+  selectedLayout: "sentiarch_selected_layout",
   massingResult: "sentiarch_massing_result",
   simulationResult: "sentiarch_simulation_result",
   comparisonResult: "sentiarch_comparison_result",
@@ -51,10 +61,44 @@ function loadJSON<T>(key: string): T | null {
 }
 
 // ---------------------------------------------------------------------------
-// Candidate builder — synthesises data from all steps into DesignCandidates
+// Loose types for reading upstream data (tolerant of shape variations)
 // ---------------------------------------------------------------------------
 
+/**
+ * Simulation result — reads the canonical SimulationResult shape
+ * from types/simulation.ts, with optional fallback fields.
+ */
 interface SimResult {
+  // Canonical shape (from types/simulation.ts)
+  scenarioResults?: Array<{
+    cohortId?: string;
+    routeComfort?: Array<{
+      pmv?: number;
+      ppd?: number;
+      aggregateLoad?: number;
+      isAlert?: boolean;
+    }>;
+    destinationComfort?: {
+      pmv?: number;
+      ppd?: number;
+      aggregateLoad?: number;
+      isAlert?: boolean;
+    };
+    combinedScore?: number;
+  }>;
+  cohortSummaries?: Array<{
+    cohortId?: string;
+    cohortLabel?: string;
+    avgScore?: number;
+    worstScore?: number;
+    alertCount?: number;
+    colorHex?: string;
+  }>;
+  statistics?: {
+    avgScore?: number;
+    totalAlerts?: number;
+  };
+  // Legacy shape (fallback)
   scenarios?: Array<{
     cohortId?: string;
     cohortLabel?: string;
@@ -71,42 +115,116 @@ interface SimResult {
   };
 }
 
-interface LayoutCandidate {
-  candidateId?: string;
-  rooms?: Array<{
-    spaceId?: string;
-    polygon?: Array<{ x: number; y: number }>;
-    touchesExterior?: boolean;
-  }>;
-  corridors?: unknown[];
-  quality?: {
-    adjacencySatisfaction?: number;
-    areaEfficiency?: number;
-    corridorEfficiency?: number;
-    naturalLightRatio?: number;
-    overallScore?: number;
-  };
+/**
+ * Selected layout — reads from sentiarch_selected_layout
+ * (canonical shape from types/layout.ts SelectedLayout)
+ */
+interface SelectedLayoutData {
+  selectedFloors?: Record<
+    string,
+    {
+      floorIndex?: number;
+      rooms?: Array<{
+        spaceId?: string;
+        polygon?: Array<{ x: number; y: number }>;
+        touchesExterior?: boolean;
+        areaM2?: number;
+      }>;
+      corridors?: unknown[];
+      quality?: {
+        adjacencySatisfaction?: number;
+        areaEfficiency?: number;
+        corridorRatio?: number;
+        naturalLightAccess?: number;
+        totalScore?: number;
+      };
+    }
+  >;
 }
 
-interface LayoutResult {
+/**
+ * Layout result — reads from sentiarch_layout_result (legacy shape)
+ */
+interface LayoutResultData {
   floors?: Array<{
     floorIndex?: number;
-    candidates?: LayoutCandidate[];
+    candidates?: Array<{
+      candidateId?: string;
+      rooms?: Array<{
+        spaceId?: string;
+        polygon?: Array<{ x: number; y: number }>;
+        touchesExterior?: boolean;
+        areaM2?: number;
+      }>;
+      corridors?: unknown[];
+      quality?: {
+        adjacencySatisfaction?: number;
+        areaEfficiency?: number;
+        corridorEfficiency?: number;
+        naturalLightRatio?: number;
+        overallScore?: number;
+      };
+    }>;
     selectedCandidateId?: string;
   }>;
+  // Also support floorCandidates shape from canonical LayoutResult
+  floorCandidates?: Record<
+    string,
+    Array<{
+      id?: string;
+      floorIndex?: number;
+      rooms?: Array<{
+        spaceId?: string;
+        polygon?: Array<{ x: number; y: number }>;
+        touchesExterior?: boolean;
+        areaM2?: number;
+      }>;
+      quality?: {
+        adjacencySatisfaction?: number;
+        areaEfficiency?: number;
+        corridorRatio?: number;
+        naturalLightAccess?: number;
+        totalScore?: number;
+      };
+    }>
+  >;
 }
 
-interface ZoningResult {
+/**
+ * Zoning result — reads from sentiarch_selected_zoning or sentiarch_zoning_result
+ * Uses canonical field names: floorScore, lightScore, totalScore
+ */
+interface ZoningData {
+  // sentiarch_selected_zoning shape
+  fitness?: {
+    adjacencyScore?: number;
+    clusterScore?: number;
+    floorScore?: number;
+    lightScore?: number;
+    totalScore?: number;
+  };
+  // sentiarch_zoning_result shape
   candidates?: Array<{
     fitness?: {
       adjacencyScore?: number;
       clusterScore?: number;
-      floorPrefScore?: number;
-      naturalLightScore?: number;
-      total?: number;
+      floorScore?: number;
+      lightScore?: number;
+      totalScore?: number;
     };
   }>;
   selectedIndex?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Step data availability tracking
+// ---------------------------------------------------------------------------
+
+interface StepDataStatus {
+  programSpec: boolean;
+  zoning: boolean;
+  layout: boolean;
+  simulation: boolean;
 }
 
 const COHORT_COLORS: Record<string, string> = {
@@ -118,133 +236,344 @@ const COHORT_COLORS: Record<string, string> = {
   "wheelchair-student": "#16A085",
 };
 
-function buildCandidatesFromData(): DesignCandidate[] {
-  const simResult = loadJSON<SimResult>(LS_KEYS.simulationResult);
-  const layoutResult = loadJSON<LayoutResult>(LS_KEYS.layoutResult);
-  const zoningResult = loadJSON<ZoningResult>(LS_KEYS.zoningResult);
+// ---------------------------------------------------------------------------
+// Candidate builder — synthesises data from available steps
+// ---------------------------------------------------------------------------
 
-  if (!simResult || !layoutResult) return [];
+function buildCandidatesFromData(): {
+  candidates: DesignCandidate[];
+  status: StepDataStatus;
+  missingSteps: string[];
+} {
+  const status: StepDataStatus = {
+    programSpec: false,
+    zoning: false,
+    layout: false,
+    simulation: false,
+  };
+  const missingSteps: string[] = [];
 
-  // Extract layout metrics
-  const floors = layoutResult.floors ?? [];
+  // ---- Load Program Spec (Step 1) — required ----
+  const programSpec = loadJSON<{ spaces?: Array<{ id: string; areaPerUnit: number; quantity: number }> }>(
+    LS_KEYS.programSpec,
+  );
+  if (programSpec?.spaces) {
+    status.programSpec = true;
+  } else {
+    missingSteps.push("Step 1 (Program Spec) data not available");
+    return { candidates: [], status, missingSteps };
+  }
+
+  // ---- Load Zoning (Step 2) ----
+  // Try selected zoning first, then fall back to zoning result
+  let zoningFitness: {
+    adjacencyScore: number;
+    clusterScore: number;
+    floorScore: number;
+  } = { adjacencyScore: 0.5, clusterScore: 0.5, floorScore: 0.5 };
+
+  const selectedZoning = loadJSON<ZoningData>(LS_KEYS.selectedZoning);
+  const zoningResult = loadJSON<ZoningData>(LS_KEYS.zoningResult);
+
+  if (selectedZoning?.fitness) {
+    status.zoning = true;
+    zoningFitness = {
+      adjacencyScore: selectedZoning.fitness.adjacencyScore ?? 0.5,
+      clusterScore: selectedZoning.fitness.clusterScore ?? 0.5,
+      floorScore: selectedZoning.fitness.floorScore ?? 0.5,
+    };
+  } else if (zoningResult?.candidates && zoningResult.candidates.length > 0) {
+    status.zoning = true;
+    const idx = zoningResult.selectedIndex ?? 0;
+    const candidate = zoningResult.candidates[idx] ?? zoningResult.candidates[0];
+    if (candidate?.fitness) {
+      zoningFitness = {
+        adjacencyScore: candidate.fitness.adjacencyScore ?? 0.5,
+        clusterScore: candidate.fitness.clusterScore ?? 0.5,
+        floorScore: candidate.fitness.floorScore ?? 0.5,
+      };
+    }
+  } else {
+    missingSteps.push("Step 2 (Zoning) data not available");
+  }
+
+  // ---- Load Layout (Step 3) ----
+  // Try selected layout first (canonical), then layout result (legacy)
   let totalRooms = 0;
   let totalArea = 0;
-  let corridorArea = 0;
   let lightRooms = 0;
   let lightRequired = 0;
-  let adjScore = 0;
+  let adjScore = zoningFitness.adjacencyScore;
   let areaEff = 0;
-  let floorCount = floors.length;
+  let corridorArea = 0;
+  let floorCount = 0;
 
-  for (const floor of floors) {
-    const candidates = floor.candidates ?? [];
-    // Use selected or first candidate
-    const selected =
-      candidates.find((c) => c.candidateId === floor.selectedCandidateId) ?? candidates[0];
-    if (!selected) continue;
+  const selectedLayout = loadJSON<SelectedLayoutData>(LS_KEYS.selectedLayout);
+  const layoutResult = loadJSON<LayoutResultData>(LS_KEYS.layoutResult);
 
-    const rooms = selected.rooms ?? [];
-    totalRooms += rooms.length;
+  if (selectedLayout?.selectedFloors) {
+    status.layout = true;
+    const floors = Object.values(selectedLayout.selectedFloors);
+    floorCount = floors.length;
 
-    for (const room of rooms) {
-      // Compute room area from polygon
-      const poly = room.polygon ?? [];
-      if (poly.length >= 3) {
-        let area = 0;
-        for (let i = 0; i < poly.length; i++) {
-          const j = (i + 1) % poly.length;
-          area += poly[i].x * poly[j].y - poly[j].x * poly[i].y;
+    for (const floor of floors) {
+      const rooms = floor.rooms ?? [];
+      totalRooms += rooms.length;
+
+      for (const room of rooms) {
+        // Use areaM2 if available, otherwise compute from polygon
+        if (room.areaM2) {
+          totalArea += room.areaM2;
+        } else {
+          const poly = room.polygon ?? [];
+          if (poly.length >= 3) {
+            let area = 0;
+            for (let i = 0; i < poly.length; i++) {
+              const j = (i + 1) % poly.length;
+              area += poly[i].x * poly[j].y - poly[j].x * poly[i].y;
+            }
+            totalArea += Math.abs(area) / 2;
+          }
         }
-        totalArea += Math.abs(area) / 2;
+
+        lightRequired++;
+        if (room.touchesExterior) lightRooms++;
       }
 
-      lightRequired++;
-      if (room.touchesExterior) lightRooms++;
+      const q = floor.quality;
+      if (q) {
+        adjScore += q.adjacencySatisfaction ?? 0;
+        areaEff += q.areaEfficiency ?? 0;
+        corridorArea += (q.corridorRatio ?? 0.05) * 100;
+      }
     }
 
-    const q = selected.quality;
-    if (q) {
-      adjScore += q.adjacencySatisfaction ?? 0;
-      areaEff += q.areaEfficiency ?? 0;
-      corridorArea += (q.corridorEfficiency ?? 0.05) * 100;
+    if (floorCount > 0) {
+      adjScore /= floorCount + 1; // +1 because we started with zoning adj
+      areaEff /= floorCount;
+      corridorArea /= floorCount;
+    }
+  } else if (layoutResult) {
+    // Try canonical floorCandidates shape
+    if (layoutResult.floorCandidates) {
+      status.layout = true;
+      const entries = Object.values(layoutResult.floorCandidates);
+      floorCount = entries.length;
+
+      for (const candidates of entries) {
+        const selected = candidates[0]; // Use first (best) candidate
+        if (!selected) continue;
+
+        const rooms = selected.rooms ?? [];
+        totalRooms += rooms.length;
+
+        for (const room of rooms) {
+          if (room.areaM2) {
+            totalArea += room.areaM2;
+          } else {
+            const poly = room.polygon ?? [];
+            if (poly.length >= 3) {
+              let area = 0;
+              for (let i = 0; i < poly.length; i++) {
+                const j = (i + 1) % poly.length;
+                area += poly[i].x * poly[j].y - poly[j].x * poly[i].y;
+              }
+              totalArea += Math.abs(area) / 2;
+            }
+          }
+
+          lightRequired++;
+          if (room.touchesExterior) lightRooms++;
+        }
+
+        const q = selected.quality;
+        if (q) {
+          adjScore += q.adjacencySatisfaction ?? 0;
+          areaEff += q.areaEfficiency ?? 0;
+          corridorArea += (q.corridorRatio ?? 0.05) * 100;
+        }
+      }
+
+      if (floorCount > 0) {
+        adjScore /= floorCount + 1;
+        areaEff /= floorCount;
+        corridorArea /= floorCount;
+      }
+    }
+    // Try legacy floors shape
+    else if (layoutResult.floors && layoutResult.floors.length > 0) {
+      status.layout = true;
+      const floors = layoutResult.floors;
+      floorCount = floors.length;
+
+      for (const floor of floors) {
+        const candidates = floor.candidates ?? [];
+        const selected =
+          candidates.find((c) => c.candidateId === floor.selectedCandidateId) ?? candidates[0];
+        if (!selected) continue;
+
+        const rooms = selected.rooms ?? [];
+        totalRooms += rooms.length;
+
+        for (const room of rooms) {
+          if (room.areaM2) {
+            totalArea += room.areaM2;
+          } else {
+            const poly = room.polygon ?? [];
+            if (poly.length >= 3) {
+              let area = 0;
+              for (let i = 0; i < poly.length; i++) {
+                const j = (i + 1) % poly.length;
+                area += poly[i].x * poly[j].y - poly[j].x * poly[i].y;
+              }
+              totalArea += Math.abs(area) / 2;
+            }
+          }
+
+          lightRequired++;
+          if (room.touchesExterior) lightRooms++;
+        }
+
+        const q = selected.quality;
+        if (q) {
+          adjScore += q.adjacencySatisfaction ?? 0;
+          areaEff += q.areaEfficiency ?? 0;
+          corridorArea += (q.corridorEfficiency ?? 0.05) * 100;
+        }
+      }
+
+      if (floorCount > 0) {
+        adjScore /= floorCount + 1;
+        areaEff /= floorCount;
+        corridorArea /= floorCount;
+      }
     }
   }
 
-  if (floorCount > 0) {
-    adjScore /= floorCount;
-    areaEff /= floorCount;
-    corridorArea /= floorCount;
+  if (!status.layout) {
+    missingSteps.push("Step 3 (Layout) data not available");
+    // Use program spec for basic area estimates
+    totalArea = programSpec.spaces!.reduce((sum, s) => sum + s.areaPerUnit * s.quantity, 0);
+    totalRooms = programSpec.spaces!.length;
+    floorCount = 6; // default
+    areaEff = 0.7; // reasonable default
   }
 
-  // Zoning metrics
-  const zoningCandidates = zoningResult?.candidates ?? [];
-  const selectedZoningIdx = zoningResult?.selectedIndex ?? 0;
-  const zoningFitness = zoningCandidates[selectedZoningIdx]?.fitness;
-  const zoningAdjScore = zoningFitness?.adjacencyScore ?? adjScore;
-  const zoningClusterScore = zoningFitness?.clusterScore ?? 1;
-  const zoningFloorPrefScore = zoningFitness?.floorPrefScore ?? 1;
+  // ---- Load Simulation (Step 5) ----
+  const simResult = loadJSON<SimResult>(LS_KEYS.simulationResult);
 
-  // Simulation metrics
-  const scenarios = simResult.scenarios ?? [];
-  const globalStats = simResult.globalStats;
+  let overallComfort = 0.85; // default
+  let avgPMV = 0;
+  let avgPPD = 10;
+  let worstPMV = 0;
+  let worstPPD = 0;
+  let alertCount = 0;
+  let cohortComforts: CohortComfort[] = [];
 
-  // Per-cohort aggregation
-  const cohortMap = new Map<
-    string,
-    { label: string; scores: number[]; pmvs: number[]; ppds: number[]; loads: number[]; alerts: number }
-  >();
+  if (simResult) {
+    // Try canonical shape first (types/simulation.ts)
+    if (simResult.cohortSummaries && simResult.cohortSummaries.length > 0) {
+      status.simulation = true;
 
-  for (const sc of scenarios) {
-    const cid = sc.cohortId ?? "unknown";
-    const clabel = sc.cohortLabel ?? cid;
-    if (!cohortMap.has(cid)) {
-      cohortMap.set(cid, { label: clabel, scores: [], pmvs: [], ppds: [], loads: [], alerts: 0 });
+      cohortComforts = simResult.cohortSummaries.map((cs) => ({
+        cohortId: cs.cohortId ?? "unknown",
+        cohortLabel: cs.cohortLabel ?? cs.cohortId ?? "Unknown",
+        avgComfortScore: Math.min(1, (cs.avgScore ?? 0.85)),
+        avgPMV: 0,
+        avgPPD: 0,
+        avgLoad: 0,
+        alertCount: cs.alertCount ?? 0,
+        colorHex: cs.colorHex ?? COHORT_COLORS[cs.cohortId ?? ""] ?? "#888",
+      }));
+
+      // Aggregate PMV/PPD from scenario results
+      const allPMVs: number[] = [];
+      const allPPDs: number[] = [];
+      for (const sr of simResult.scenarioResults ?? []) {
+        for (const rc of sr.routeComfort ?? []) {
+          if (rc.pmv !== undefined) allPMVs.push(rc.pmv);
+          if (rc.ppd !== undefined) allPPDs.push(rc.ppd);
+        }
+        if (sr.destinationComfort) {
+          if (sr.destinationComfort.pmv !== undefined) allPMVs.push(sr.destinationComfort.pmv);
+          if (sr.destinationComfort.ppd !== undefined) allPPDs.push(sr.destinationComfort.ppd);
+        }
+      }
+
+      const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+      avgPMV = avg(allPMVs);
+      avgPPD = avg(allPPDs);
+      worstPMV = allPMVs.reduce((w, v) => (Math.abs(v) > Math.abs(w) ? v : w), 0);
+      worstPPD = Math.max(...allPPDs, 0);
+      overallComfort = Math.min(1, simResult.statistics?.avgScore ?? 0.85);
+      alertCount = simResult.statistics?.totalAlerts ?? 0;
     }
-    const entry = cohortMap.get(cid)!;
-    if (sc.comfortScore !== undefined) entry.scores.push(sc.comfortScore);
+    // Try legacy shape
+    else if (simResult.scenarios && simResult.scenarios.length > 0) {
+      status.simulation = true;
 
-    for (const rr of sc.roomResults ?? []) {
-      if (rr.pmv !== undefined) entry.pmvs.push(rr.pmv);
-      if (rr.ppd !== undefined) entry.ppds.push(rr.ppd);
-      if (rr.perceptualLoad !== undefined) entry.loads.push(rr.perceptualLoad);
-      if (rr.ppd !== undefined && rr.ppd > 10) entry.alerts++;
-      if (rr.perceptualLoad !== undefined && rr.perceptualLoad > 0.7) entry.alerts++;
+      const cohortMap = new Map<
+        string,
+        { label: string; scores: number[]; pmvs: number[]; ppds: number[]; loads: number[]; alerts: number }
+      >();
+
+      for (const sc of simResult.scenarios) {
+        const cid = sc.cohortId ?? "unknown";
+        const clabel = sc.cohortLabel ?? cid;
+        if (!cohortMap.has(cid)) {
+          cohortMap.set(cid, { label: clabel, scores: [], pmvs: [], ppds: [], loads: [], alerts: 0 });
+        }
+        const entry = cohortMap.get(cid)!;
+        if (sc.comfortScore !== undefined) entry.scores.push(sc.comfortScore);
+
+        for (const rr of sc.roomResults ?? []) {
+          if (rr.pmv !== undefined) entry.pmvs.push(rr.pmv);
+          if (rr.ppd !== undefined) entry.ppds.push(rr.ppd);
+          if (rr.perceptualLoad !== undefined) entry.loads.push(rr.perceptualLoad);
+          if (rr.ppd !== undefined && rr.ppd > 10) entry.alerts++;
+          if (rr.perceptualLoad !== undefined && rr.perceptualLoad > 0.7) entry.alerts++;
+        }
+      }
+
+      const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+
+      cohortComforts = Array.from(cohortMap.entries()).map(([id, data]) => ({
+        cohortId: id,
+        cohortLabel: data.label,
+        avgComfortScore: avg(data.scores) / 100,
+        avgPMV: avg(data.pmvs),
+        avgPPD: avg(data.ppds),
+        avgLoad: avg(data.loads),
+        alertCount: data.alerts,
+        colorHex: COHORT_COLORS[id] ?? "#888",
+      }));
+
+      const allPMVs = simResult.scenarios.flatMap((s) => (s.roomResults ?? []).map((r) => r.pmv ?? 0));
+      const allPPDs = simResult.scenarios.flatMap((s) => (s.roomResults ?? []).map((r) => r.ppd ?? 0));
+      avgPMV = avg(allPMVs);
+      avgPPD = avg(allPPDs);
+      worstPMV = allPMVs.reduce((w, v) => (Math.abs(v) > Math.abs(w) ? v : w), 0);
+      worstPPD = Math.max(...allPPDs, 0);
+      overallComfort = (simResult.globalStats?.avgComfortScore ?? 85) / 100;
+      alertCount = simResult.globalStats?.totalAlerts ?? 0;
     }
   }
 
-  const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+  if (!status.simulation) {
+    missingSteps.push("Step 5 (Simulation) data not available — using default comfort values");
+  }
 
-  const cohortComforts: CohortComfort[] = Array.from(cohortMap.entries()).map(([id, data]) => ({
-    cohortId: id,
-    cohortLabel: data.label,
-    avgComfortScore: avg(data.scores) / 100, // normalize from 0-100 to 0-1
-    avgPMV: avg(data.pmvs),
-    avgPPD: avg(data.ppds),
-    avgLoad: avg(data.loads),
-    alertCount: data.alerts,
-    colorHex: COHORT_COLORS[id] ?? "#888",
-  }));
-
+  // ---- Compute equity ----
   const equity = computeEquityMetrics(cohortComforts);
 
-  // Comfort metrics
-  const allPMVs = scenarios.flatMap((s) => (s.roomResults ?? []).map((r) => r.pmv ?? 0));
-  const allPPDs = scenarios.flatMap((s) => (s.roomResults ?? []).map((r) => r.ppd ?? 0));
-  const avgPMV = avg(allPMVs);
-  const avgPPD = avg(allPPDs);
-  const worstPMV = allPMVs.reduce((w, v) => (Math.abs(v) > Math.abs(w) ? v : w), 0);
-  const worstPPD = Math.max(...allPPDs, 0);
-  const overallComfort = (globalStats?.avgComfortScore ?? 85) / 100;
-  const alertCount = globalStats?.totalAlerts ?? 0;
-
-  // Build the "Generated" candidate
-  const lightRatio = lightRequired > 0 ? lightRooms / lightRequired : 1;
+  // ---- Build the "Generated" candidate ----
+  const lightRatio = lightRequired > 0 ? lightRooms / lightRequired : status.layout ? 0.5 : 0.7;
   const corrRatio = Math.min(corridorArea / 100, 1);
 
   const radarScores = {
-    areaEfficiency: Math.min(areaEff, 1),
+    areaEfficiency: Math.min(areaEff || 0.7, 1),
     comfortScore: overallComfort,
-    adjacencyScore: zoningAdjScore,
+    adjacencyScore: Math.min(adjScore || 0.5, 1),
     lightScore: lightRatio,
     equityScore: equity.equityScore,
   };
@@ -256,10 +585,10 @@ function buildCandidatesFromData(): DesignCandidate[] {
     createdAt: new Date().toISOString(),
     spatial: {
       totalAreaM2: totalArea,
-      areaEfficiency: Math.min(areaEff, 1),
+      areaEfficiency: Math.min(areaEff || 0.7, 1),
       corridorRatio: corrRatio,
       roomCount: totalRooms,
-      floorCount,
+      floorCount: floorCount || 6,
     },
     comfort: {
       avgPMV,
@@ -270,9 +599,9 @@ function buildCandidatesFromData(): DesignCandidate[] {
       alertCount,
     },
     adjacency: {
-      adjacencyScore: zoningAdjScore,
-      clusterScore: zoningClusterScore,
-      floorPrefScore: zoningFloorPrefScore,
+      adjacencyScore: Math.min(zoningFitness.adjacencyScore, 1),
+      clusterScore: Math.min(zoningFitness.clusterScore, 1),
+      floorPrefScore: Math.min(zoningFitness.floorScore, 1),
     },
     light: {
       lightAccessRatio: lightRatio,
@@ -284,7 +613,7 @@ function buildCandidatesFromData(): DesignCandidate[] {
     compositeScore: computeCompositeScore(radarScores, DEFAULT_WEIGHTS),
   };
 
-  // Generate a few variant candidates with slight perturbations for comparison
+  // Generate variant candidates with slight perturbations for comparison
   const variants: DesignCandidate[] = [];
   const variantConfigs = [
     { label: "High Ventilation Variant", tempDelta: -1, comfortBoost: 0.03, equityBoost: 0.02 },
@@ -337,7 +666,11 @@ function buildCandidatesFromData(): DesignCandidate[] {
     });
   }
 
-  return [generatedCandidate, ...variants];
+  return {
+    candidates: [generatedCandidate, ...variants],
+    status,
+    missingSteps,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +699,13 @@ export default function CompareRefine() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dataStatus, setDataStatus] = useState<StepDataStatus>({
+    programSpec: false,
+    zoning: false,
+    layout: false,
+    simulation: false,
+  });
+  const [missingSteps, setMissingSteps] = useState<string[]>([]);
 
   // Load data on mount
   useEffect(() => {
@@ -382,14 +722,17 @@ export default function CompareRefine() {
       }
 
       // Build from step data
-      const built = buildCandidatesFromData();
-      if (built.length > 0) {
-        setCandidates(built);
-        setSelectedId(built[0].id);
+      const result = buildCandidatesFromData();
+      setDataStatus(result.status);
+      setMissingSteps(result.missingSteps);
+
+      if (result.candidates.length > 0) {
+        setCandidates(result.candidates);
+        setSelectedId(result.candidates[0].id);
         setLoaded(true);
       } else {
         setError(
-          "No design data found. Please complete Steps 1-5 first (Program Spec, Zoning, Layout, Massing, Simulation).",
+          "No design data found. Please complete at least Step 1 (Program Spec) to begin comparison.",
         );
         setLoaded(true);
       }
@@ -505,10 +848,16 @@ export default function CompareRefine() {
 
   // Rebuild candidates from scratch
   const handleRebuild = useCallback(() => {
-    const built = buildCandidatesFromData();
-    if (built.length > 0) {
-      setCandidates(built);
-      setSelectedId(built[0].id);
+    // Clear saved comparison so we rebuild from step data
+    localStorage.removeItem(LS_KEYS.comparisonResult);
+
+    const result = buildCandidatesFromData();
+    setDataStatus(result.status);
+    setMissingSteps(result.missingSteps);
+
+    if (result.candidates.length > 0) {
+      setCandidates(result.candidates);
+      setSelectedId(result.candidates[0].id);
       setVersions([]);
       setRoomOverrides([]);
       setError(null);
@@ -560,6 +909,46 @@ export default function CompareRefine() {
           </span>
         </div>
       </div>
+
+      {/* Data availability banner */}
+      {missingSteps.length > 0 && (
+        <div
+          style={{
+            padding: "10px 16px",
+            marginBottom: 16,
+            background: "#f0f4ff",
+            border: "1px solid #c5d5f0",
+            borderRadius: 8,
+            fontSize: 12,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 4, color: "#2E6B8A" }}>
+            Data Availability
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
+            <span style={{ color: dataStatus.programSpec ? "#27ae60" : "#e74c3c" }}>
+              {dataStatus.programSpec ? "✓" : "✗"} Program Spec
+            </span>
+            <span style={{ color: dataStatus.zoning ? "#27ae60" : "#e74c3c" }}>
+              {dataStatus.zoning ? "✓" : "✗"} Zoning
+            </span>
+            <span style={{ color: dataStatus.layout ? "#27ae60" : "#e74c3c" }}>
+              {dataStatus.layout ? "✓" : "✗"} Layout
+            </span>
+            <span style={{ color: dataStatus.simulation ? "#27ae60" : "#e74c3c" }}>
+              {dataStatus.simulation ? "✓" : "✗"} Simulation
+            </span>
+          </div>
+          {missingSteps.map((msg, i) => (
+            <div key={i} style={{ color: "#666", fontSize: 11 }}>
+              {msg}
+            </div>
+          ))}
+          <div style={{ color: "#888", fontSize: 11, marginTop: 4, fontStyle: "italic" }}>
+            Missing data uses default values. Run the missing steps and click &quot;Rebuild from Steps&quot; to update.
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "2px solid #eee" }}>
