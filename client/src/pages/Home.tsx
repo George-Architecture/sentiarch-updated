@@ -99,6 +99,13 @@ export default function Home() {
                   Start Workflow →
                 </button>
                 <button
+                  onClick={() => navigate("/v2")}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
+                  style={{ background: "#10B981", boxShadow: "0 2px 12px #10B98140" }}
+                >
+                  SentiArch v2 →
+                </button>
+                <button
                   onClick={() => navigate("/legacy")}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
                 >
