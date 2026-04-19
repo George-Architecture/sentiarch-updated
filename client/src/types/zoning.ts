@@ -3,8 +3,17 @@
 // Phase 1, Step 2: Zoning Strategy
 //
 // Defines the output of the zoning engine — which spaces go on
-// which floor — and the fitness scoring breakdown.  This is the
-// contract between Step 2 (Zoning) and Step 3 (Layout).
+// which floor (and optionally which block) — and the fitness
+// scoring breakdown.  This is the contract between Step 2
+// (Zoning) and Step 3 (Layout).
+//
+// v3 — Multi-block support:
+//   FloorAssignment now carries an optional `blockIndex` so that
+//   the GA can distribute spaces across multiple building blocks.
+//   FitnessBreakdown gains an optional `blockScore` sub-score.
+//   ZoningCandidate gains an optional `blockCount` summary.
+//   All additions are optional for backward compatibility with
+//   single-block zoning results.
 // ============================================================
 
 import { z } from "zod/v4";
@@ -16,6 +25,9 @@ import { z } from "zod/v4";
  *
  * Each sub-score is normalised to [0, 1] before weighting so
  * that the final score is a weighted sum in [0, 1].
+ *
+ * v3: `blockScore` is optional — present only when multi-block
+ * zoning is enabled.
  */
 export const FitnessBreakdownSchema = z.object({
   /** Score from adjacency rule satisfaction. */
@@ -26,7 +38,9 @@ export const FitnessBreakdownSchema = z.object({
   floorScore: z.number(),
   /** Score from natural-light preference (higher floors). */
   lightScore: z.number(),
-  /** Weighted total: w1×adj + w2×cluster + w3×floor + w4×light. */
+  /** Score from block distribution quality (multi-block only). */
+  blockScore: z.number().optional(),
+  /** Weighted total: w1×adj + w2×cluster + w3×floor + w4×light [+ w5×block]. */
   totalScore: z.number(),
 });
 
@@ -36,6 +50,10 @@ export type FitnessBreakdown = z.infer<typeof FitnessBreakdownSchema>;
 
 /**
  * A single floor's space assignments in a zoning candidate.
+ *
+ * v3: `blockIndex` is optional — when present, spaces on this
+ * floor belong to the indicated building block (0-indexed).
+ * When absent, all spaces are in a single block (legacy mode).
  */
 export const FloorAssignmentSchema = z.object({
   /** 0-indexed floor number (0 = G/F). */
@@ -44,6 +62,8 @@ export const FloorAssignmentSchema = z.object({
   spaceIds: z.array(z.string()),
   /** Total area of all spaces on this floor (m²). Computed. */
   totalAreaM2: z.number().min(0),
+  /** 0-indexed block number (optional, multi-block zoning). */
+  blockIndex: z.number().int().min(0).optional(),
 });
 
 export type FloorAssignment = z.infer<typeof FloorAssignmentSchema>;
@@ -54,6 +74,9 @@ export type FloorAssignment = z.infer<typeof FloorAssignmentSchema>;
  * A single zoning candidate produced by the GA engine.
  *
  * Contains the floor-by-floor assignment and its fitness score.
+ *
+ * v3: `blockCount` summarises how many building blocks this
+ * candidate uses.  When absent, assume single block.
  */
 export const ZoningCandidateSchema = z.object({
   /** Unique candidate identifier (e.g. "candidate-0"). */
@@ -66,6 +89,8 @@ export const ZoningCandidateSchema = z.object({
   fitness: FitnessBreakdownSchema,
   /** Generation number when this candidate was found. */
   generation: z.number().int().min(0),
+  /** Number of building blocks in this candidate (optional, multi-block). */
+  blockCount: z.number().int().min(1).optional(),
 });
 
 export type ZoningCandidate = z.infer<typeof ZoningCandidateSchema>;
@@ -98,6 +123,7 @@ export const ZoningResultSchema = z.object({
     cluster: z.number().min(0),
     floor: z.number().min(0),
     light: z.number().min(0),
+    block: z.number().min(0).optional(),
   }),
   /** Top candidates sorted by fitness (best first). */
   candidates: z.array(ZoningCandidateSchema),
@@ -126,6 +152,8 @@ export const SelectedZoningSchema = z.object({
   fitness: FitnessBreakdownSchema,
   /** Timestamp when the architect confirmed the selection. */
   confirmedAt: z.string().datetime(),
+  /** Number of building blocks (optional, multi-block). */
+  blockCount: z.number().int().min(1).optional(),
 });
 
 export type SelectedZoning = z.infer<typeof SelectedZoningSchema>;

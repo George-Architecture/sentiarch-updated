@@ -2,8 +2,16 @@
 // SentiArch — Zoning Fitness Function
 //
 // Encodes "architect thinking" as a numeric formula.
-// Given a chromosome (space → floor mapping) and the ProgramSpec,
-// returns a FitnessBreakdown with sub-scores and weighted total.
+// Given a chromosome (space → floor+block mapping) and the
+// ProgramSpec, returns a FitnessBreakdown with sub-scores and
+// weighted total.
+//
+// v3 — Multi-block support:
+//   - Chromosome now encodes (block, floor) per space.
+//   - New blockScore sub-score rewards balanced block distribution
+//     and penalises cross-block adjacency violations.
+//   - Rebalanced weights: adjacency dominates, cluster/floor
+//     are soft hints, light is a meaningful differentiator.
 // ============================================================
 
 import type {
@@ -22,39 +30,68 @@ export interface FitnessWeights {
   cluster: number;
   floor: number;
   light: number;
+  block: number;
 }
 
-// v2: Reduced floor weight (0.25→0.15) to prevent all candidates converging
-// to the same "preferred floor" solution.  Adjacency weight increased
-// (0.40→0.50) to reward genuinely different spatial relationships.
+// v3: Dramatically rebalanced weights.
+// - adjacency (0.40): main quality driver
+// - cluster (0.10): very soft hint (only science labs)
+// - floor (0.05): minimal — only dormitory has non-"any" preference
+// - light (0.20): meaningful differentiator (higher floors = better)
+// - block (0.25): rewards good multi-block distribution
 export const DEFAULT_FITNESS_WEIGHTS: FitnessWeights = {
-  adjacency: 0.50, // ↑ was 0.40 — stronger signal for spatial relationships
-  cluster: 0.25,   // unchanged
-  floor: 0.15,     // ↓ was 0.25 — softer preference signal, more exploration
-  light: 0.10,     // unchanged
+  adjacency: 0.40,
+  cluster: 0.10,
+  floor: 0.05,
+  light: 0.20,
+  block: 0.25,
 };
 
 // ---- Chromosome Representation ---------------------------------------
 
 /**
- * A chromosome maps each space ID to a floor index (0-based).
+ * A chromosome maps each space ID to a gene encoding both
+ * block index and floor index.
  *
- * This is the core representation the GA operates on.
- * Using a plain object for fast lookup.
+ * For multi-block: gene = blockIndex * maxFloors + floorIndex
+ * For single-block: gene = floorIndex (blockIndex = 0)
+ *
+ * Use decodeGene() / encodeGene() to convert.
  */
 export type Chromosome = Record<string, number>;
+
+/** Decode a gene into (blockIndex, floorIndex). */
+export function decodeGene(
+  gene: number,
+  maxFloors: number
+): { block: number; floor: number } {
+  const block = Math.floor(gene / maxFloors);
+  const floor = gene % maxFloors;
+  return { block, floor };
+}
+
+/** Encode (blockIndex, floorIndex) into a gene. */
+export function encodeGene(
+  block: number,
+  floor: number,
+  maxFloors: number
+): number {
+  return block * maxFloors + floor;
+}
 
 // ---- Sub-Score Functions ---------------------------------------------
 
 /**
  * Score adjacency rules satisfaction.
  *
- * Returns a value in roughly [-1, 1] range (normalised by max
- * possible score).
+ * v3: Cross-block adjacency is penalised more heavily than
+ * cross-floor adjacency within the same block.
  */
 function scoreAdjacency(
   chromosome: Chromosome,
-  adjacencies: AdjacencyRule[]
+  adjacencies: AdjacencyRule[],
+  maxFloors: number,
+  maxBlocks: number
 ): number {
   if (adjacencies.length === 0) return 1;
 
@@ -62,35 +99,45 @@ function scoreAdjacency(
   let maxScore = 0;
 
   for (const rule of adjacencies) {
-    const floorA = chromosome[rule.fromSpaceId];
-    const floorB = chromosome[rule.toSpaceId];
+    const geneA = chromosome[rule.fromSpaceId];
+    const geneB = chromosome[rule.toSpaceId];
 
-    if (floorA === undefined || floorB === undefined) continue;
+    if (geneA === undefined || geneB === undefined) continue;
 
-    const distance = Math.abs(floorA - floorB);
+    const a = decodeGene(geneA, maxFloors);
+    const b = decodeGene(geneB, maxFloors);
+
+    const sameBlock = a.block === b.block;
+    const floorDist = Math.abs(a.floor - b.floor);
+    // Cross-block distance: treat as large separation
+    const effectiveDist = sameBlock ? floorDist : floorDist + 3;
+
     const w = rule.weight;
     let ruleScore = 0;
 
     switch (rule.type) {
       case "must_adjacent":
-        ruleScore = distance === 0 ? 10 : -10;
+        ruleScore = sameBlock && floorDist === 0 ? 10 : -10;
         maxScore += 10 * w;
         break;
 
       case "should_adjacent":
-        if (distance === 0) ruleScore = 5;
-        else if (distance === 1) ruleScore = 2;
+        if (sameBlock && floorDist === 0) ruleScore = 5;
+        else if (sameBlock && floorDist === 1) ruleScore = 2;
+        else if (!sameBlock && floorDist === 0) ruleScore = 1;
         else ruleScore = 0;
         maxScore += 5 * w;
         break;
 
       case "prefer_nearby":
-        ruleScore = Math.max(0, 3 - distance);
+        ruleScore = Math.max(0, 3 - effectiveDist);
         maxScore += 3 * w;
         break;
 
       case "must_separate":
-        ruleScore = distance > 0 ? 10 : -10;
+        // Cross-block separation is excellent
+        if (!sameBlock) ruleScore = 10;
+        else ruleScore = floorDist > 0 ? 10 : -10;
         maxScore += 10 * w;
         break;
     }
@@ -98,7 +145,6 @@ function scoreAdjacency(
     score += ruleScore * w;
   }
 
-  // Normalise to [0, 1] — shift from [-maxScore, maxScore] range
   if (maxScore === 0) return 1;
   return (score + maxScore) / (2 * maxScore);
 }
@@ -106,14 +152,13 @@ function scoreAdjacency(
 /**
  * Score cluster-group co-location.
  *
- * For each cluster group, compute the proportion of member spaces
- * that are on the most-populated floor for that group.
+ * v3: Cluster members should be on the same floor AND same block.
  */
 function scoreCluster(
   chromosome: Chromosome,
-  spaces: SpaceType[]
+  spaces: SpaceType[],
+  maxFloors: number
 ): number {
-  // Group spaces by clusterGroup
   const groups = new Map<string, string[]>();
   for (const s of spaces) {
     if (!s.clusterGroup) continue;
@@ -131,17 +176,18 @@ function scoreCluster(
   let groupCount = 0;
 
   groups.forEach((spaceIds) => {
-    // Count how many spaces are on each floor
-    const floorCounts = new Map<number, number>();
+    // Count how many spaces share the same (block, floor) combo
+    const comboCounts = new Map<string, number>();
     for (const id of spaceIds) {
-      const floor = chromosome[id];
-      if (floor === undefined) continue;
-      floorCounts.set(floor, (floorCounts.get(floor) ?? 0) + 1);
+      const gene = chromosome[id];
+      if (gene === undefined) continue;
+      const { block, floor } = decodeGene(gene, maxFloors);
+      const key = `${block}-${floor}`;
+      comboCounts.set(key, (comboCounts.get(key) ?? 0) + 1);
     }
 
-    // Best proportion = max count / total
     let maxCount = 0;
-    floorCounts.forEach((count) => {
+    comboCounts.forEach((count) => {
       if (count > maxCount) maxCount = count;
     });
 
@@ -155,8 +201,8 @@ function scoreCluster(
 /**
  * Score floor-preference satisfaction.
  *
- * - floorMandatory violation → -999 (effectively eliminates candidate)
- * - floorPreference match → +5, close → +1, mismatch → 0
+ * v3: Most spaces have "any" preference, so this score is mostly
+ * neutral.  Only dormitory (high) and mandatory spaces matter.
  */
 function scoreFloor(
   chromosome: Chromosome,
@@ -170,13 +216,14 @@ function scoreFloor(
   const MANDATORY_PENALTY = -999;
 
   for (const s of spaces) {
-    const assignedFloor = chromosome[s.id];
-    if (assignedFloor === undefined) continue;
+    const gene = chromosome[s.id];
+    if (gene === undefined) continue;
+    const { floor: assignedFloor } = decodeGene(gene, maxFloors);
 
     // Hard constraint: floorMandatory
     if (s.floorMandatory !== undefined) {
       if (assignedFloor !== s.floorMandatory) {
-        return MANDATORY_PENALTY; // Eliminate this candidate
+        return MANDATORY_PENALTY;
       }
       score += 5;
       maxPossible += 5;
@@ -200,13 +247,13 @@ function scoreFloor(
       assignedFloor >= preferredRange.min &&
       assignedFloor <= preferredRange.max
     ) {
-      score += 5; // Perfect match
+      score += 5;
     } else {
       const dist = Math.min(
         Math.abs(assignedFloor - preferredRange.min),
         Math.abs(assignedFloor - preferredRange.max)
       );
-      score += Math.max(0, 3 - dist); // Closer → higher
+      score += Math.max(0, 3 - dist);
     }
   }
 
@@ -214,9 +261,6 @@ function scoreFloor(
   return score / maxPossible;
 }
 
-/**
- * Map a soft floor preference to a floor range.
- */
 function getPreferredFloorRange(
   pref: "ground" | "low" | "mid" | "high",
   maxFloors: number
@@ -244,8 +288,8 @@ function getPreferredFloorRange(
 /**
  * Score natural-light preference.
  *
- * Spaces requiring natural light get a bonus for higher floors
- * (less obstruction from surrounding buildings).
+ * v3: This is now a major differentiator (weight 0.20).
+ * Spaces requiring natural light benefit from higher floors.
  */
 function scoreLight(
   chromosome: Chromosome,
@@ -260,13 +304,77 @@ function scoreLight(
 
   let score = 0;
   for (const s of lightSpaces) {
-    const floor = chromosome[s.id];
-    if (floor === undefined) continue;
-    // Higher floor → better light access (normalised to [0, 1])
+    const gene = chromosome[s.id];
+    if (gene === undefined) continue;
+    const { floor } = decodeGene(gene, maxFloors);
     score += maxFloors > 1 ? floor / (maxFloors - 1) : 1;
   }
 
   return score / lightSpaces.length;
+}
+
+/**
+ * Score block distribution quality.
+ *
+ * Rewards:
+ * - Balanced area distribution across blocks (not everything in one block)
+ * - Each block having a reasonable number of spaces (not too few)
+ * - Circulation spaces (lifts, stairs) distributed across blocks
+ *
+ * Penalises:
+ * - All spaces in a single block when multi-block is enabled
+ * - Blocks with very few spaces (< 3)
+ */
+function scoreBlock(
+  chromosome: Chromosome,
+  spaces: SpaceType[],
+  maxFloors: number,
+  maxBlocks: number
+): number {
+  if (maxBlocks <= 1) return 1; // Single-block mode — always perfect
+
+  // Count spaces and area per block
+  const blockAreas = new Map<number, number>();
+  const blockCounts = new Map<number, number>();
+
+  for (const s of spaces) {
+    const gene = chromosome[s.id];
+    if (gene === undefined) continue;
+    const { block } = decodeGene(gene, maxFloors);
+    const area = s.quantity * s.areaPerUnit;
+    blockAreas.set(block, (blockAreas.get(block) ?? 0) + area);
+    blockCounts.set(block, (blockCounts.get(block) ?? 0) + 1);
+  }
+
+  const usedBlocks = blockAreas.size;
+
+  // If only 1 block used when multi-block is available, give moderate score
+  // (it's a valid option but we want to explore alternatives)
+  if (usedBlocks <= 1) return 0.4;
+
+  // Balance score: how evenly distributed are the areas?
+  const areas = Array.from(blockAreas.values());
+  const totalArea = areas.reduce((a, b) => a + b, 0);
+  const idealArea = totalArea / usedBlocks;
+  let balanceScore = 0;
+  for (const area of areas) {
+    const deviation = Math.abs(area - idealArea) / idealArea;
+    balanceScore += Math.max(0, 1 - deviation);
+  }
+  balanceScore /= usedBlocks;
+
+  // Minimum viable block score: penalise blocks with < 3 spaces
+  let viabilityScore = 0;
+  const counts = Array.from(blockCounts.values());
+  for (const count of counts) {
+    viabilityScore += count >= 3 ? 1 : count / 3;
+  }
+  viabilityScore /= usedBlocks;
+
+  // Bonus for using 2-3 blocks (campus feel)
+  const blockCountBonus = usedBlocks >= 2 && usedBlocks <= 3 ? 1.0 : 0.7;
+
+  return (balanceScore * 0.5 + viabilityScore * 0.3 + blockCountBonus * 0.2);
 }
 
 // ---- Main Fitness Function -------------------------------------------
@@ -274,10 +382,8 @@ function scoreLight(
 /**
  * Evaluate a zoning chromosome's fitness.
  *
- * @param chromosome - Space-to-floor mapping
- * @param spec - The full ProgramSpec
- * @param weights - Sub-score weights (default: DEFAULT_FITNESS_WEIGHTS)
- * @returns FitnessBreakdown with sub-scores and weighted total
+ * v3: Now handles multi-block chromosomes. The gene encoding is
+ * blockIndex * maxFloors + floorIndex.
  */
 export function evaluateFitness(
   chromosome: Chromosome,
@@ -286,11 +392,17 @@ export function evaluateFitness(
 ): FitnessBreakdown {
   const { spaces, adjacencies, constraints } = spec;
   const maxFloors = constraints.maxFloors;
+  const maxBlocks = constraints.maxBlocks ?? 1;
 
-  const adjacencyScore = scoreAdjacency(chromosome, adjacencies);
-  const clusterScore = scoreCluster(chromosome, spaces);
+  const adjacencyScore = scoreAdjacency(
+    chromosome, adjacencies, maxFloors, maxBlocks
+  );
+  const clusterScore = scoreCluster(chromosome, spaces, maxFloors);
   const floorScore = scoreFloor(chromosome, spaces, maxFloors);
   const lightScore = scoreLight(chromosome, spaces, maxFloors);
+  const blockScoreVal = scoreBlock(
+    chromosome, spaces, maxFloors, maxBlocks
+  );
 
   // If floorMandatory is violated, floorScore is -999
   const totalScore =
@@ -299,13 +411,15 @@ export function evaluateFitness(
       : weights.adjacency * adjacencyScore +
         weights.cluster * clusterScore +
         weights.floor * floorScore +
-        weights.light * lightScore;
+        weights.light * lightScore +
+        weights.block * blockScoreVal;
 
   return {
     adjacencyScore,
     clusterScore,
     floorScore: floorScore < 0 ? 0 : floorScore,
     lightScore,
+    blockScore: maxBlocks > 1 ? blockScoreVal : undefined,
     totalScore,
   };
 }

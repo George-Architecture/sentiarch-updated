@@ -3,11 +3,15 @@
 //
 // Supports drag-and-drop: drag a space block to another
 // FloorStrip to reassign it.
+//
+// v3: Shows block label when multi-block zoning is active.
 // ============================================================
 
 import { useState, useCallback } from "react";
 import type { FloorAssignment } from "@/types/zoning";
 import type { SpaceType } from "@/types/program";
+
+const BLOCK_COLORS = ["#5B8DEF", "#E07BE0", "#4DC9A0"];
 
 interface FloorStripProps {
   floor: FloorAssignment;
@@ -34,6 +38,11 @@ export default function FloorStrip({
 
   const floorLabel =
     floor.floorIndex === 0 ? "G/F" : `${floor.floorIndex}/F`;
+  const blockIdx = floor.blockIndex ?? 0;
+  const blockLabel =
+    floor.blockIndex !== undefined
+      ? `Block ${String.fromCharCode(65 + blockIdx)}`
+      : null;
 
   const handleDragOver = useCallback(
     (e: React.DragEvent) => {
@@ -76,6 +85,9 @@ export default function FloorStrip({
           : "2px solid transparent",
         background: dragOver ? "rgba(29, 107, 94, 0.05)" : undefined,
         transition: "all 0.15s",
+        borderLeft: blockLabel
+          ? `3px solid ${BLOCK_COLORS[blockIdx % BLOCK_COLORS.length]}`
+          : undefined,
       }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -92,6 +104,18 @@ export default function FloorStrip({
         >
           {floorLabel}
         </span>
+        {blockLabel && (
+          <span
+            className="text-[9px] font-semibold px-1 rounded"
+            style={{
+              color: BLOCK_COLORS[blockIdx % BLOCK_COLORS.length],
+              background:
+                BLOCK_COLORS[blockIdx % BLOCK_COLORS.length] + "18",
+            }}
+          >
+            {blockLabel}
+          </span>
+        )}
         <span
           className="text-[10px]"
           style={{ color: "var(--muted-foreground)" }}

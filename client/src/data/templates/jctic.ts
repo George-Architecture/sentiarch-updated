@@ -2,13 +2,16 @@
 // SentiArch — JCTIC Template (賽馬會體藝中學)
 // Jockey Club Ti-I College Programme Specification
 //
-// Based on the actual floor distribution of JCTIC:
-//   G/F  — Public facilities (演講廳, 圖書館, 畫廊, 體育館, 游泳池, 籃球場)
-//   1/F  — IT + Standard classrooms + Sculpture studio
-//   2/F  — Art cluster (版畫, 音樂, 陶瓷, 設計裝置藝術, 攝影, 樂隊)
-//   3/F  — Assembly + Sports centre + STEM + Classrooms + English
-//   4/F  — Science cluster (地理, 電腦, 物理, 綜合科學, 生物, 化學)
-//   5/F  — Residential & Admin (宿舍, 會議室, 洗衣房, 飯堂, 自修室)
+// v3 — Multi-block & relaxed preferences:
+//   - Most spaces now have floorPreference: "any" to give the GA
+//     maximum freedom.  Only physically constrained spaces retain
+//     specific preferences or floorMandatory.
+//   - clusterGroup removed from most groups.  Only "science" is
+//     kept (labs genuinely share prep rooms and fume hoods).
+//     Other relationships are encoded via adjacency rules.
+//   - maxBlocks: 3 enables multi-block campus layouts, allowing
+//     the GA to distribute spaces across separate buildings with
+//     public courtyards and corridors between them.
 //
 // Area references follow Hong Kong EDB guidelines and typical
 // school-building practice:
@@ -18,14 +21,6 @@
 //   Library              ≈ 200–300 m²
 //   Gymnasium            ≈ 600–800 m²
 //   Assembly hall        ≈ 400–500 m²
-//
-// NOTE on floorMandatory vs floorPreference:
-//   Only spaces with genuine physical/structural constraints
-//   (e.g. swimming pool needs ground-level water supply,
-//   heavy sports facilities need ground slab) retain
-//   floorMandatory.  All other spaces use floorPreference
-//   (soft hint) so the GA has freedom to explore diverse
-//   zoning configurations.
 // ============================================================
 
 import {
@@ -55,18 +50,16 @@ const COLORS = {
 /**
  * All space types for the JCTIC template.
  *
- * IDs follow the pattern `<short-category>-<slug>` for
- * readability in adjacency rules and debugging output.
- *
- * floorMandatory is only set for spaces with genuine physical
- * constraints.  All other spaces use floorPreference (soft hint)
- * to give the GA freedom to explore diverse configurations.
+ * v3 design philosophy:
+ *   - floorMandatory: ONLY for genuine physical constraints
+ *     (pool needs ground water supply, gym needs ground slab)
+ *   - floorPreference: "any" for most spaces — the GA should
+ *     discover good arrangements, not be told the answer
+ *   - clusterGroup: ONLY for science labs (shared infrastructure)
+ *   - Adjacency rules encode all other spatial relationships
  */
 const spaces: SpaceType[] = [
   // ── Vertical Circulation ─────────────────────────────────
-  // Core vertical movement spaces that serve all floors.
-  // No floorMandatory — these repeat on every floor in practice;
-  // the zoning GA treats them as flexible support spaces.
   {
     id: "circ-lift-core-1",
     name: "升降機 Lift Core 1",
@@ -78,7 +71,6 @@ const spaces: SpaceType[] = [
     occupancy: 8,
     requiredFeatures: ["accessible"],
     floorPreference: "any",
-    clusterGroup: "circulation",
     colorHex: COLORS.support,
     isOutdoor: false,
   },
@@ -93,7 +85,6 @@ const spaces: SpaceType[] = [
     occupancy: 8,
     requiredFeatures: ["accessible"],
     floorPreference: "any",
-    clusterGroup: "circulation",
     colorHex: COLORS.support,
     isOutdoor: false,
   },
@@ -108,7 +99,6 @@ const spaces: SpaceType[] = [
     occupancy: 10,
     requiredFeatures: ["accessible"],
     floorPreference: "any",
-    clusterGroup: "circulation",
     colorHex: COLORS.support,
     isOutdoor: false,
   },
@@ -123,7 +113,6 @@ const spaces: SpaceType[] = [
     occupancy: 10,
     requiredFeatures: ["accessible"],
     floorPreference: "any",
-    clusterGroup: "circulation",
     colorHex: COLORS.support,
     isOutdoor: false,
   },
@@ -138,7 +127,6 @@ const spaces: SpaceType[] = [
     occupancy: 10,
     requiredFeatures: [],
     floorPreference: "any",
-    clusterGroup: "circulation",
     colorHex: COLORS.support,
     isOutdoor: false,
   },
@@ -153,7 +141,6 @@ const spaces: SpaceType[] = [
     occupancy: 10,
     requiredFeatures: [],
     floorPreference: "any",
-    clusterGroup: "circulation",
     colorHex: COLORS.support,
     isOutdoor: false,
   },
@@ -252,7 +239,6 @@ const spaces: SpaceType[] = [
     occupancy: 0,
     requiredFeatures: ["external_access"],
     floorPreference: "any",
-    clusterGroup: "circulation",
     colorHex: COLORS.support,
     isOutdoor: false,
   },
@@ -267,12 +253,11 @@ const spaces: SpaceType[] = [
     occupancy: 0,
     requiredFeatures: ["external_access"],
     floorPreference: "any",
-    clusterGroup: "circulation",
     colorHex: COLORS.support,
     isOutdoor: false,
   },
 
-  // ── G/F — Public Facilities ──────────────────────────────
+  // ── Public Facilities ───────────────────────────────────
   {
     id: "pub-lecture-hall",
     name: "演講廳 Lecture Hall",
@@ -283,9 +268,7 @@ const spaces: SpaceType[] = [
     maxArea: 250,
     occupancy: 150,
     requiredFeatures: ["acoustic_isolation", "accessible"],
-    floorPreference: "ground",
-    // floorMandatory removed — soft preference for ground floor
-    clusterGroup: "public-gf",
+    floorPreference: "any",
     colorHex: COLORS.public,
   },
   {
@@ -298,9 +281,7 @@ const spaces: SpaceType[] = [
     maxArea: 300,
     occupancy: 80,
     requiredFeatures: ["natural_light", "accessible"],
-    floorPreference: "ground",
-    // floorMandatory removed — soft preference for ground floor
-    clusterGroup: "public-gf",
+    floorPreference: "any",
     colorHex: COLORS.public,
   },
   {
@@ -313,9 +294,7 @@ const spaces: SpaceType[] = [
     maxArea: 150,
     occupancy: 40,
     requiredFeatures: ["natural_light", "accessible"],
-    floorPreference: "ground",
-    // floorMandatory removed — soft preference for ground floor
-    clusterGroup: "public-gf",
+    floorPreference: "any",
     colorHex: COLORS.art,
   },
   {
@@ -334,7 +313,6 @@ const spaces: SpaceType[] = [
     ],
     floorPreference: "ground",
     floorMandatory: 0, // KEEP: heavy structural load requires ground slab
-    clusterGroup: "sport-gf",
     colorHex: COLORS.sport,
   },
   {
@@ -353,8 +331,7 @@ const spaces: SpaceType[] = [
       "heavy_load",
     ],
     floorPreference: "ground",
-    floorMandatory: 0, // KEEP: water supply, drainage, heavy load — must be ground
-    clusterGroup: "sport-gf",
+    floorMandatory: 0, // KEEP: water supply, drainage, heavy load
     colorHex: COLORS.sport,
   },
   {
@@ -371,14 +348,12 @@ const spaces: SpaceType[] = [
       "accessible",
       "heavy_load",
     ],
-    floorPreference: "ground",
-    // floorMandatory removed — outdoor court prefers ground but not structurally required
-    clusterGroup: "sport-gf",
+    floorPreference: "any",
     colorHex: COLORS.sport,
     isOutdoor: true,
   },
 
-  // ── 1/F — IT + Standard Classrooms + Sculpture ──────────
+  // ── IT + Standard Classrooms + Sculpture ──────────────
   {
     id: "acad-cal-room",
     name: "電腦輔助學習室 CAL Room",
@@ -389,8 +364,7 @@ const spaces: SpaceType[] = [
     maxArea: 80,
     occupancy: 30,
     requiredFeatures: ["natural_light"],
-    floorPreference: "low",
-    // floorMandatory removed — no structural reason to lock to floor 1
+    floorPreference: "any",
     colorHex: COLORS.academic,
   },
   {
@@ -403,8 +377,7 @@ const spaces: SpaceType[] = [
     maxArea: 75,
     occupancy: 30,
     requiredFeatures: ["natural_light", "natural_ventilation"],
-    floorPreference: "low",
-    // floorMandatory removed — classrooms are flexible
+    floorPreference: "any",
     colorHex: COLORS.academic,
   },
   {
@@ -421,12 +394,12 @@ const spaces: SpaceType[] = [
       "wet_services",
       "heavy_load",
     ],
-    floorPreference: "low",
-    // floorMandatory removed — heavy_load is a preference, not ground-only
+    floorPreference: "any",
     colorHex: COLORS.art,
   },
 
-  // ── 2/F — Art Cluster ───────────────────────────────────
+  // ── Art Studios ─────────────────────────────────────────
+  // No clusterGroup — adjacency rules handle co-location preference
   {
     id: "art-printmaking",
     name: "版畫工作室 Printmaking Studio",
@@ -437,9 +410,7 @@ const spaces: SpaceType[] = [
     maxArea: 100,
     occupancy: 25,
     requiredFeatures: ["natural_light", "wet_services"],
-    floorPreference: "low",
-    // floorMandatory removed — art cluster co-location handled by clusterGroup
-    clusterGroup: "art",
+    floorPreference: "any",
     colorHex: COLORS.art,
   },
   {
@@ -452,9 +423,7 @@ const spaces: SpaceType[] = [
     maxArea: 90,
     occupancy: 35,
     requiredFeatures: ["acoustic_isolation"],
-    floorPreference: "low",
-    // floorMandatory removed
-    clusterGroup: "art",
+    floorPreference: "any",
     colorHex: COLORS.art,
   },
   {
@@ -471,9 +440,7 @@ const spaces: SpaceType[] = [
       "wet_services",
       "heavy_load",
     ],
-    floorPreference: "low",
-    // floorMandatory removed
-    clusterGroup: "art",
+    floorPreference: "any",
     colorHex: COLORS.art,
   },
   {
@@ -486,9 +453,7 @@ const spaces: SpaceType[] = [
     maxArea: 110,
     occupancy: 25,
     requiredFeatures: ["natural_light"],
-    floorPreference: "low",
-    // floorMandatory removed
-    clusterGroup: "art",
+    floorPreference: "any",
     colorHex: COLORS.art,
   },
   {
@@ -501,9 +466,7 @@ const spaces: SpaceType[] = [
     maxArea: 80,
     occupancy: 20,
     requiredFeatures: ["acoustic_isolation"],
-    floorPreference: "low",
-    // floorMandatory removed
-    clusterGroup: "art",
+    floorPreference: "any",
     colorHex: COLORS.art,
   },
   {
@@ -516,13 +479,11 @@ const spaces: SpaceType[] = [
     maxArea: 100,
     occupancy: 40,
     requiredFeatures: ["acoustic_isolation"],
-    floorPreference: "low",
-    // floorMandatory removed
-    clusterGroup: "art",
+    floorPreference: "any",
     colorHex: COLORS.art,
   },
 
-  // ── 3/F — Assembly + Sports Centre + STEM + Classrooms ──
+  // ── Assembly + Sports Centre + STEM + Classrooms ───────
   {
     id: "pub-assembly-hall",
     name: "禮堂 Assembly Hall",
@@ -533,8 +494,7 @@ const spaces: SpaceType[] = [
     maxArea: 500,
     occupancy: 500,
     requiredFeatures: ["acoustic_isolation", "accessible"],
-    floorPreference: "mid",
-    // floorMandatory removed — assembly hall is flexible
+    floorPreference: "any",
     colorHex: COLORS.public,
   },
   {
@@ -551,8 +511,7 @@ const spaces: SpaceType[] = [
       "accessible",
       "heavy_load",
     ],
-    floorPreference: "mid",
-    // floorMandatory removed — sports centre prefers mid but not structurally locked
+    floorPreference: "any",
     colorHex: COLORS.sport,
   },
   {
@@ -565,8 +524,7 @@ const spaces: SpaceType[] = [
     maxArea: 100,
     occupancy: 30,
     requiredFeatures: ["natural_light"],
-    floorPreference: "mid",
-    // floorMandatory removed
+    floorPreference: "any",
     colorHex: COLORS.science,
   },
   {
@@ -579,8 +537,7 @@ const spaces: SpaceType[] = [
     maxArea: 75,
     occupancy: 30,
     requiredFeatures: ["natural_light", "natural_ventilation"],
-    floorPreference: "mid",
-    // floorMandatory removed — classrooms are flexible
+    floorPreference: "any",
     colorHex: COLORS.academic,
   },
   {
@@ -593,12 +550,12 @@ const spaces: SpaceType[] = [
     maxArea: 80,
     occupancy: 30,
     requiredFeatures: ["natural_light", "acoustic_isolation"],
-    floorPreference: "mid",
-    // floorMandatory removed
+    floorPreference: "any",
     colorHex: COLORS.academic,
   },
 
-  // ── 4/F — Science Cluster ──────────────────────────────
+  // ── Science Cluster ────────────────────────────────────
+  // KEEP clusterGroup: labs genuinely share prep rooms and fume hoods
   {
     id: "sci-geography",
     name: "地理室 Geography Room",
@@ -609,8 +566,7 @@ const spaces: SpaceType[] = [
     maxArea: 85,
     occupancy: 30,
     requiredFeatures: ["natural_light"],
-    floorPreference: "mid",
-    // floorMandatory removed — science cluster co-location handled by clusterGroup
+    floorPreference: "any",
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -624,8 +580,7 @@ const spaces: SpaceType[] = [
     maxArea: 85,
     occupancy: 30,
     requiredFeatures: ["natural_light"],
-    floorPreference: "mid",
-    // floorMandatory removed
+    floorPreference: "any",
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -643,8 +598,7 @@ const spaces: SpaceType[] = [
       "natural_ventilation",
       "wet_services",
     ],
-    floorPreference: "mid",
-    // floorMandatory removed
+    floorPreference: "any",
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -662,8 +616,7 @@ const spaces: SpaceType[] = [
       "natural_ventilation",
       "wet_services",
     ],
-    floorPreference: "mid",
-    // floorMandatory removed
+    floorPreference: "any",
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -681,8 +634,7 @@ const spaces: SpaceType[] = [
       "natural_ventilation",
       "wet_services",
     ],
-    floorPreference: "mid",
-    // floorMandatory removed
+    floorPreference: "any",
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -700,13 +652,13 @@ const spaces: SpaceType[] = [
       "natural_ventilation",
       "wet_services",
     ],
-    floorPreference: "mid",
-    // floorMandatory removed
+    floorPreference: "any",
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
 
-  // ── 5/F — Residential & Admin ──────────────────────────
+  // ── Residential & Admin ────────────────────────────────
+  // No clusterGroup — adjacency rules handle dorm-canteen-laundry
   {
     id: "res-dormitory",
     name: "學生宿舍 Student Dormitory",
@@ -721,9 +673,7 @@ const spaces: SpaceType[] = [
       "natural_ventilation",
       "accessible",
     ],
-    floorPreference: "high",
-    // floorMandatory removed — residential prefers high but is flexible
-    clusterGroup: "residential",
+    floorPreference: "high", // KEEP: privacy, separation from school activities
     colorHex: COLORS.residential,
   },
   {
@@ -736,9 +686,7 @@ const spaces: SpaceType[] = [
     maxArea: 50,
     occupancy: 15,
     requiredFeatures: ["natural_light"],
-    floorPreference: "high",
-    // floorMandatory removed
-    clusterGroup: "admin",
+    floorPreference: "any",
     colorHex: COLORS.admin,
   },
   {
@@ -751,9 +699,7 @@ const spaces: SpaceType[] = [
     maxArea: 40,
     occupancy: 5,
     requiredFeatures: ["wet_services"],
-    floorPreference: "high",
-    // floorMandatory removed — laundry should be near dormitory (adjacency rule handles this)
-    clusterGroup: "residential",
+    floorPreference: "any",
     colorHex: COLORS.support,
   },
   {
@@ -770,9 +716,7 @@ const spaces: SpaceType[] = [
       "wet_services",
       "accessible",
     ],
-    floorPreference: "high",
-    // floorMandatory removed
-    clusterGroup: "residential",
+    floorPreference: "any",
     colorHex: COLORS.support,
   },
   {
@@ -785,9 +729,7 @@ const spaces: SpaceType[] = [
     maxArea: 80,
     occupancy: 40,
     requiredFeatures: ["natural_light"],
-    floorPreference: "high",
-    // floorMandatory removed
-    clusterGroup: "residential",
+    floorPreference: "any",
     colorHex: COLORS.academic,
   },
 ];
@@ -802,7 +744,7 @@ const spaces: SpaceType[] = [
  * (`fromSpaceId < toSpaceId`).
  */
 const adjacencies: AdjacencyRule[] = [
-  // ── Art cluster (2/F) — should be adjacent ──────────────
+  // ── Art cluster — should be adjacent ──────────────────
   createAdjacencyRule({
     id: "adj-art-print-ceramics",
     fromSpaceId: "art-printmaking",
@@ -818,7 +760,7 @@ const adjacencies: AdjacencyRule[] = [
     toSpaceId: "art-design-installation",
     type: "should_adjacent",
     weight: 0.7,
-    reason: "Visual arts cluster on 2/F",
+    reason: "Visual arts cluster co-location",
   }),
   createAdjacencyRule({
     id: "adj-art-ceramics-design",
@@ -826,7 +768,7 @@ const adjacencies: AdjacencyRule[] = [
     toSpaceId: "art-design-installation",
     type: "should_adjacent",
     weight: 0.7,
-    reason: "Visual arts cluster on 2/F",
+    reason: "Visual arts cluster co-location",
   }),
   createAdjacencyRule({
     id: "adj-art-music-band",
@@ -855,7 +797,7 @@ const adjacencies: AdjacencyRule[] = [
       "Both are 3-D art forms sharing similar material handling needs",
   }),
 
-  // ── Science cluster (4/F) — should be adjacent ─────────
+  // ── Science cluster — should be adjacent ──────────────
   createAdjacencyRule({
     id: "adj-sci-physics-integrated",
     fromSpaceId: "sci-physics-lab",
@@ -897,7 +839,7 @@ const adjacencies: AdjacencyRule[] = [
     reason: "STEM activities often require computing resources",
   }),
 
-  // ── Sport cluster (G/F) — should be adjacent ───────────
+  // ── Sport cluster — should be adjacent ────────────────
   createAdjacencyRule({
     id: "adj-spt-gym-pool",
     fromSpaceId: "spt-gymnasium",
@@ -915,7 +857,7 @@ const adjacencies: AdjacencyRule[] = [
     reason: "Sports facilities cluster",
   }),
 
-  // ── Public facilities (G/F) — prefer nearby ────────────
+  // ── Public facilities — prefer nearby ─────────────────
   createAdjacencyRule({
     id: "adj-pub-lecture-library",
     fromSpaceId: "pub-lecture-hall",
@@ -933,7 +875,7 @@ const adjacencies: AdjacencyRule[] = [
     reason: "Gallery visitors may also use library resources",
   }),
 
-  // ── Residential cluster (5/F) — should be adjacent ─────
+  // ── Residential cluster — should be adjacent ──────────
   createAdjacencyRule({
     id: "adj-res-dorm-canteen",
     fromSpaceId: "res-dormitory",
@@ -959,7 +901,7 @@ const adjacencies: AdjacencyRule[] = [
     reason: "Evening study access for boarding students",
   }),
 
-  // ── Separation rules (noise, fumes) ────────────────────
+  // ── Separation rules (noise, fumes) ───────────────────
   createAdjacencyRule({
     id: "adj-sep-chem-library",
     fromSpaceId: "pub-library",
@@ -1014,6 +956,7 @@ const constraints: BuildingConstraint = {
   maxBuildingHeightM: 24, // HK Buildings Ordinance limit
   minCorridorWidthM: 1.5, // minimum accessible corridor width
   targetTotalAreaM2: 8500, // estimated total programme area
+  maxBlocks: 3, // v3: allow up to 3 building blocks
 };
 
 // ---- Assembled Template ──────────────────────────────────────────────
@@ -1034,7 +977,7 @@ export const jcticTemplate: ProgramSpec = {
   description:
     "Jockey Club Ti-I College — a secondary school emphasising " +
     "art and physical education, with boarding facilities. " +
-    "Based on the actual JCTIC floor distribution (G/F–5/F).",
+    "v3: Relaxed preferences for GA freedom; multi-block campus layout enabled.",
   spaces,
   adjacencies,
   constraints,
