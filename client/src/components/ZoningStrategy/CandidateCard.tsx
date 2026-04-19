@@ -1,9 +1,14 @@
 // ============================================================
 // CandidateCard — Compact overview of a single zoning candidate
+//
+// v3: Shows block count badge and blockScore sub-score when
+// multi-block zoning is active.  Floor bars are grouped by block.
 // ============================================================
 
 import type { ZoningCandidate, FitnessBreakdown } from "@/types/zoning";
 import type { SpaceType } from "@/types/program";
+
+const BLOCK_COLORS = ["#5B8DEF", "#E07BE0", "#4DC9A0"];
 
 interface CandidateCardProps {
   candidate: ZoningCandidate;
@@ -40,6 +45,18 @@ export default function CandidateCard({
         ? "#E67E22"
         : "#E74C3C";
 
+  // Group floors by block
+  const blockCount = candidate.blockCount ?? 1;
+  const isMultiBlock = blockCount > 1;
+
+  // Group floors by blockIndex for display
+  const blockGroups = new Map<number, typeof candidate.floors>();
+  for (const floor of candidate.floors) {
+    const bi = floor.blockIndex ?? 0;
+    if (!blockGroups.has(bi)) blockGroups.set(bi, []);
+    blockGroups.get(bi)!.push(floor);
+  }
+
   return (
     <div
       onClick={onClick}
@@ -47,7 +64,7 @@ export default function CandidateCard({
       style={{
         padding: "10px 12px",
         minWidth: 160,
-        maxWidth: 200,
+        maxWidth: 220,
         cursor: "pointer",
         border: isSelected
           ? "2px solid var(--primary)"
@@ -58,7 +75,7 @@ export default function CandidateCard({
       }}
     >
       {/* Badges */}
-      <div className="flex items-center gap-1 mb-2">
+      <div className="flex items-center gap-1 mb-2 flex-wrap">
         <span
           className="text-xs font-semibold"
           style={{ color: "var(--foreground)" }}
@@ -91,6 +108,19 @@ export default function CandidateCard({
             ADJUSTED
           </span>
         )}
+        {isMultiBlock && (
+          <span
+            className="sa-tag"
+            style={{
+              background: "#8E44AD",
+              color: "#fff",
+              fontSize: 9,
+              padding: "1px 5px",
+            }}
+          >
+            {blockCount} BLOCKS
+          </span>
+        )}
       </div>
 
       {/* Score */}
@@ -101,52 +131,82 @@ export default function CandidateCard({
         {fitness.totalScore.toFixed(3)}
       </div>
 
-      {/* Mini floor bars */}
+      {/* Mini floor bars — grouped by block */}
       <div className="space-y-1">
-        {candidate.floors.map((floor) => (
-          <div key={floor.floorIndex} className="flex items-center gap-1">
-            <span
-              className="text-[9px] font-mono w-[18px]"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              {floor.floorIndex === 0 ? "G" : `${floor.floorIndex}F`}
-            </span>
-            <div
-              className="flex-1 flex gap-[1px]"
-              style={{
-                height: 8,
-                borderRadius: 2,
-                overflow: "hidden",
-                background: "var(--muted)",
-              }}
-            >
-              {floor.spaceIds.map((id) => {
-                const s = spaceMap.get(id);
-                if (!s) return null;
-                const area = s.quantity * s.areaPerUnit;
-                const maxFloorArea = Math.max(
-                  ...candidate.floors.map((f) => f.totalAreaM2),
-                  1
-                );
-                const widthPct = (area / maxFloorArea) * 100;
-                return (
+        {Array.from(blockGroups.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([blockIdx, floors]) => (
+            <div key={`block-${blockIdx}`}>
+              {isMultiBlock && (
+                <div
+                  className="text-[8px] font-semibold mb-0.5"
+                  style={{
+                    color: BLOCK_COLORS[blockIdx % BLOCK_COLORS.length],
+                  }}
+                >
+                  Block {String.fromCharCode(65 + blockIdx)}
+                </div>
+              )}
+              {floors
+                .sort((a, b) => a.floorIndex - b.floorIndex)
+                .map((floor) => (
                   <div
-                    key={id}
-                    style={{
-                      width: `${widthPct}%`,
-                      minWidth: 2,
-                      height: "100%",
-                      background:
-                        categoryColors[s.category] ?? "#95A5A6",
-                      borderRadius: 1,
-                    }}
-                    title={`${s.name} (${area}m²)`}
-                  />
-                );
-              })}
+                    key={`${blockIdx}-${floor.floorIndex}`}
+                    className="flex items-center gap-1"
+                  >
+                    <span
+                      className="text-[9px] font-mono w-[18px]"
+                      style={{ color: "var(--muted-foreground)" }}
+                    >
+                      {floor.floorIndex === 0
+                        ? "G"
+                        : `${floor.floorIndex}F`}
+                    </span>
+                    <div
+                      className="flex-1 flex gap-[1px]"
+                      style={{
+                        height: 8,
+                        borderRadius: 2,
+                        overflow: "hidden",
+                        background: "var(--muted)",
+                        borderLeft: isMultiBlock
+                          ? `2px solid ${BLOCK_COLORS[blockIdx % BLOCK_COLORS.length]}`
+                          : undefined,
+                      }}
+                    >
+                      {floor.spaceIds.map((id) => {
+                        const s = spaceMap.get(id);
+                        if (!s) return null;
+                        const area = s.quantity * s.areaPerUnit;
+                        const maxFloorArea = Math.max(
+                          ...candidate.floors.map(
+                            (f) => f.totalAreaM2
+                          ),
+                          1
+                        );
+                        const widthPct =
+                          (area / maxFloorArea) * 100;
+                        return (
+                          <div
+                            key={id}
+                            style={{
+                              width: `${widthPct}%`,
+                              minWidth: 2,
+                              height: "100%",
+                              background:
+                                categoryColors[s.category] ??
+                                "#95A5A6",
+                              borderRadius: 1,
+                            }}
+                            title={`${s.name} (${area}m²)`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
             </div>
-          </div>
-        ))}
+          ))}
       </div>
 
       {/* Sub-scores */}
@@ -158,6 +218,9 @@ export default function CandidateCard({
         <span>Clst: {fitness.clusterScore.toFixed(2)}</span>
         <span>Flr: {fitness.floorScore.toFixed(2)}</span>
         <span>Lgt: {fitness.lightScore.toFixed(2)}</span>
+        {fitness.blockScore !== undefined && (
+          <span>Blk: {fitness.blockScore.toFixed(2)}</span>
+        )}
       </div>
 
       {/* Generation */}

@@ -296,6 +296,8 @@ export const BuildingConstraintSchema = z
     minCorridorWidthM: z.number().positive(),
     /** Optional target gross floor area in m². */
     targetTotalAreaM2: z.number().positive().optional(),
+    /** Maximum number of building blocks (optional, multi-block zoning). Default 1. */
+    maxBlocks: z.number().int().min(1).optional(),
   })
   .refine(
     c => c.maxFloors * c.floorHeight <= c.maxBuildingHeightM,

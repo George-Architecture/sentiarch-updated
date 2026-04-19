@@ -251,6 +251,7 @@ export default function ZoningStrategy() {
       floors: activeFloors,
       fitness: activeFitness,
       confirmedAt: new Date().toISOString(),
+      blockCount: activeCandidate.blockCount,
     };
 
     localStorage.setItem(SELECTED_ZONING_KEY, JSON.stringify(selected));
@@ -472,9 +473,17 @@ export default function ZoningStrategy() {
               </p>
 
               <div className="space-y-2">
-                {activeFloors.map((floor) => (
+                {[...activeFloors]
+                  .sort((a, b) => {
+                    const blockA = a.blockIndex ?? 0;
+                    const blockB = b.blockIndex ?? 0;
+                    return blockA !== blockB
+                      ? blockA - blockB
+                      : a.floorIndex - b.floorIndex;
+                  })
+                  .map((floor) => (
                   <FloorStrip
-                    key={floor.floorIndex}
+                    key={`${floor.blockIndex ?? 0}-${floor.floorIndex}`}
                     floor={floor}
                     spaces={spec.spaces}
                     categoryColors={CATEGORY_COLORS}
@@ -534,6 +543,15 @@ export default function ZoningStrategy() {
                         score: activeFitness.lightScore,
                         weight: DEFAULT_FITNESS_WEIGHTS.light,
                       },
+                      ...(activeFitness.blockScore !== undefined
+                        ? [
+                            {
+                              label: "Block Distribution",
+                              score: activeFitness.blockScore,
+                              weight: DEFAULT_FITNESS_WEIGHTS.block,
+                            },
+                          ]
+                        : []),
                     ].map((row) => (
                       <tr
                         key={row.label}
