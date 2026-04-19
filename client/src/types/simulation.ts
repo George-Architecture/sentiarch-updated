@@ -489,3 +489,117 @@ export const DEFAULT_TASKS: SimulationTask[] = [
     walkingSpeedFactor: 0.8,
   },
 ];
+
+// ===========================================================================
+// Route Simulation Types — Movement comfort along corridor network
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Waypoint — a single point along the route with comfort metrics
+// ---------------------------------------------------------------------------
+
+export const RouteWaypointSchema = z.object({
+  /** Sequential index along the route (0 = origin) */
+  index: z.number().int().min(0),
+  /** 2D position in metres (from layout coordinate system) */
+  position: z.object({ x: z.number(), y: z.number() }),
+  /** The room/corridor this waypoint is inside */
+  roomId: z.string(),
+  /** Human-readable room name */
+  roomName: z.string(),
+  /** Room category (for colour coding) */
+  category: z.string(),
+  /** Floor index */
+  floorIndex: z.number().int().min(0),
+  /** ISO 7730 PMV at this point */
+  pmv: z.number(),
+  /** Predicted Percentage Dissatisfied (%) */
+  ppd: z.number(),
+  /** Perceptual load components (0-1 each) */
+  perceptualLoad: z.object({
+    thermal_discomfort: z.number(),
+    visual_strain: z.number(),
+    noise_stress: z.number(),
+    social_overload: z.number(),
+    fatigue: z.number(),
+    wayfinding_anxiety: z.number(),
+  }),
+  /** Aggregate perceptual load (0-1) */
+  aggregateLoad: z.number(),
+  /** Cumulative distance from origin (metres) */
+  cumulativeDistanceM: z.number(),
+  /** Whether this waypoint triggers a comfort alert */
+  isAlert: z.boolean(),
+  /** Alert reasons if any */
+  alertReasons: z.array(z.string()),
+});
+
+export type RouteWaypoint = z.infer<typeof RouteWaypointSchema>;
+
+// ---------------------------------------------------------------------------
+// Route Simulation Result — full output for one route simulation
+// ---------------------------------------------------------------------------
+
+export const RouteSimulationResultSchema = z.object({
+  /** Unique result identifier */
+  id: z.string(),
+  /** Cohort used */
+  cohortId: z.string(),
+  cohortLabel: z.string(),
+  /** Origin space */
+  originSpaceId: z.string(),
+  originName: z.string(),
+  /** Destination space */
+  destinationSpaceId: z.string(),
+  destinationName: z.string(),
+  /** Ordered waypoints along the route */
+  waypoints: z.array(RouteWaypointSchema).min(1),
+  /** Total route distance (metres) */
+  totalDistanceM: z.number(),
+  /** Estimated travel time (seconds) */
+  estimatedTimeSec: z.number(),
+  /** Overall comfort score (0-1, 1 = perfect) */
+  totalComfortScore: z.number(),
+  /** Waypoint with worst comfort */
+  worstPoint: RouteWaypointSchema,
+  /** Waypoint with best comfort */
+  bestPoint: RouteWaypointSchema,
+  /** MBTI personality type (for display) */
+  mbtiType: z.string(),
+  /**
+   * Whether the route was influenced by MBTI social penalty.
+   * true if the A* cost function applied I/E/N modifiers.
+   */
+  mbtiInfluenced: z.boolean(),
+  /** Computation time (ms) */
+  computeTimeMs: z.number(),
+  /** LLM-generated experience narrative (populated after generation) */
+  narrative: z.string().optional(),
+});
+
+export type RouteSimulationResult = z.infer<typeof RouteSimulationResultSchema>;
+
+// ---------------------------------------------------------------------------
+// MBTI Social Penalty Configuration
+// ---------------------------------------------------------------------------
+
+/**
+ * MBTI-based edge cost modifiers for A* pathfinding.
+ *
+ * - **I (Introvert)**: Prefers quiet routes; public/sport spaces cost ×1.5
+ * - **E (Extravert)**: Prefers lively routes; public/sport spaces cost ×0.8
+ * - **N (high Neuroticism)**: Any waypoint with load > 0.5 triggers reroute
+ *
+ * These are applied to the edge cost in the A* algorithm, not to the
+ * comfort calculation itself.
+ */
+export const MBTI_SOCIAL_PENALTIES: Record<string, { categories: string[]; costMultiplier: number }> = {
+  I: { categories: ["public", "sport"], costMultiplier: 1.5 },
+  E: { categories: ["public", "sport"], costMultiplier: 0.8 },
+};
+
+/**
+ * Neuroticism threshold: if any waypoint's perceptual load exceeds this,
+ * the N-type agent will attempt to find an alternative route.
+ */
+export const NEUROTICISM_LOAD_THRESHOLD = 0.5;
