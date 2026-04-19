@@ -24,11 +24,14 @@ export interface FitnessWeights {
   light: number;
 }
 
+// v2: Reduced floor weight (0.25→0.15) to prevent all candidates converging
+// to the same "preferred floor" solution.  Adjacency weight increased
+// (0.40→0.50) to reward genuinely different spatial relationships.
 export const DEFAULT_FITNESS_WEIGHTS: FitnessWeights = {
-  adjacency: 0.40,
-  cluster: 0.25,
-  floor: 0.25,
-  light: 0.10,
+  adjacency: 0.50, // ↑ was 0.40 — stronger signal for spatial relationships
+  cluster: 0.25,   // unchanged
+  floor: 0.15,     // ↓ was 0.25 — softer preference signal, more exploration
+  light: 0.10,     // unchanged
 };
 
 // ---- Chromosome Representation ---------------------------------------
