@@ -1,28 +1,45 @@
 // ============================================================
-// SentiArch v2 — Main Simulation Page
-// Weather → Agent → Path → Simulate → Narrative → Compare
+// SentiArch v2 — Integrated Simulation Page
+// Weather → Agent → Spatial Map → Path → Simulate → Narrative → Compare
+// Combines v2 weather/agent/PMV/LLM system with Legacy spatial canvas
 // ============================================================
 import { useState, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
+
+// Legacy components
+import SpatialMap from "@/components/SpatialMap";
+import CoordinateInput from "@/components/CoordinateInput";
+
+// Legacy store types & helpers
+import {
+  type Shape,
+  type AgentPosition,
+  type Zone,
+  type ZoneEnv,
+  type Waypoint,
+  type HeatmapPoint,
+  defaultZoneEnv,
+} from "@/lib/store";
 
 // v2 modules
 import {
   WEATHER_SCENARIOS, TIME_SLOTS,
   type WeatherScenario, type TimeSlot,
   SPACE_TAGS, type SpaceTag,
+  resolveEnvironment, type ResolvedEnv,
   type V2Agent, MBTI_TYPES, type AgentRole, type StudentStream, type MBTIType,
-  createDefaultAgent, derivePreferredTemp, deriveClothingInsulation, isIntroverted, getNarrativeTone,
+  createDefaultAgent, derivePreferredTemp, deriveClothingInsulation, getNarrativeTone,
   type PathNode, type NodeMode, type OccupancyLevel,
-  ACTIVITIES, createDefaultNode, getNodeAddress, getMetForActivity,
+  ACTIVITIES, createDefaultNode,
   runSimulation, type SimulationRunResult, type NodeResult, getSeverityFromPMV,
-  generateAllNarratives, type NarrativeResult, type NodeNarrative, type DesignFlag,
-  type DesignOption, generateComparison, type ComparisonResult, formatComparisonText,
+  generateAllNarratives, type NarrativeResult,
+  type DesignOption, generateComparison, type ComparisonResult,
 } from "@/lib/v2";
 import { getWeatherById, getTimeSlotById } from "@/lib/v2/weatherScenarios";
 
 // ---- Types for UI state ----
-type SimStep = "setup" | "path" | "results" | "compare";
+type SimStep = "setup" | "spatial" | "path" | "results" | "compare";
 
 interface SavedRun {
   id: string;
@@ -51,6 +68,17 @@ const RATING_COLORS: Record<string, string> = {
   Poor: "#C62828",
 };
 
+/** Bridge: map v2 ResolvedEnv → Legacy ZoneEnv for SpatialMap zones */
+function resolvedEnvToZoneEnv(env: ResolvedEnv): ZoneEnv {
+  return {
+    temperature: env.air_temp,
+    humidity: env.humidity,
+    light: env.lux,
+    noise: env.noise_dB,
+    air_velocity: env.air_velocity,
+  };
+}
+
 // ============================================================
 // Main Component
 // ============================================================
@@ -65,6 +93,15 @@ export default function V2Simulation() {
   const [timeSlotId, setTimeSlotId] = useState<string>("lunch");
   const [occupancy, setOccupancy] = useState<OccupancyLevel>("normal");
   const [agent, setAgent] = useState<V2Agent>(createDefaultAgent(0));
+
+  // ---- Spatial state (Legacy integration) ----
+  const [shapes, setShapes] = useState<Shape[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [spatialWaypoints, setSpatialWaypoints] = useState<Record<number, Waypoint[]>>({});
+  const [agentPositions, setAgentPositions] = useState<(AgentPosition | null)[]>([null]);
+  const [activeAgentIdx] = useState(0);
+  const [heatmapPoints, setHeatmapPoints] = useState<HeatmapPoint[]>([]);
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   // ---- Path state ----
   const [pathNodes, setPathNodes] = useState<PathNode[]>([createDefaultNode(0)]);
@@ -88,6 +125,82 @@ export default function V2Simulation() {
     () => weather ? deriveClothingInsulation(agent.role, weather.season) : 0.6,
     [agent.role, weather]
   );
+
+  // ---- Spatial Callbacks ----
+  const addShape = useCallback((shape: Shape) => {
+    setShapes(prev => [...prev, shape]);
+  }, []);
+
+  const updateShapes = useCallback((newShapes: Shape[]) => {
+    setShapes(newShapes);
+  }, []);
+
+  const deleteShape = useCallback((idx: number) => {
+    setShapes(prev => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const addZone = useCallback((zone: Zone) => {
+    setZones(prev => [...prev, zone]);
+  }, []);
+
+  const updateZone = useCallback((id: string, updates: Partial<Zone>) => {
+    setZones(prev => prev.map(z => z.id === id ? { ...z, ...updates } : z));
+  }, []);
+
+  const removeZone = useCallback((id: string) => {
+    setZones(prev => prev.filter(z => z.id !== id));
+  }, []);
+
+  const clearAll = useCallback(() => {
+    setShapes([]);
+    setZones([]);
+    setAgentPositions([null]);
+    setSpatialWaypoints({});
+    setHeatmapPoints([]);
+    toast.info("Spatial map cleared");
+  }, []);
+
+  const placeAgent = useCallback((pos: AgentPosition) => {
+    setAgentPositions([pos]);
+  }, []);
+
+  const addWaypoint = useCallback((agentIdx: number, wp: Waypoint) => {
+    setSpatialWaypoints(prev => {
+      const existing = prev[agentIdx] || [];
+      return { ...prev, [agentIdx]: [...existing, wp] };
+    });
+  }, []);
+
+  const removeWaypoint = useCallback((agentIdx: number, wpId: string) => {
+    setSpatialWaypoints(prev => {
+      const existing = prev[agentIdx] || [];
+      return { ...prev, [agentIdx]: existing.filter(w => w.id !== wpId) };
+    });
+  }, []);
+
+  /** Auto-derive zone environments from current weather + space tag */
+  const autoDeriveSpatialEnv = useCallback(() => {
+    if (!weather || !timeSlot) {
+      toast.error("Please select weather and time slot first");
+      return;
+    }
+    setZones(prev => prev.map(z => {
+      const name = (z.label || z.id).toLowerCase();
+      let tag: SpaceTag = "indoor_ac";
+      if (name.includes("outdoor") || name.includes("court") || name.includes("field") || name.includes("playground")) {
+        tag = "outdoor";
+      } else if (name.includes("green") || name.includes("garden") || name.includes("landscape")) {
+        tag = "green_space";
+      } else if (name.includes("semi") || name.includes("corridor") || name.includes("covered") || name.includes("canopy") || name.includes("terrace") || name.includes("balcony")) {
+        tag = "semi_outdoor";
+      } else if (name.includes("natural") || name.includes("vent") || name.includes("atrium")) {
+        tag = "indoor_natural";
+      }
+      const resolved = resolveEnvironment(tag, weather, timeSlot);
+      return { ...z, env: resolvedEnvToZoneEnv(resolved) };
+    }));
+    toast.success("Zone environments auto-derived from weather scenario");
+  }, [weather, timeSlot]);
 
   // ---- Path Node Management ----
   const addNode = useCallback(() => {
@@ -128,6 +241,21 @@ export default function V2Simulation() {
       const result = runSimulation(pathNodes, agent, weather, timeSlot, occupancy);
       setSimResult(result);
       setNarrativeResult(null);
+
+      // Generate heatmap from simulation results if agent is placed
+      const agentPos = agentPositions[0];
+      if (agentPos) {
+        const points: HeatmapPoint[] = result.nodeResults
+          .filter(r => r.mode === "dwelling")
+          .map((r, i) => ({
+            x: agentPos.x + (i * 2000),
+            y: agentPos.y,
+            value: Math.abs(r.pmv) * 2,
+            agentIdx: 0,
+          }));
+        setHeatmapPoints(points);
+      }
+
       setStep("results");
       toast.success(`Simulation complete! Average PMV: ${result.avgPMV.toFixed(2)}, Rating: ${result.overallRating}`);
     } catch (err) {
@@ -135,7 +263,7 @@ export default function V2Simulation() {
     } finally {
       setIsSimulating(false);
     }
-  }, [weather, timeSlot, pathNodes, agent, occupancy]);
+  }, [weather, timeSlot, pathNodes, agent, occupancy, agentPositions]);
 
   // ---- Generate Narratives ----
   const handleGenerateNarratives = useCallback(async () => {
@@ -197,6 +325,7 @@ export default function V2Simulation() {
       timeSlot: timeSlotId,
       occupancy,
       path: pathNodes,
+      spatial: { shapes, zones },
       simulation: simResult,
       narratives: narrativeResult,
       comparison: comparisonResult,
@@ -209,7 +338,17 @@ export default function V2Simulation() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success("JSON exported!");
-  }, [agent, weatherId, timeSlotId, occupancy, pathNodes, simResult, narrativeResult, comparisonResult]);
+  }, [agent, weatherId, timeSlotId, occupancy, pathNodes, shapes, zones, simResult, narrativeResult, comparisonResult]);
+
+  // ---- Step labels ----
+  const STEPS: { key: SimStep; label: string }[] = [
+    { key: "setup", label: "1. Setup" },
+    { key: "spatial", label: "2. Spatial" },
+    { key: "path", label: "3. Path" },
+    { key: "results", label: "4. Results" },
+    { key: "compare", label: "5. Compare" },
+  ];
+  const stepKeys = STEPS.map(s => s.key);
 
   // ============================================================
   // RENDER
@@ -244,14 +383,13 @@ export default function V2Simulation() {
       {/* ---- Step Navigation ---- */}
       <div className="container py-3">
         <div className="flex items-center gap-1">
-          {(["setup", "path", "results", "compare"] as SimStep[]).map((s, i) => {
-            const labels = ["1. Setup", "2. Path", "3. Results", "4. Compare"];
-            const isActive = s === step;
-            const isPast = (["setup", "path", "results", "compare"] as SimStep[]).indexOf(step) > i;
+          {STEPS.map((s, i) => {
+            const isActive = s.key === step;
+            const isPast = stepKeys.indexOf(step) > i;
             return (
               <button
-                key={s}
-                onClick={() => setStep(s)}
+                key={s.key}
+                onClick={() => setStep(s.key)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                 style={{
                   background: isActive ? "var(--foreground)" : isPast ? "var(--primary)" : "var(--card)",
@@ -260,8 +398,8 @@ export default function V2Simulation() {
                   opacity: isActive ? 1 : isPast ? 0.85 : 0.6,
                 }}
               >
-                {isPast && !isActive && <span>&#10003;</span>}
-                {labels[i]}
+                {isPast && !isActive && <span style={{ fontSize: "10px" }}>&#10003;</span>}
+                {s.label}
               </button>
             );
           })}
@@ -277,6 +415,34 @@ export default function V2Simulation() {
             occupancy={occupancy} setOccupancy={setOccupancy}
             agent={agent} setAgent={setAgent}
             preferredTemp={preferredTemp} clo={clo}
+            onNext={() => setStep("spatial")}
+          />
+        )}
+
+        {step === "spatial" && (
+          <SpatialPanel
+            shapes={shapes}
+            zones={zones}
+            agentPositions={agentPositions}
+            activeAgentIdx={activeAgentIdx}
+            waypoints={spatialWaypoints}
+            showHeatmap={showHeatmap}
+            heatmapPoints={heatmapPoints}
+            onAgentPlace={placeAgent}
+            onAddShape={addShape}
+            onUpdateShapes={updateShapes}
+            onDeleteShape={deleteShape}
+            onAddZone={addZone}
+            onUpdateZone={updateZone}
+            onRemoveZone={removeZone}
+            onClearAll={clearAll}
+            onAddWaypoint={addWaypoint}
+            onRemoveWaypoint={removeWaypoint}
+            onToggleHeatmap={() => setShowHeatmap(h => !h)}
+            onAutoDerive={autoDeriveSpatialEnv}
+            weather={weather}
+            timeSlot={timeSlot}
+            onBack={() => setStep("setup")}
             onNext={() => setStep("path")}
           />
         )}
@@ -288,7 +454,7 @@ export default function V2Simulation() {
             removeNode={removeNode}
             updateNode={updateNode}
             moveNode={moveNode}
-            onBack={() => setStep("setup")}
+            onBack={() => setStep("spatial")}
             onRun={handleRunSimulation}
             isSimulating={isSimulating}
           />
@@ -313,7 +479,6 @@ export default function V2Simulation() {
         {step === "compare" && comparisonResult && (
           <ComparePanel
             result={comparisonResult}
-            savedRuns={savedRuns}
             onBack={() => setStep("results")}
             onClearRuns={() => { setSavedRuns([]); setComparisonResult(null); setStep("results"); }}
           />
@@ -369,7 +534,7 @@ function SetupPanel({
                   {w.label}
                 </div>
                 <div className="mt-1" style={{ color: "var(--muted-foreground)" }}>
-                  {w.outdoor_temp}°C &middot; {w.humidity}% RH &middot; {w.wind_speed} m/s
+                  {w.outdoor_temp}&deg;C &middot; {w.humidity}% RH &middot; {w.wind_speed} m/s
                 </div>
               </button>
             );
@@ -435,7 +600,6 @@ function SetupPanel({
           Agent Configuration
         </h2>
         <div className="grid grid-cols-2 gap-4">
-          {/* Role */}
           <div>
             <label className="text-xs font-medium block mb-1" style={{ color: "var(--muted-foreground)" }}>Role</label>
             <select
@@ -451,7 +615,6 @@ function SetupPanel({
             </select>
           </div>
 
-          {/* Stream (only for students) */}
           {agent.role === "student" && (
             <div>
               <label className="text-xs font-medium block mb-1" style={{ color: "var(--muted-foreground)" }}>Stream</label>
@@ -467,7 +630,6 @@ function SetupPanel({
             </div>
           )}
 
-          {/* Gender */}
           <div>
             <label className="text-xs font-medium block mb-1" style={{ color: "var(--muted-foreground)" }}>Gender</label>
             <div className="flex gap-2">
@@ -488,7 +650,6 @@ function SetupPanel({
             </div>
           </div>
 
-          {/* Age */}
           <div>
             <label className="text-xs font-medium block mb-1" style={{ color: "var(--muted-foreground)" }}>Age</label>
             <input
@@ -501,7 +662,6 @@ function SetupPanel({
             />
           </div>
 
-          {/* MBTI */}
           <div>
             <label className="text-xs font-medium block mb-1" style={{ color: "var(--muted-foreground)" }}>MBTI</label>
             <select
@@ -524,7 +684,7 @@ function SetupPanel({
             <div>
               <span style={{ color: "var(--muted-foreground)" }}>Preferred Temp: </span>
               <span className="font-bold" style={{ color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
-                {preferredTemp}°C
+                {preferredTemp}&deg;C
               </span>
             </div>
             <div>
@@ -544,6 +704,181 @@ function SetupPanel({
       </div>
 
       <div className="flex justify-end">
+        <button className="sa-btn sa-btn-primary" onClick={onNext}>
+          Next: Spatial Map &rarr;
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Spatial Panel (Legacy Integration) ----
+function SpatialPanel({
+  shapes, zones, agentPositions, activeAgentIdx, waypoints,
+  showHeatmap, heatmapPoints,
+  onAgentPlace, onAddShape, onUpdateShapes, onDeleteShape,
+  onAddZone, onUpdateZone, onRemoveZone, onClearAll,
+  onAddWaypoint, onRemoveWaypoint,
+  onToggleHeatmap, onAutoDerive,
+  weather, timeSlot,
+  onBack, onNext,
+}: {
+  shapes: Shape[];
+  zones: Zone[];
+  agentPositions: (AgentPosition | null)[];
+  activeAgentIdx: number;
+  waypoints: Record<number, Waypoint[]>;
+  showHeatmap: boolean;
+  heatmapPoints: HeatmapPoint[];
+  onAgentPlace: (pos: AgentPosition) => void;
+  onAddShape: (shape: Shape) => void;
+  onUpdateShapes: (shapes: Shape[]) => void;
+  onDeleteShape: (idx: number) => void;
+  onAddZone: (zone: Zone) => void;
+  onUpdateZone: (id: string, updates: Partial<Zone>) => void;
+  onRemoveZone: (id: string) => void;
+  onClearAll: () => void;
+  onAddWaypoint: (agentIdx: number, wp: Waypoint) => void;
+  onRemoveWaypoint: (agentIdx: number, wpId: string) => void;
+  onToggleHeatmap: () => void;
+  onAutoDerive: () => void;
+  weather: WeatherScenario | undefined;
+  timeSlot: TimeSlot | undefined;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Spatial Map Canvas */}
+      <div className="sa-card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+            Spatial Map
+          </h2>
+          <div className="flex items-center gap-2">
+            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+              Click to place agent &middot; Use toolbar for shapes/zones/waypoints
+            </span>
+            <button
+              onClick={onToggleHeatmap}
+              className="sa-btn text-xs px-3 py-1"
+              style={{
+                background: showHeatmap ? "#D94F4F" : "var(--card)",
+                color: showHeatmap ? "#fff" : "var(--foreground)",
+                borderColor: showHeatmap ? "#D94F4F" : "var(--border)",
+              }}
+            >
+              {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
+            </button>
+            <button
+              onClick={onClearAll}
+              className="sa-btn text-xs px-3 py-1"
+              style={{ background: "#FFEBEE", color: "#C62828", borderColor: "#EF535040" }}
+            >
+              Clear All
+            </button>
+          </div>
+        </div>
+
+        <SpatialMap
+          shapes={shapes}
+          zones={zones}
+          agentPositions={agentPositions}
+          activeAgentIdx={activeAgentIdx}
+          onAgentPlace={onAgentPlace}
+          onAddShape={onAddShape}
+          onAddZone={onAddZone}
+          onUpdateShapes={onUpdateShapes}
+          onDeleteShape={onDeleteShape}
+          allWaypoints={waypoints}
+          onAddWaypoint={onAddWaypoint}
+          onRemoveWaypoint={onRemoveWaypoint}
+          heatmapPoints={heatmapPoints}
+          showHeatmap={showHeatmap}
+        />
+      </div>
+
+      {/* Zone Environment Controls */}
+      <div className="sa-card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+            Zone Environment
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onAutoDerive}
+              className="sa-btn sa-btn-primary text-xs"
+              disabled={!weather || !timeSlot}
+              style={{ opacity: (!weather || !timeSlot) ? 0.5 : 1 }}
+            >
+              Auto-Derive from Weather
+            </button>
+          </div>
+        </div>
+
+        {weather && timeSlot && (
+          <div className="mb-4 p-3 rounded-lg text-xs" style={{
+            background: SEASON_COLORS[weather.season]?.bg || "var(--background)",
+            border: `1px solid ${SEASON_COLORS[weather.season]?.border || "var(--border)"}`,
+          }}>
+            <span className="font-semibold" style={{ color: SEASON_COLORS[weather.season]?.text || "var(--foreground)" }}>
+              Active: {weather.label} @ {timeSlot.label}
+            </span>
+            <span style={{ color: "var(--muted-foreground)" }}>
+              {" "}&middot; {weather.outdoor_temp}&deg;C &middot; {weather.humidity}% RH &middot; {weather.wind_speed} m/s
+            </span>
+          </div>
+        )}
+
+        {zones.length > 0 ? (
+          <div className="space-y-2">
+            {zones.map(z => (
+              <div key={z.id} className="p-3 rounded-lg flex items-center gap-3" style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
+                <div className="w-3 h-3 rounded" style={{ background: "#888" }} />
+                <span className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>
+                  {z.label || z.id}
+                </span>
+                <div className="flex-1" />
+                <span className="text-xs" style={{ color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
+                  {z.env.temperature}&deg;C &middot; {z.env.humidity}% &middot; {z.env.light} lux &middot; {z.env.noise} dB &middot; {z.env.air_velocity} m/s
+                </span>
+                <button
+                  onClick={() => onRemoveZone(z.id)}
+                  className="text-xs px-2 py-0.5 rounded"
+                  style={{ background: "#FFEBEE", color: "#C62828" }}
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+            No zones defined yet. Draw boundaries on the spatial map or use Coordinate Input below to create zones.
+            Zones will auto-receive environment parameters from the weather scenario.
+          </p>
+        )}
+      </div>
+
+      {/* Coordinate Input (Legacy) */}
+      <div className="sa-card">
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+            Coordinate Input &amp; Zone Editor
+          </h2>
+        </div>
+        <CoordinateInput
+          onAddShape={onAddShape}
+          onClearAll={onClearAll}
+          zones={zones}
+          onAddZone={onAddZone}
+          onUpdateZone={onUpdateZone}
+          onRemoveZone={onRemoveZone}
+        />
+      </div>
+
+      <div className="flex justify-between">
+        <button className="sa-btn" onClick={onBack}>&larr; Back to Setup</button>
         <button className="sa-btn sa-btn-primary" onClick={onNext}>
           Next: Define Path &rarr;
         </button>
@@ -622,7 +957,6 @@ function PathPanel({
               </div>
 
               <div className="grid grid-cols-4 gap-2">
-                {/* Space Tag */}
                 <select
                   value={node.spaceTag}
                   onChange={e => updateNode(i, { spaceTag: e.target.value as SpaceTag })}
@@ -634,7 +968,6 @@ function PathPanel({
                   ))}
                 </select>
 
-                {/* Mode */}
                 <select
                   value={node.mode}
                   onChange={e => updateNode(i, { mode: e.target.value as NodeMode })}
@@ -645,7 +978,6 @@ function PathPanel({
                   <option value="dwelling">Dwelling</option>
                 </select>
 
-                {/* Activity (dwelling only) */}
                 {node.mode === "dwelling" && (
                   <>
                     <select
@@ -678,7 +1010,7 @@ function PathPanel({
       </div>
 
       <div className="flex justify-between">
-        <button className="sa-btn" onClick={onBack}>&larr; Back</button>
+        <button className="sa-btn" onClick={onBack}>&larr; Back to Spatial</button>
         <button
           className="sa-btn sa-btn-primary"
           onClick={onRun}
@@ -711,23 +1043,63 @@ function ResultsPanel({
   weather: WeatherScenario;
   timeSlot: TimeSlot;
 }) {
+  // Compute Thermal Equity Score (thesis core metric)
+  const thermalEquityScore = useMemo(() => {
+    const dwellingResults = simResult.nodeResults.filter(r => r.mode === "dwelling");
+    if (dwellingResults.length === 0) return 100;
+    const absPMVs = dwellingResults.map(r => Math.abs(r.pmv));
+    const meanAbsPMV = absPMVs.reduce((s, v) => s + v, 0) / absPMVs.length;
+    const variance = absPMVs.reduce((s, v) => s + (v - meanAbsPMV) ** 2, 0) / absPMVs.length;
+    const stdDev = Math.sqrt(variance);
+    const score = Math.max(0, Math.min(100,
+      100 - (meanAbsPMV * 20) - (stdDev * 10) - (simResult.criticalCount * 15)
+    ));
+    return Math.round(score);
+  }, [simResult]);
+
+  const tesColor = thermalEquityScore >= 70 ? "#2E7D32" : thermalEquityScore >= 40 ? "#F57F17" : "#C62828";
+
   return (
     <div className="space-y-4">
+      {/* Thermal Equity Score */}
+      <div className="sa-card" style={{
+        background: `${tesColor}08`,
+        border: `2px solid ${tesColor}30`,
+      }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold mb-1" style={{ color: "var(--foreground)" }}>
+              Thermal Equity Score
+            </h2>
+            <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+              Composite metric: mean |PMV| deviation, variance across spaces, and critical zone count
+            </p>
+          </div>
+          <div className="text-center">
+            <div className="text-4xl font-bold" style={{
+              color: tesColor,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              {thermalEquityScore}
+            </div>
+            <div className="text-xs font-medium" style={{ color: tesColor }}>/ 100</div>
+          </div>
+        </div>
+      </div>
+
       {/* Summary Card */}
       <div className="sa-card">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
             Simulation Results
           </h2>
-          <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-1 rounded font-bold" style={{
-              background: RATING_COLORS[simResult.overallRating] + "15",
-              color: RATING_COLORS[simResult.overallRating],
-              border: `1px solid ${RATING_COLORS[simResult.overallRating]}40`,
-            }}>
-              {simResult.overallRating}
-            </span>
-          </div>
+          <span className="text-xs px-2 py-1 rounded font-bold" style={{
+            background: RATING_COLORS[simResult.overallRating] + "15",
+            color: RATING_COLORS[simResult.overallRating],
+            border: `1px solid ${RATING_COLORS[simResult.overallRating]}40`,
+          }}>
+            {simResult.overallRating}
+          </span>
         </div>
 
         <div className="grid grid-cols-4 gap-3 mb-4">
@@ -767,6 +1139,7 @@ function ResultsPanel({
                 <th className="text-left p-2" style={{ color: "var(--muted-foreground)" }}>Tag</th>
                 <th className="text-left p-2" style={{ color: "var(--muted-foreground)" }}>Mode</th>
                 <th className="text-right p-2" style={{ color: "var(--muted-foreground)" }}>Temp</th>
+                <th className="text-right p-2" style={{ color: "var(--muted-foreground)" }}>MRT</th>
                 <th className="text-right p-2" style={{ color: "var(--muted-foreground)" }}>PMV</th>
                 <th className="text-right p-2" style={{ color: "var(--muted-foreground)" }}>PPD</th>
                 <th className="text-center p-2" style={{ color: "var(--muted-foreground)" }}>Flag</th>
@@ -787,7 +1160,10 @@ function ResultsPanel({
                     </td>
                     <td className="p-2 capitalize">{r.mode.replace("_", " ")}</td>
                     <td className="p-2 text-right" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                      {r.resolvedEnv.air_temp}°C
+                      {r.resolvedEnv.air_temp}&deg;C
+                    </td>
+                    <td className="p-2 text-right" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                      {r.resolvedEnv.mean_radiant_temp}&deg;C
                     </td>
                     <td className="p-2 text-right font-bold" style={{
                       fontFamily: "'JetBrains Mono', monospace",
@@ -812,6 +1188,47 @@ function ResultsPanel({
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* PMV Distribution Visualization */}
+      <div className="sa-card">
+        <h2 className="text-sm font-semibold mb-4" style={{ color: "var(--foreground)" }}>
+          PMV Distribution Along Path
+        </h2>
+        <div className="flex items-end gap-1" style={{ height: "120px" }}>
+          {simResult.nodeResults.map((r, i) => {
+            const severity = getSeverityFromPMV(r.pmv);
+            const sevColor = SEVERITY_COLORS[severity];
+            const barHeight = Math.min(100, Math.max(10, Math.abs(r.pmv) * 30 + 10));
+            return (
+              <div key={r.nodeId} className="flex-1 flex flex-col items-center gap-1">
+                <span className="text-[9px]" style={{ color: sevColor.text, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {r.pmv.toFixed(1)}
+                </span>
+                <div
+                  className="w-full rounded-t"
+                  style={{
+                    height: `${barHeight}%`,
+                    background: sevColor.text + "40",
+                    border: `1px solid ${sevColor.border}60`,
+                    minWidth: "12px",
+                  }}
+                />
+                <span className="text-[8px] text-center" style={{ color: "var(--muted-foreground)", lineHeight: "1.1" }}>
+                  {i + 1}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-center gap-4 mt-3">
+          {(["INFO", "WARN", "CRITICAL"] as const).map(s => (
+            <div key={s} className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded" style={{ background: SEVERITY_COLORS[s].text + "40", border: `1px solid ${SEVERITY_COLORS[s].border}60` }} />
+              <span className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>{s}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -856,6 +1273,14 @@ function ResultsPanel({
                     }}>
                       {nn.mode.replace("_", " ")}
                     </span>
+                    {nn.severity && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{
+                        background: SEVERITY_COLORS[nn.severity].bg,
+                        color: SEVERITY_COLORS[nn.severity].text,
+                      }}>
+                        {nn.severity}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs leading-relaxed" style={{ color: "var(--foreground)" }}>
                     {nn.narrative}
@@ -891,7 +1316,7 @@ function ResultsPanel({
           </div>
         ) : (
           <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-            Click "Generate Narratives" to create first-person experience descriptions using DeepSeek API.
+            Click &quot;Generate Narratives&quot; to create first-person experience descriptions using DeepSeek API.
             Requires API key configured in Settings.
           </p>
         )}
@@ -917,10 +1342,9 @@ function ResultsPanel({
 
 // ---- Compare Panel ----
 function ComparePanel({
-  result, savedRuns, onBack, onClearRuns,
+  result, onBack, onClearRuns,
 }: {
   result: ComparisonResult;
-  savedRuns: SavedRun[];
   onBack: () => void;
   onClearRuns: () => void;
 }) {
@@ -1021,7 +1445,8 @@ function ComparePanel({
 
       <div className="flex items-center justify-between">
         <button className="sa-btn" onClick={onBack}>&larr; Back to Results</button>
-        <button className="sa-btn sa-btn-danger text-xs" onClick={onClearRuns}>
+        <button className="sa-btn text-xs" onClick={onClearRuns}
+          style={{ background: "#FFEBEE", color: "#C62828", borderColor: "#EF535040" }}>
           Clear All Saved Runs
         </button>
       </div>
