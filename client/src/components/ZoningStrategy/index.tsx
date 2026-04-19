@@ -458,6 +458,19 @@ export default function ZoningStrategy() {
                 floors are locked.
               </p>
 
+              <p
+                className="text-xs mb-3"
+                style={{
+                  color: "var(--muted-foreground)",
+                  fontStyle: "italic",
+                  opacity: 0.85,
+                }}
+              >
+                Tip: To lock a space to a specific floor, set{" "}
+                <strong>floorMandatory</strong> in the Programme Spec
+                Editor (Step 1).
+              </p>
+
               <div className="space-y-2">
                 {activeFloors.map((floor) => (
                   <FloorStrip
