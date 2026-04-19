@@ -46,7 +46,15 @@ function loadToColor(load: number): string {
 // ---------------------------------------------------------------------------
 
 function StatisticsCard({ result }: { result: SimulationResult }) {
-  const { statistics } = result;
+  const statistics = result.statistics;
+  if (!statistics) {
+    return (
+      <div className="sa-card" style={{ padding: 16 }}>
+        <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Global Statistics</h3>
+        <div style={{ fontSize: 13, color: "var(--sa-text-secondary)" }}>No statistics available. Run a simulation first.</div>
+      </div>
+    );
+  }
   return (
     <div className="sa-card" style={{ padding: 16 }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Global Statistics</h3>
@@ -100,6 +108,15 @@ function StatisticsCard({ result }: { result: SimulationResult }) {
 
 function RoomHeatmap({ result }: { result: SimulationResult }) {
   const [sortBy, setSortBy] = useState<"load" | "pmv" | "ppd" | "visits">("load");
+
+  if (!result.roomAggregates || result.roomAggregates.length === 0) {
+    return (
+      <div className="sa-card" style={{ padding: 16 }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Per-Room Heatmap</h3>
+        <div style={{ fontSize: 13, color: "var(--sa-text-secondary)" }}>No room data available.</div>
+      </div>
+    );
+  }
 
   const sorted = [...result.roomAggregates].sort((a, b) => {
     switch (sortBy) {
@@ -214,6 +231,14 @@ function RoomHeatmap({ result }: { result: SimulationResult }) {
 // ---------------------------------------------------------------------------
 
 function CohortSummaryTable({ result }: { result: SimulationResult }) {
+  if (!result.cohortSummaries || result.cohortSummaries.length === 0) {
+    return (
+      <div className="sa-card" style={{ padding: 16 }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Per-Cohort Summary</h3>
+        <div style={{ fontSize: 13, color: "var(--sa-text-secondary)" }}>No cohort data available.</div>
+      </div>
+    );
+  }
   return (
     <div className="sa-card" style={{ padding: 16 }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600 }}>Per-Cohort Summary</h3>
@@ -307,6 +332,15 @@ function CohortSummaryTable({ result }: { result: SimulationResult }) {
 
 function TaskDetail({ result }: { result: SimulationResult }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (!result.scenarioResults || !result.tasks) {
+    return (
+      <div className="sa-card" style={{ padding: 16 }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Per-Task Detail</h3>
+        <div style={{ fontSize: 13, color: "var(--sa-text-secondary)" }}>No task data available.</div>
+      </div>
+    );
+  }
 
   // Group results by task
   const taskGroups = new Map<string, ScenarioResult[]>();
@@ -424,7 +458,7 @@ function TaskDetail({ result }: { result: SimulationResult }) {
 // ---------------------------------------------------------------------------
 
 function AlertsPanel({ result }: { result: SimulationResult }) {
-  if (result.alerts.length === 0) {
+  if (!result.alerts || result.alerts.length === 0) {
     return (
       <div className="sa-card" style={{ padding: 16 }}>
         <h3 style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 600 }}>Alerts</h3>
@@ -435,8 +469,8 @@ function AlertsPanel({ result }: { result: SimulationResult }) {
     );
   }
 
-  const criticals = result.alerts.filter((a) => a.severity === "critical");
-  const warnings = result.alerts.filter((a) => a.severity === "warning");
+  const criticals = (result.alerts ?? []).filter((a) => a.severity === "critical");
+  const warnings = (result.alerts ?? []).filter((a) => a.severity === "warning");
 
   return (
     <div className="sa-card" style={{ padding: 16 }}>
