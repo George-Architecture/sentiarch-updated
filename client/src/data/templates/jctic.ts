@@ -18,6 +18,14 @@
 //   Library              ≈ 200–300 m²
 //   Gymnasium            ≈ 600–800 m²
 //   Assembly hall        ≈ 400–500 m²
+//
+// NOTE on floorMandatory vs floorPreference:
+//   Only spaces with genuine physical/structural constraints
+//   (e.g. swimming pool needs ground-level water supply,
+//   heavy sports facilities need ground slab) retain
+//   floorMandatory.  All other spaces use floorPreference
+//   (soft hint) so the GA has freedom to explore diverse
+//   zoning configurations.
 // ============================================================
 
 import {
@@ -49,6 +57,10 @@ const COLORS = {
  *
  * IDs follow the pattern `<short-category>-<slug>` for
  * readability in adjacency rules and debugging output.
+ *
+ * floorMandatory is only set for spaces with genuine physical
+ * constraints.  All other spaces use floorPreference (soft hint)
+ * to give the GA freedom to explore diverse configurations.
  */
 const spaces: SpaceType[] = [
   // ── G/F — Public Facilities ──────────────────────────────
@@ -63,7 +75,7 @@ const spaces: SpaceType[] = [
     occupancy: 150,
     requiredFeatures: ["acoustic_isolation", "accessible"],
     floorPreference: "ground",
-    floorMandatory: 0,
+    // floorMandatory removed — soft preference for ground floor
     clusterGroup: "public-gf",
     colorHex: COLORS.public,
   },
@@ -78,7 +90,7 @@ const spaces: SpaceType[] = [
     occupancy: 80,
     requiredFeatures: ["natural_light", "accessible"],
     floorPreference: "ground",
-    floorMandatory: 0,
+    // floorMandatory removed — soft preference for ground floor
     clusterGroup: "public-gf",
     colorHex: COLORS.public,
   },
@@ -93,7 +105,7 @@ const spaces: SpaceType[] = [
     occupancy: 40,
     requiredFeatures: ["natural_light", "accessible"],
     floorPreference: "ground",
-    floorMandatory: 0,
+    // floorMandatory removed — soft preference for ground floor
     clusterGroup: "public-gf",
     colorHex: COLORS.art,
   },
@@ -112,7 +124,7 @@ const spaces: SpaceType[] = [
       "heavy_load",
     ],
     floorPreference: "ground",
-    floorMandatory: 0,
+    floorMandatory: 0, // KEEP: heavy structural load requires ground slab
     clusterGroup: "sport-gf",
     colorHex: COLORS.sport,
   },
@@ -132,7 +144,7 @@ const spaces: SpaceType[] = [
       "heavy_load",
     ],
     floorPreference: "ground",
-    floorMandatory: 0,
+    floorMandatory: 0, // KEEP: water supply, drainage, heavy load — must be ground
     clusterGroup: "sport-gf",
     colorHex: COLORS.sport,
   },
@@ -151,7 +163,7 @@ const spaces: SpaceType[] = [
       "heavy_load",
     ],
     floorPreference: "ground",
-    floorMandatory: 0,
+    // floorMandatory removed — outdoor court prefers ground but not structurally required
     clusterGroup: "sport-gf",
     colorHex: COLORS.sport,
   },
@@ -168,7 +180,7 @@ const spaces: SpaceType[] = [
     occupancy: 30,
     requiredFeatures: ["natural_light"],
     floorPreference: "low",
-    floorMandatory: 1,
+    // floorMandatory removed — no structural reason to lock to floor 1
     colorHex: COLORS.academic,
   },
   {
@@ -182,7 +194,7 @@ const spaces: SpaceType[] = [
     occupancy: 30,
     requiredFeatures: ["natural_light", "natural_ventilation"],
     floorPreference: "low",
-    floorMandatory: 1,
+    // floorMandatory removed — classrooms are flexible
     colorHex: COLORS.academic,
   },
   {
@@ -200,7 +212,7 @@ const spaces: SpaceType[] = [
       "heavy_load",
     ],
     floorPreference: "low",
-    floorMandatory: 1,
+    // floorMandatory removed — heavy_load is a preference, not ground-only
     colorHex: COLORS.art,
   },
 
@@ -216,7 +228,7 @@ const spaces: SpaceType[] = [
     occupancy: 25,
     requiredFeatures: ["natural_light", "wet_services"],
     floorPreference: "low",
-    floorMandatory: 2,
+    // floorMandatory removed — art cluster co-location handled by clusterGroup
     clusterGroup: "art",
     colorHex: COLORS.art,
   },
@@ -231,7 +243,7 @@ const spaces: SpaceType[] = [
     occupancy: 35,
     requiredFeatures: ["acoustic_isolation"],
     floorPreference: "low",
-    floorMandatory: 2,
+    // floorMandatory removed
     clusterGroup: "art",
     colorHex: COLORS.art,
   },
@@ -250,7 +262,7 @@ const spaces: SpaceType[] = [
       "heavy_load",
     ],
     floorPreference: "low",
-    floorMandatory: 2,
+    // floorMandatory removed
     clusterGroup: "art",
     colorHex: COLORS.art,
   },
@@ -265,7 +277,7 @@ const spaces: SpaceType[] = [
     occupancy: 25,
     requiredFeatures: ["natural_light"],
     floorPreference: "low",
-    floorMandatory: 2,
+    // floorMandatory removed
     clusterGroup: "art",
     colorHex: COLORS.art,
   },
@@ -280,7 +292,7 @@ const spaces: SpaceType[] = [
     occupancy: 20,
     requiredFeatures: ["acoustic_isolation"],
     floorPreference: "low",
-    floorMandatory: 2,
+    // floorMandatory removed
     clusterGroup: "art",
     colorHex: COLORS.art,
   },
@@ -295,7 +307,7 @@ const spaces: SpaceType[] = [
     occupancy: 40,
     requiredFeatures: ["acoustic_isolation"],
     floorPreference: "low",
-    floorMandatory: 2,
+    // floorMandatory removed
     clusterGroup: "art",
     colorHex: COLORS.art,
   },
@@ -312,7 +324,7 @@ const spaces: SpaceType[] = [
     occupancy: 500,
     requiredFeatures: ["acoustic_isolation", "accessible"],
     floorPreference: "mid",
-    floorMandatory: 3,
+    // floorMandatory removed — assembly hall is flexible
     colorHex: COLORS.public,
   },
   {
@@ -330,7 +342,7 @@ const spaces: SpaceType[] = [
       "heavy_load",
     ],
     floorPreference: "mid",
-    floorMandatory: 3,
+    // floorMandatory removed — sports centre prefers mid but not structurally locked
     colorHex: COLORS.sport,
   },
   {
@@ -344,7 +356,7 @@ const spaces: SpaceType[] = [
     occupancy: 30,
     requiredFeatures: ["natural_light"],
     floorPreference: "mid",
-    floorMandatory: 3,
+    // floorMandatory removed
     colorHex: COLORS.science,
   },
   {
@@ -358,7 +370,7 @@ const spaces: SpaceType[] = [
     occupancy: 30,
     requiredFeatures: ["natural_light", "natural_ventilation"],
     floorPreference: "mid",
-    floorMandatory: 3,
+    // floorMandatory removed — classrooms are flexible
     colorHex: COLORS.academic,
   },
   {
@@ -372,7 +384,7 @@ const spaces: SpaceType[] = [
     occupancy: 30,
     requiredFeatures: ["natural_light", "acoustic_isolation"],
     floorPreference: "mid",
-    floorMandatory: 3,
+    // floorMandatory removed
     colorHex: COLORS.academic,
   },
 
@@ -388,7 +400,7 @@ const spaces: SpaceType[] = [
     occupancy: 30,
     requiredFeatures: ["natural_light"],
     floorPreference: "mid",
-    floorMandatory: 4,
+    // floorMandatory removed — science cluster co-location handled by clusterGroup
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -403,7 +415,7 @@ const spaces: SpaceType[] = [
     occupancy: 30,
     requiredFeatures: ["natural_light"],
     floorPreference: "mid",
-    floorMandatory: 4,
+    // floorMandatory removed
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -422,7 +434,7 @@ const spaces: SpaceType[] = [
       "wet_services",
     ],
     floorPreference: "mid",
-    floorMandatory: 4,
+    // floorMandatory removed
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -441,7 +453,7 @@ const spaces: SpaceType[] = [
       "wet_services",
     ],
     floorPreference: "mid",
-    floorMandatory: 4,
+    // floorMandatory removed
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -460,7 +472,7 @@ const spaces: SpaceType[] = [
       "wet_services",
     ],
     floorPreference: "mid",
-    floorMandatory: 4,
+    // floorMandatory removed
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -479,7 +491,7 @@ const spaces: SpaceType[] = [
       "wet_services",
     ],
     floorPreference: "mid",
-    floorMandatory: 4,
+    // floorMandatory removed
     clusterGroup: "science",
     colorHex: COLORS.science,
   },
@@ -500,7 +512,7 @@ const spaces: SpaceType[] = [
       "accessible",
     ],
     floorPreference: "high",
-    floorMandatory: 5,
+    // floorMandatory removed — residential prefers high but is flexible
     clusterGroup: "residential",
     colorHex: COLORS.residential,
   },
@@ -515,7 +527,7 @@ const spaces: SpaceType[] = [
     occupancy: 15,
     requiredFeatures: ["natural_light"],
     floorPreference: "high",
-    floorMandatory: 5,
+    // floorMandatory removed
     clusterGroup: "admin",
     colorHex: COLORS.admin,
   },
@@ -530,7 +542,7 @@ const spaces: SpaceType[] = [
     occupancy: 5,
     requiredFeatures: ["wet_services"],
     floorPreference: "high",
-    floorMandatory: 5,
+    // floorMandatory removed — laundry should be near dormitory (adjacency rule handles this)
     clusterGroup: "residential",
     colorHex: COLORS.support,
   },
@@ -549,7 +561,7 @@ const spaces: SpaceType[] = [
       "accessible",
     ],
     floorPreference: "high",
-    floorMandatory: 5,
+    // floorMandatory removed
     clusterGroup: "residential",
     colorHex: COLORS.support,
   },
@@ -564,7 +576,7 @@ const spaces: SpaceType[] = [
     occupancy: 40,
     requiredFeatures: ["natural_light"],
     floorPreference: "high",
-    floorMandatory: 5,
+    // floorMandatory removed
     clusterGroup: "residential",
     colorHex: COLORS.academic,
   },
