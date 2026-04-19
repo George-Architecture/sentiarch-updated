@@ -9,6 +9,7 @@ import ProgramSpec from "./pages/ProgramSpec";
 import Settings from "./pages/Settings";
 import Zoning from "./pages/Zoning";
 import Layout from "./pages/Layout";
+import Massing from "./pages/Massing";
 
 function Router() {
   return (
@@ -17,6 +18,7 @@ function Router() {
       <Route path={"/program-spec"} component={ProgramSpec} />
       <Route path={"/zoning"} component={Zoning} />
       <Route path={"/layout"} component={Layout} />
+      <Route path={"/massing"} component={Massing} />
       <Route path={"/settings"} component={Settings} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
