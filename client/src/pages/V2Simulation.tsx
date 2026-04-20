@@ -24,7 +24,7 @@ import {
 } from "@/lib/store";
 
 // Auto-zone detection
-import { generateAutoZones } from "@/lib/autoZone";
+import { generateMassingZones } from "@/lib/autoZone";
 
 // v2 modules
 import {
@@ -87,10 +87,15 @@ function resolvedEnvToZoneEnv(env: ResolvedEnv): ZoneEnv {
 /** Infer space tag from zone label */
 function inferSpaceTag(label: string): SpaceTag {
   const l = label.toLowerCase();
+  // Outdoor zones
   if (l.includes("outdoor") || l.includes("court") || l.includes("field") || l.includes("playground")) return "outdoor";
+  // Green spaces
   if (l.includes("green") || l.includes("garden") || l.includes("landscape")) return "green_space";
+  // Semi-outdoor
   if (l.includes("semi") || l.includes("corridor") || l.includes("covered") || l.includes("canopy") || l.includes("terrace") || l.includes("balcony")) return "semi_outdoor";
+  // Indoor natural ventilation
   if (l.includes("natural") || l.includes("vent") || l.includes("atrium")) return "indoor_natural";
+  // Default: indoor AC (for massing blocks)
   return "indoor_ac";
 }
 
@@ -201,7 +206,7 @@ export default function V2Simulation() {
       if (shape.type === "boundary") {
         setTimeout(() => {
           setZones(prevZones => {
-            const autoZones = generateAutoZones(next, prevZones);
+            const autoZones = generateMassingZones(next, prevZones);
             // Auto-derive env for new zones
             if (weather && timeSlot) {
               return autoZones.map(z => {
@@ -222,7 +227,7 @@ export default function V2Simulation() {
     setShapes(newShapes);
     setTimeout(() => {
       setZones(prevZones => {
-        const autoZones = generateAutoZones(newShapes, prevZones);
+        const autoZones = generateMassingZones(newShapes, prevZones);
         if (weather && timeSlot) {
           return autoZones.map(z => {
             const tag = zoneSpaceTags[z.id] || inferSpaceTag(z.label || z.id);
@@ -240,7 +245,7 @@ export default function V2Simulation() {
       const next = prev.filter((_, i) => i !== idx);
       setTimeout(() => {
         setZones(prevZones => {
-          const autoZones = generateAutoZones(next, prevZones);
+          const autoZones = generateMassingZones(next, prevZones);
           if (weather && timeSlot) {
             return autoZones.map(z => {
               const tag = zoneSpaceTags[z.id] || inferSpaceTag(z.label || z.id);

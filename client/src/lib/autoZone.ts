@@ -615,3 +615,136 @@ export function generateAutoZones(shapes: Shape[], existingZones: Zone[]): Zone[
 
   return [...manualZones, ...newAutoZones];
 }
+
+// ============================================================
+// Multi-Massing Block Support — Each boundary is an indoor zone
+// ============================================================
+
+/**
+ * Generate zones from multiple massing blocks.
+ * Each boundary polygon = one indoor zone (the interior is walkable)
+ * Space between blocks (within a site boundary) = outdoor zone(s)
+ *
+ * This is different from generateAutoZones which treats boundaries
+ * as obstacles/walls. Here, boundaries ARE the zones themselves.
+ */
+export function generateMassingZones(shapes: Shape[], existingZones: Zone[]): Zone[] {
+  const boundaries = shapes.filter((s) => s.type === "boundary" && s.points.length >= 3);
+  if (boundaries.length === 0) return existingZones.filter((z) => !z.id.startsWith("auto_zone_"));
+
+  // Keep manual zones
+  const manualZones = existingZones.filter((z) => !z.id.startsWith("auto_zone_"));
+  const autoZones = existingZones.filter((z) => z.id.startsWith("auto_zone_"));
+
+  // Build list of existing auto-zones for centroid matching
+  const availableOld: { zone: Zone; centroid: [number, number]; matched: boolean }[] =
+    autoZones.map((z) => ({ zone: z, centroid: zoneCentroid(z), matched: false }));
+
+  const newAutoZones: Zone[] = [];
+  let labelCounter = 1;
+
+  // ---- Process each boundary as an indoor zone ----
+  for (const boundary of boundaries) {
+    // Calculate bounds from boundary polygon
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [px, py] of boundary.points) {
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
+    }
+
+    const bounds = {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      points: boundary.points,
+    };
+
+    const centroid: [number, number] = [
+      minX + (maxX - minX) / 2,
+      minY + (maxY - minY) / 2,
+    ];
+
+    // Try to match with existing zone by centroid
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < availableOld.length; i++) {
+      if (availableOld[i].matched) continue;
+      const d = dist2d(centroid, availableOld[i].centroid);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx >= 0 && bestDist <= CENTROID_MATCH_DIST) {
+      // Matched an existing zone — preserve user edits
+      const existing = availableOld[bestIdx].zone;
+      availableOld[bestIdx].matched = true;
+
+      const userModifiedLabel = existing.label && !existing.label.match(/^Zone \d+$/);
+      const userModifiedEnv = JSON.stringify(existing.env) !== JSON.stringify(defaultZoneEnv);
+
+      newAutoZones.push({
+        ...existing,
+        bounds,
+        label: userModifiedLabel ? existing.label : `Zone ${labelCounter}`,
+        env: userModifiedEnv ? existing.env : { ...defaultZoneEnv },
+      });
+    } else {
+      // New zone
+      newAutoZones.push({
+        id: `auto_zone_${Date.now()}_${labelCounter}`,
+        label: `Zone ${labelCounter}`,
+        bounds,
+        env: { ...defaultZoneEnv },
+      });
+    }
+    labelCounter++;
+  }
+
+  // ---- Generate outdoor zone(s) for space between blocks ----
+  // Find the bounding box of all massing blocks
+  let siteMinX = Infinity, siteMinY = Infinity, siteMaxX = -Infinity, siteMaxY = -Infinity;
+  for (const boundary of boundaries) {
+    for (const [px, py] of boundary.points) {
+      if (px < siteMinX) siteMinX = px;
+      if (py < siteMinY) siteMinY = py;
+      if (px > siteMaxX) siteMaxX = px;
+      if (py > siteMaxY) siteMaxY = py;
+    }
+  }
+
+  // Add padding to site boundary
+  const sitePad = 5000; // 5m padding
+  const siteBounds = {
+    x: siteMinX - sitePad,
+    y: siteMinY - sitePad,
+    width: siteMaxX - siteMinX + 2 * sitePad,
+    height: siteMaxY - siteMinY + 2 * sitePad,
+  };
+
+  // Create outdoor zone if it doesn't exist
+  const outdoorExists = autoZones.some((z) => z.label?.toLowerCase().includes("outdoor"));
+  if (!outdoorExists && boundaries.length > 0) {
+    newAutoZones.push({
+      id: `auto_zone_outdoor_${Date.now()}`,
+      label: "Outdoor",
+      bounds: siteBounds,
+      env: { ...defaultZoneEnv },
+    });
+  }
+
+  // Re-number default labels sequentially
+  let num = 1;
+  for (const z of newAutoZones) {
+    if (z.label?.match(/^Zone \d+$/)) {
+      z.label = `Zone ${num}`;
+      num++;
+    }
+  }
+
+  return [...manualZones, ...newAutoZones];
+}
