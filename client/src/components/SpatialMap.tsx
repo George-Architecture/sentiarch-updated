@@ -468,7 +468,16 @@ export default function SpatialMap({
     setCam({ ...newCam });
   }, [shapes, zones, allWaypoints, canvasW, canvasH]);
 
-  // Auto fit-to-content removed — only triggered by manual Fit View button click.
+  // Auto fit-to-content: default zoom fits the whole canvas on initial mount
+  // and whenever the canvas size changes. User can still pan/zoom manually after.
+  const hasFittedRef = useRef(false);
+  useEffect(() => {
+    if (canvasW > 0 && canvasH > 0 && !hasFittedRef.current) {
+      fitToContent();
+      hasFittedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasW, canvasH]);
 
   // ---- Export Layout as JSON ----
   const handleExportLayout = useCallback(() => {
@@ -810,9 +819,12 @@ export default function SpatialMap({
       ctx.setLineDash([]);
     }
 
-    // ---- Draw waypoints for all agents ----
+    // ---- Draw waypoints for the SELECTED agent only ----
+    // Waypoints belong to individual agents; the map shows the currently
+    // selected agent's route so other agents' waypoints don't clutter the view.
     for (const [idxStr, wps] of Object.entries(allWaypoints)) {
       const idx = parseInt(idxStr);
+      if (idx !== activeAgentIdx) continue;
       const color = getPersonaColor(idx);
       if (!wps || wps.length === 0) continue;
 
@@ -1626,7 +1638,7 @@ export default function SpatialMap({
               gap: "6px",
               transition: "all 0.15s ease",
             }}
-            title={tool.hint}
+            aria-label={tool.label}
           >
             <span style={{ fontSize: "14px", lineHeight: 1 }}>{tool.icon}</span>
             <span>{tool.label}</span>

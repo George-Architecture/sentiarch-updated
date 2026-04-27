@@ -126,11 +126,26 @@ export interface SpatialData {
   visible_agents: number;
 }
 
+export interface GridConfig {
+  enabled: boolean;
+  cols: number;
+  rows: number;
+  cellSize: number; // in mm, e.g. 1000
+}
+
+export const defaultGridConfig: GridConfig = {
+  enabled: true,
+  cols: 20,
+  rows: 20,
+  cellSize: 1000,
+};
+
 export interface PersonaData {
   agent: AgentData;
   position: PositionData;
   environment: EnvironmentData;
   spatial: SpatialData;
+  simulationDuration: number; // Phase 5: Global simulation duration in minutes
 }
 
 export interface ExperienceData {
@@ -650,6 +665,7 @@ export const defaultPersonas: PersonaData[] = [
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 45 },
     environment: { ...defaultEnvironment },
     spatial: { dist_to_wall: 0, dist_to_window: 0, dist_to_exit: 0, ceiling_h: 2.8, enclosure_ratio: 0, visible_agents: 0 },
+    simulationDuration: 60,
   },
   {
     // Persona 02: Young male, high metabolism, thin clothing → feels warm/hot at 24°C (PMV ≈ +0.46)
@@ -668,6 +684,7 @@ export const defaultPersonas: PersonaData[] = [
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 30 },
     environment: { ...defaultEnvironment },
     spatial: { dist_to_wall: 0, dist_to_window: 0, dist_to_exit: 0, ceiling_h: 2.8, enclosure_ratio: 0, visible_agents: 0 },
+    simulationDuration: 60,
   },
   {
     // Persona 03: Middle-aged female, mid metabolism, severe vision impairment → thermally neutral but high visual load (PMV ≈ -0.08, EffLux = 150)
@@ -686,6 +703,7 @@ export const defaultPersonas: PersonaData[] = [
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 60 },
     environment: { ...defaultEnvironment },
     spatial: { dist_to_wall: 0, dist_to_window: 0, dist_to_exit: 0, ceiling_h: 2.8, enclosure_ratio: 0, visible_agents: 0 },
+    simulationDuration: 60,
   },
 ];
 
@@ -707,6 +725,7 @@ export function createNewPersona(index: number): PersonaData {
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 30 },
     environment: { ...defaultEnvironment },
     spatial: { dist_to_wall: 0, dist_to_window: 0, dist_to_exit: 0, ceiling_h: 2.8, enclosure_ratio: 0, visible_agents: 0 },
+    simulationDuration: 60,
   };
 }
 
@@ -1012,12 +1031,7 @@ export function posToCell(x: number, y: number, cellSize = 1000): [number, numbe
 }
 
 // ---- Default Layout ----
-export const DEFAULT_LAYOUT = defaultLayoutData as {
-  shapes: Shape[];
-  zones: Zone[];
-  agentPositions: (AgentPosition | null)[];
-  waypoints: Record<number, Waypoint[]>;
-};
+export const DEFAULT_LAYOUT = defaultLayoutData as any;
 
 // ---- LocalStorage Persistence ----
 // Version bump forces all clients to reset to new default personas
@@ -1025,6 +1039,7 @@ const STORE_VERSION = "v3";
 const SHAPES_KEY = `thesis_spatial_shapes_${STORE_VERSION}`;
 const MULTI_AGENT_KEY = `thesis_multi_agent_${STORE_VERSION}`;
 const ZONES_KEY = `thesis_zones_${STORE_VERSION}`;
+const GRID_CONFIG_KEY = `thesis_grid_config_${STORE_VERSION}`;
 // Clear any old versioned keys on load
 if (typeof window !== "undefined") {
   ["thesis_spatial_shapes", "thesis_multi_agent",
@@ -1055,6 +1070,17 @@ export function loadZones(): Zone[] {
     return DEFAULT_LAYOUT.zones;
   } catch { return DEFAULT_LAYOUT.zones; }
 }
+
+export function saveGridConfig(config: GridConfig) {
+  try { localStorage.setItem(GRID_CONFIG_KEY, JSON.stringify(config)); } catch {}
+}
+
+export function loadGridConfig(): GridConfig {
+  try {
+    const s = localStorage.getItem(GRID_CONFIG_KEY);
+    return s ? JSON.parse(s) : defaultGridConfig;
+  } catch { return defaultGridConfig; }
+}
 export function saveMultiAgent(data: { personas: PersonaData[]; positions: (AgentPosition | null)[] }) {
   try { localStorage.setItem(MULTI_AGENT_KEY, JSON.stringify(data)); } catch {}
 }
@@ -1074,6 +1100,11 @@ export function loadMultiAgent(): { personas: PersonaData[]; positions: (AgentPo
       }
       return { ...p, agent: { ...p.agent, anxiety: buildAnxietyData(0) } };
     });
+    // Phase 5 migration: ensure simulationDuration exists
+    parsed.personas = parsed.personas.map(p => ({
+      ...p,
+      simulationDuration: p.simulationDuration || 60,
+    }));
     return parsed;
   } catch { return null; }
 }

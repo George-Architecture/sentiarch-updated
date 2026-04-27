@@ -1,4 +1,3 @@
-// ============================================================
 // PersonaMindMap Component — Merged Version v3
 // Layout: 12-column Tailwind grid with independent Avatar row
 // Style: beige/teal CSS variables
@@ -199,405 +198,136 @@ function PixelBody_Wheelchair({ p, isChild, isFemale }: {
           <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row} c={p.shirt} />
         ))
       )}
-      {Array.from({ length: 4 }, (_, i) => (
-        <Px key={`al${i}`} x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {Array.from({ length: 4 }, (_, i) => (
-        <Px key={`ar${i}`} x={cx + Math.floor(bodyW / 2) + 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {Array.from({ length: 3 }, (_, i) => (
-        <Px key={`sl${i}`} x={cx - 1 - i} y={chairY + 1} c={p.pants} />
-      ))}
-      {Array.from({ length: 3 }, (_, i) => (
-        <Px key={`sr${i}`} x={cx + 1 + i} y={chairY + 1} c={p.pants} />
-      ))}
-      {Array.from({ length: 9 }, (_, i) => (
-        <Px key={`seat${i}`} x={cx - 4 + i} y={chairY} c="#666" />
-      ))}
-      {Array.from({ length: 5 }, (_, i) => (
-        <Px key={`back${i}`} x={cx + 4} y={chairY - 4 + i} c="#666" />
-      ))}
-      {Array.from({ length: 3 }, (_, i) => (
-        <Px key={`wl${i}`} x={cx - 4 + i} y={chairY + 2} c="#444" />
-      ))}
-      {Array.from({ length: 3 }, (_, i) => (
-        <Px key={`wr${i}`} x={cx + 2 + i} y={chairY + 2} c="#444" />
-      ))}
-      <Px x={cx - 3} y={chairY + 3} c="#555" />
-      <Px x={cx + 3} y={chairY + 3} c="#555" />
-      <Px x={cx - 3} y={chairY + 2} c="#888" />
-      <Px x={cx + 3} y={chairY + 2} c="#888" />
-      <Px x={cx - 3} y={chairY + 2} c={p.shoe} />
-      <Px x={cx + 3} y={chairY + 2} c={p.shoe} />
-    </g>
-  );
-}
-
-function PixelBody_Cane({ p, isChild, isElderly, isFemale }: {
-  p: typeof PALETTES.male_young; isChild: boolean; isElderly: boolean; isFemale: boolean;
-}) {
-  const headY = isChild ? 6 : 4;
-  const headSize = isChild ? 5 : 6;
-  const cx = 14;
-  const bodyY = headY + headSize + 1;
-  const bodyH = isChild ? 6 : 8;
-  const bodyW = isChild ? 4 : 5;
-  const legY = bodyY + bodyH;
-  return (
-    <g>
-      {isFemale ? (
-        <>
-          {Array.from({ length: headSize + 2 }, (_, i) => (
-            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
-          ))}
-          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
-          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
-        </>
-      ) : (
-        Array.from({ length: headSize }, (_, i) => (
-          <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
-        ))
-      )}
-      {Array.from({ length: headSize }, (_, row) =>
-        Array.from({ length: headSize }, (_, col) => (
-          <Px key={`f${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
-        ))
-      )}
-      <Px x={cx - 1} y={headY + 2} c="#333" />
-      <Px x={cx + 1} y={headY + 2} c="#333" />
-      <Px x={cx} y={headY + headSize} c={p.skin} />
-      {Array.from({ length: bodyH }, (_, row) =>
-        Array.from({ length: bodyW }, (_, col) => (
-          <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row} c={p.shirt} />
-        ))
-      )}
-      {Array.from({ length: isChild ? 4 : 5 }, (_, i) => (
-        <Px key={`al${i}`} x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {Array.from({ length: isChild ? 3 : 4 }, (_, i) => (
-        <Px key={`ar${i}`} x={cx + Math.floor(bodyW / 2) + 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {/* Cane */}
-      {Array.from({ length: isChild ? 10 : 14 }, (_, i) => (
-        <Px key={`cane${i}`} x={cx + Math.floor(bodyW / 2) + 3} y={bodyY + 2 + i} c="#8B7355" />
-      ))}
-      <Px x={cx + Math.floor(bodyW / 2) + 2} y={bodyY + 2} c="#8B7355" />
-      {isElderly && (
-        <>
-          <Px x={cx - Math.floor(bodyW / 2) - 2} y={bodyY + 2} c={p.skin} />
-          <Px x={cx + Math.floor(bodyW / 2) + 2} y={bodyY + 2} c={p.skin} />
-        </>
-      )}
-      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
-        <Px key={`ll${i}`} x={cx - 1} y={legY + i} c={p.pants} />
-      ))}
-      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
-        <Px key={`lr${i}`} x={cx + 1} y={legY + i} c={p.pants} />
-      ))}
-      <Px x={cx - 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-      <Px x={cx - 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-      <Px x={cx + 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-      <Px x={cx + 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-    </g>
-  );
-}
-
-function PixelBody_Blind({ p, isChild, isElderly, isFemale }: {
-  p: typeof PALETTES.male_young; isChild: boolean; isElderly: boolean; isFemale: boolean;
-}) {
-  const headY = isChild ? 6 : 4;
-  const headSize = isChild ? 5 : 6;
-  const cx = 14;
-  const bodyY = headY + headSize + 1;
-  const bodyH = isChild ? 6 : 8;
-  const bodyW = isChild ? 4 : 5;
-  const legY = bodyY + bodyH;
-  return (
-    <g>
-      {isFemale ? (
-        <>
-          {Array.from({ length: headSize + 2 }, (_, i) => (
-            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
-          ))}
-          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
-          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
-          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY + 1} c={p.hair} />
-          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY + 1} c={p.hair} />
-        </>
-      ) : (
-        Array.from({ length: headSize }, (_, i) => (
-          <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
-        ))
-      )}
-      {Array.from({ length: headSize }, (_, row) =>
-        Array.from({ length: headSize }, (_, col) => (
-          <Px key={`f${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
-        ))
-      )}
-      {/* Sunglasses */}
-      <Px x={cx - 2} y={headY + 2} c="#111" />
-      <Px x={cx - 1} y={headY + 2} c="#111" />
-      <Px x={cx} y={headY + 2} c="#222" />
-      <Px x={cx + 1} y={headY + 2} c="#111" />
-      <Px x={cx + 2} y={headY + 2} c="#111" />
-      <Px x={cx} y={headY + headSize} c={p.skin} />
-      {Array.from({ length: bodyH }, (_, row) =>
-        Array.from({ length: bodyW }, (_, col) => (
-          <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row} c={p.shirt} />
-        ))
-      )}
-      {Array.from({ length: isChild ? 4 : 5 }, (_, i) => (
-        <Px key={`al${i}`} x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {Array.from({ length: isChild ? 3 : 4 }, (_, i) => (
-        <Px key={`ar${i}`} x={cx + Math.floor(bodyW / 2) + 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {/* White cane */}
-      {Array.from({ length: isChild ? 10 : 14 }, (_, i) => (
-        <Px key={`wc${i}`} x={cx + Math.floor(bodyW / 2) + 3} y={bodyY + 2 + i} c="#EEEEEE" />
-      ))}
-      <Px x={cx + Math.floor(bodyW / 2) + 3} y={bodyY + (isChild ? 11 : 15)} c="#CC3333" />
-      <Px x={cx + Math.floor(bodyW / 2) + 2} y={bodyY + 2} c="#EEEEEE" />
-      {isElderly && (
-        <Px x={cx - Math.floor(bodyW / 2) - 2} y={bodyY + 2} c={p.skin} />
-      )}
-      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
-        <Px key={`ll${i}`} x={cx - 1} y={legY + i} c={p.pants} />
-      ))}
-      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
-        <Px key={`lr${i}`} x={cx + 1} y={legY + i} c={p.pants} />
-      ))}
-      <Px x={cx - 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-      <Px x={cx - 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-      <Px x={cx + 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-      <Px x={cx + 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-    </g>
-  );
-}
-
-function PixelBody_BlindWheelchair({ p, isChild, isFemale }: {
-  p: typeof PALETTES.male_young; isChild: boolean; isFemale: boolean;
-}) {
-  const headY = isChild ? 4 : 2;
-  const headSize = isChild ? 5 : 6;
-  const cx = 16;
-  const bodyY = headY + headSize + 1;
-  const bodyH = isChild ? 5 : 6;
-  const bodyW = isChild ? 4 : 5;
-  const chairY = bodyY + bodyH - 1;
-  return (
-    <g>
-      {isFemale ? (
-        <>
-          {Array.from({ length: headSize + 2 }, (_, i) => (
-            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
-          ))}
-          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
-          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
-        </>
-      ) : (
-        Array.from({ length: headSize }, (_, i) => (
-          <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
-        ))
-      )}
-      {Array.from({ length: headSize }, (_, row) =>
-        Array.from({ length: headSize }, (_, col) => (
-          <Px key={`f${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
-        ))
-      )}
-      <Px x={cx - 2} y={headY + 2} c="#111" />
-      <Px x={cx - 1} y={headY + 2} c="#111" />
-      <Px x={cx} y={headY + 2} c="#222" />
-      <Px x={cx + 1} y={headY + 2} c="#111" />
-      <Px x={cx + 2} y={headY + 2} c="#111" />
-      <Px x={cx} y={headY + headSize} c={p.skin} />
-      {Array.from({ length: bodyH }, (_, row) =>
-        Array.from({ length: bodyW }, (_, col) => (
-          <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row} c={p.shirt} />
-        ))
-      )}
-      {Array.from({ length: 4 }, (_, i) => (
-        <Px key={`al${i}`} x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {Array.from({ length: 4 }, (_, i) => (
-        <Px key={`ar${i}`} x={cx + Math.floor(bodyW / 2) + 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {/* White cane on lap */}
-      {Array.from({ length: 5 }, (_, i) => (
-        <Px key={`wc${i}`} x={cx - 2 + i} y={chairY - 1} c="#EEEEEE" />
-      ))}
-      <Px x={cx + 3} y={chairY - 1} c="#CC3333" />
-      {Array.from({ length: 3 }, (_, i) => (
-        <Px key={`sl${i}`} x={cx - 1 - i} y={chairY + 1} c={p.pants} />
-      ))}
-      {Array.from({ length: 3 }, (_, i) => (
-        <Px key={`sr${i}`} x={cx + 1 + i} y={chairY + 1} c={p.pants} />
-      ))}
-      {Array.from({ length: 9 }, (_, i) => (
-        <Px key={`seat${i}`} x={cx - 4 + i} y={chairY} c="#666" />
-      ))}
-      {Array.from({ length: 5 }, (_, i) => (
-        <Px key={`back${i}`} x={cx + 4} y={chairY - 4 + i} c="#666" />
-      ))}
-      {Array.from({ length: 3 }, (_, i) => (
-        <Px key={`wl${i}`} x={cx - 4 + i} y={chairY + 2} c="#444" />
-      ))}
-      {Array.from({ length: 3 }, (_, i) => (
-        <Px key={`wr${i}`} x={cx + 2 + i} y={chairY + 2} c="#444" />
-      ))}
-      <Px x={cx - 3} y={chairY + 3} c="#555" />
-      <Px x={cx + 3} y={chairY + 3} c="#555" />
-    </g>
-  );
-}
-
-function PixelBody_BlindCane({ p, isChild, isElderly, isFemale }: {
-  p: typeof PALETTES.male_young; isChild: boolean; isElderly: boolean; isFemale: boolean;
-}) {
-  const headY = isChild ? 6 : 4;
-  const headSize = isChild ? 5 : 6;
-  const cx = 16;
-  const bodyY = headY + headSize + 1;
-  const bodyH = isChild ? 6 : 8;
-  const bodyW = isChild ? 4 : 5;
-  const legY = bodyY + bodyH;
-  return (
-    <g>
-      {isFemale ? (
-        <>
-          {Array.from({ length: headSize + 2 }, (_, i) => (
-            <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) - 1 + i} y={headY - 1} c={p.hair} />
-          ))}
-          <Px x={cx - Math.floor(headSize / 2) - 1} y={headY} c={p.hair} />
-          <Px x={cx + Math.floor(headSize / 2) + 1} y={headY} c={p.hair} />
-        </>
-      ) : (
-        Array.from({ length: headSize }, (_, i) => (
-          <Px key={`h${i}`} x={cx - Math.floor(headSize / 2) + i} y={headY - 1} c={p.hair} />
-        ))
-      )}
-      {Array.from({ length: headSize }, (_, row) =>
-        Array.from({ length: headSize }, (_, col) => (
-          <Px key={`f${row}_${col}`} x={cx - Math.floor(headSize / 2) + col} y={headY + row} c={p.skin} />
-        ))
-      )}
-      <Px x={cx - 2} y={headY + 2} c="#111" />
-      <Px x={cx - 1} y={headY + 2} c="#111" />
-      <Px x={cx} y={headY + 2} c="#222" />
-      <Px x={cx + 1} y={headY + 2} c="#111" />
-      <Px x={cx + 2} y={headY + 2} c="#111" />
-      <Px x={cx} y={headY + headSize} c={p.skin} />
-      {Array.from({ length: bodyH }, (_, row) =>
-        Array.from({ length: bodyW }, (_, col) => (
-          <Px key={`b${row}_${col}`} x={cx - Math.floor(bodyW / 2) + col} y={bodyY + row} c={p.shirt} />
-        ))
-      )}
-      {/* Left arm + wooden cane */}
-      {Array.from({ length: isChild ? 3 : 4 }, (_, i) => (
-        <Px key={`al${i}`} x={cx - Math.floor(bodyW / 2) - 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {Array.from({ length: isChild ? 10 : 14 }, (_, i) => (
-        <Px key={`cane${i}`} x={cx - Math.floor(bodyW / 2) - 3} y={bodyY + 2 + i} c="#8B7355" />
-      ))}
-      <Px x={cx - Math.floor(bodyW / 2) - 2} y={bodyY + 2} c="#8B7355" />
-      {/* Right arm + white cane */}
-      {Array.from({ length: isChild ? 3 : 4 }, (_, i) => (
-        <Px key={`ar${i}`} x={cx + Math.floor(bodyW / 2) + 1} y={bodyY + i} c={p.skin} />
-      ))}
-      {Array.from({ length: isChild ? 10 : 14 }, (_, i) => (
-        <Px key={`wc${i}`} x={cx + Math.floor(bodyW / 2) + 3} y={bodyY + 2 + i} c="#EEEEEE" />
-      ))}
-      <Px x={cx + Math.floor(bodyW / 2) + 3} y={bodyY + (isChild ? 11 : 15)} c="#CC3333" />
-      <Px x={cx + Math.floor(bodyW / 2) + 2} y={bodyY + 2} c="#EEEEEE" />
-      {isElderly && (
-        <>
-          <Px x={cx - Math.floor(bodyW / 2) - 2} y={bodyY + 1} c={p.skin} />
-          <Px x={cx + Math.floor(bodyW / 2) + 2} y={bodyY + 1} c={p.skin} />
-        </>
-      )}
-      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
-        <Px key={`ll${i}`} x={cx - 1} y={legY + i} c={p.pants} />
-      ))}
-      {Array.from({ length: isChild ? 4 : 6 }, (_, i) => (
-        <Px key={`lr${i}`} x={cx + 1} y={legY + i} c={p.pants} />
-      ))}
-      <Px x={cx - 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-      <Px x={cx - 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-      <Px x={cx + 1} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
-      <Px x={cx + 2} y={legY + (isChild ? 4 : 6)} c={p.shoe} />
+      <rect x={10} y={chairY * 4} width={12} height={4} fill="#555" />
+      <rect x={22} y={chairY * 4} width={4} height={12} fill="#555" />
+      <circle cx={14 * 4} cy={(chairY + 4) * 4} r={4 * 4} fill="none" stroke="#777" strokeWidth="4" />
+      <circle cx={22 * 4} cy={(chairY + 4) * 4} r={4 * 4} fill="none" stroke="#777" strokeWidth="4" />
     </g>
   );
 }
 
 function PixelAvatar({ persona, color, size = 120 }: { persona: PersonaData; color: string; size?: number }) {
-  const variant = getAvatarVariant(persona.agent);
-  const label = getLabel(variant);
-  const paletteKey = `${variant.gender}_${variant.ageGroup}` as keyof typeof PALETTES;
-  const p = PALETTES[paletteKey];
-  const isChild = variant.ageGroup === "child";
-  const isElderly = variant.ageGroup === "elderly";
-  const isFemale = variant.gender === "female";
-  const canvasW = 128;
-  const canvasH = 160;
+  const v = getAvatarVariant(persona.agent);
+  const p = PALETTES[`${v.gender}_${v.ageGroup}` as keyof typeof PALETTES] || PALETTES.male_young;
+  const isChild = v.ageGroup === "child";
+  const isElderly = v.ageGroup === "elderly";
+  const isFemale = v.gender === "female";
+
   return (
-    <div className="flex flex-col items-center gap-2">
-      <svg width={size} height={size * (canvasH / canvasW)} viewBox={`0 0 ${canvasW} ${canvasH}`}
-        xmlns="http://www.w3.org/2000/svg" style={{ imageRendering: "pixelated" }}>
-        <circle cx={canvasW / 2} cy={canvasH / 2} r={55} fill={`${color}12`} stroke={`${color}30`} strokeWidth={1} />
-        {variant.mobility === "normal" && <PixelBody_Normal p={p} isChild={isChild} isElderly={isElderly} isFemale={isFemale} />}
-        {variant.mobility === "wheelchair" && <PixelBody_Wheelchair p={p} isChild={isChild} isFemale={isFemale} />}
-        {variant.mobility === "cane" && <PixelBody_Cane p={p} isChild={isChild} isElderly={isElderly} isFemale={isFemale} />}
-        {variant.mobility === "blind" && <PixelBody_Blind p={p} isChild={isChild} isElderly={isElderly} isFemale={isFemale} />}
-        {variant.mobility === "blind_wheelchair" && <PixelBody_BlindWheelchair p={p} isChild={isChild} isFemale={isFemale} />}
-        {variant.mobility === "blind_cane" && <PixelBody_BlindCane p={p} isChild={isChild} isElderly={isElderly} isFemale={isFemale} />}
-      </svg>
-      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "10px", fontWeight: 600, color, letterSpacing: "0.5px" }}>
-        {label}
-      </span>
-    </div>
+    <svg width={size} height={size} viewBox="0 0 128 160" style={{ shapeRendering: "crispEdges" }}>
+      {v.mobility === "wheelchair" || v.mobility === "blind_wheelchair" ? (
+        <PixelBody_Wheelchair p={p} isChild={isChild} isFemale={isFemale} />
+      ) : (
+        <PixelBody_Normal p={p} isChild={isChild} isElderly={isElderly} isFemale={isFemale} />
+      )}
+      {v.mobility.includes("blind") && (
+        <g>
+          <rect x={15 * 4} y={5 * 4} width={4 * 4} height={4} fill="#000" opacity="0.8" />
+          <rect x={14 * 4} y={15 * 4} width={4} height={12 * 4} fill="#DDD" />
+        </g>
+      )}
+      {v.mobility === "cane" && (
+        <rect x={14 * 4} y={15 * 4} width={4} height={12 * 4} fill="#8B4513" />
+      )}
+    </svg>
   );
 }
 
 // ================================================================
-// Inline Editable Field
+// Design Mode System
 // ================================================================
 
+const STORAGE_KEY = "sentiarch_layout_v3";
+const SECTION_KEYS = ["agent", "anxiety", "environment", "experience", "spatial", "outputs", "perceptual", "avatar", "persona"] as const;
+type SectionKey = (typeof SECTION_KEYS)[number];
+
+interface SectionLayout { x: number; y: number; w: number; h: number }
+type LayoutConfig = Record<SectionKey, SectionLayout>;
+
+const EMPTY_LAYOUT: LayoutConfig = SECTION_KEYS.reduce((acc, k) => {
+  acc[k] = { x: 0, y: 0, w: 0, h: 0 };
+  return acc;
+}, {} as LayoutConfig);
+
+function loadLayout(): LayoutConfig {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : { ...EMPTY_LAYOUT };
+  } catch { return { ...EMPTY_LAYOUT }; }
+}
+function saveLayout(cfg: LayoutConfig) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg)); } catch { /* ignore */ }
+}
+
+// ================================================================
+// UI Components
+// ================================================================
+
+function FormulaModal() {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button className="text-[9px] font-bold text-primary hover:underline mt-2 uppercase tracking-widest">
+          View Formula Logic
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl bg-white">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold">Occupant Perception Logic</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 text-sm leading-relaxed overflow-y-auto max-h-[60vh] pr-2">
+          <p><strong>Thermal Comfort (PMV/PPD):</strong> Calculated via ISO 7730 Fanger model using Air Temp, RH, Air Velocity, Metabolic Rate, and Clothing Insulation.</p>
+          <p><strong>Visual Load:</strong> Derived from Lux level vs. Agent sensitivity. High lux (&gt;1000) or low lux (&lt;100) increases visual strain based on age.</p>
+          <p><strong>Acoustic Stress:</strong> Logarithmic dB scale. Noise sensitivity multiplier (from ASI-3) scales the impact of environmental dB on stress.</p>
+          <p><strong>Social Overload:</strong> Function of visible agents and mobility constraints. Higher density increases wayfinding anxiety for impaired agents.</p>
+          <p><strong>Fatigue:</strong> Accumulated over simulation duration. Mobility type (wheelchair/cane) accelerates fatigue gain.</p>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PMVWarnings({ computedOutputs }: { computedOutputs: ComputedOutputs }) {
+  const pmv = computedOutputs.PMV;
+  if (pmv >= -0.5 && pmv <= 0.5) return null;
+  const msg = pmv > 0.5 ? "Warm discomfort detected" : "Cool discomfort detected";
+  return (
+    <div className="mt-2 p-2 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2">
+      <span className="text-destructive font-bold text-[10px]">!</span>
+      <span className="text-destructive font-bold text-[9px] uppercase tracking-wider">{msg}</span>
+    </div>
+  );
+}
+
 function EditableField({
-  value, onChange, type = "text", suffix, options, highlight,
+  value, onChange, type = "text", suffix, options, highlight = false,
 }: {
-  value: string | number; onChange: (val: string) => void;
-  type?: "text" | "number" | "time" | "select"; suffix?: string;
-  options?: { value: string; label: string }[]; highlight?: boolean;
+  value: string | number;
+  onChange: (v: string) => void;
+  type?: "text" | "number" | "select" | "time";
+  suffix?: string;
+  options?: { value: string; label: string }[];
+  highlight?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(value));
-  const ref = useRef<HTMLInputElement | HTMLSelectElement>(null);
-
-  useEffect(() => {
-    if (editing && ref.current) {
-      ref.current.focus();
-      if (ref.current instanceof HTMLInputElement) ref.current.select();
-    }
-  }, [editing]);
 
   const commit = () => {
+    onChange(draft);
     setEditing(false);
-    if (draft !== String(value)) onChange(draft);
   };
 
   if (editing) {
     if (type === "select" && options) {
       return (
-        <select ref={ref as React.RefObject<HTMLSelectElement>} value={draft}
-          onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); setEditing(false); }}
-          onBlur={() => setEditing(false)} className="sa-input" style={{ minWidth: 80, fontSize: "12px" }}>
+        <select autoFocus value={draft} onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); setEditing(false); }}
+          className="sa-input text-xs" style={{ padding: "2px 4px" }}>
           {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       );
     }
     return (
-      <input ref={ref as React.RefObject<HTMLInputElement>}
-        type={type === "time" ? "time" : type === "number" ? "number" : "text"}
+      <input autoFocus type={type === "time" ? "time" : type}
         value={draft} onChange={(e) => setDraft(e.target.value)}
         onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
         step={type === "number" ? "any" : undefined} className="sa-input text-right"
@@ -630,44 +360,44 @@ function DataRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Read-only color bar for environment values — similar to SliderField but non-interactive */
-function EnvReadOnlyBar({
-  label, value, min, max, suffix, color,
+/** Environment adjustable bar — manual adjustment unlocked in Phase 3 */
+function EnvAdjustableBar({
+  label, value, min, max, step = 1, suffix, color, onChange,
 }: {
-  label: string; value: number; min: number; max: number; suffix?: string; color: string;
+  label: string; value: number; min: number; max: number; step?: number; suffix?: string; color: string; onChange: (v: number) => void;
 }) {
   const pct = max > min ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100)) : 0;
-  const decimals = value % 1 !== 0 ? (value < 1 ? 2 : 1) : 0;
   return (
-    <div className="py-1.5">
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>{label}</span>
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: "12px", color: "var(--foreground)" }}>
-          {value.toFixed(decimals)}
-          {suffix && <span style={{ color: "var(--muted-foreground)", fontWeight: 400, marginLeft: 2 }}>{suffix}</span>}
-        </span>
+    <div className="py-1.5 group">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{label}</span>
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            value={value}
+            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+            className="w-12 bg-transparent text-right text-[11px] font-black tabular-nums border-none p-0 focus:ring-0"
+            style={{ color }}
+          />
+          {suffix && <span className="text-[10px] font-bold text-muted-foreground">{suffix}</span>}
+        </div>
       </div>
-      <div style={{ position: "relative", height: 6, borderRadius: 4, background: "var(--muted)" }}>
-        <div style={{
-          position: "absolute", top: 0, left: 0, height: "100%",
-          width: `${pct}%`,
-          background: `linear-gradient(90deg, ${color}90, ${color})`,
-          borderRadius: 4,
-          transition: "width 0.4s ease",
-        }} />
-      </div>
-      <div className="flex justify-between mt-1">
-        <span style={{ fontSize: "9px", color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>{min}</span>
-        <span style={{ fontSize: "9px", color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace" }}>{max}</span>
+      <div className="relative h-2 w-full bg-muted/30 rounded-full overflow-hidden border border-border/50 cursor-pointer">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+        />
+        <div className="h-full transition-all duration-200" style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
   );
 }
 
-/**
- * Read-only badge showing one of the three ASI-3 bands. Colour-codes
- * normal / moderate / severe to match the psych-assessment convention.
- */
 function AsiLevelBadge({ level }: { level: AnxietyLevel }) {
   const map: Record<AnxietyLevel, { bg: string; fg: string; label: string }> = {
     normal:   { bg: "#2E8B6A", fg: "#FFFFFF", label: "NORMAL" },
@@ -684,10 +414,6 @@ function AsiLevelBadge({ level }: { level: AnxietyLevel }) {
   );
 }
 
-/**
- * Read-only modifier row. Values come straight from the canonical table keyed
- * by level and are never editable from the UI.
- */
 function ModifierRow({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between py-1 px-1"
@@ -756,275 +482,7 @@ function Panel({ children, className = "", style = {} }: { children: ReactNode; 
 }
 
 // ================================================================
-// SVG Connection Lines
-// ================================================================
-
-function ConnectionLines({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
-  const [lines, setLines] = useState<{ x1: number; y1: number; x2: number; y2: number }[]>([]);
-  useEffect(() => {
-    const calc = () => {
-      const el = containerRef.current;
-      if (!el) return;
-      const persona = el.querySelector("[data-node='persona']");
-      if (!persona) return;
-      const nodes = el.querySelectorAll("[data-node]:not([data-node='persona'])");
-      const rect = el.getBoundingClientRect();
-      const pRect = persona.getBoundingClientRect();
-      const cx = pRect.left + pRect.width / 2 - rect.left;
-      const cy = pRect.top + pRect.height / 2 - rect.top;
-      const newLines: typeof lines = [];
-      nodes.forEach((node) => {
-        const nRect = node.getBoundingClientRect();
-        const nx = nRect.left + nRect.width / 2 - rect.left;
-        const ny = nRect.top + nRect.height / 2 - rect.top;
-        newLines.push({ x1: cx, y1: cy, x2: nx, y2: ny });
-      });
-      setLines(newLines);
-    };
-    calc();
-    window.addEventListener("resize", calc);
-    const t = setTimeout(calc, 300);
-    return () => { window.removeEventListener("resize", calc); clearTimeout(t); };
-  }, [containerRef]);
-  return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }}>
-      <defs>
-        <marker id="dot" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="4" markerHeight="4">
-          <circle cx="3" cy="3" r="3" fill="var(--primary)" opacity="0.4" />
-        </marker>
-      </defs>
-      {lines.map((l, i) => (
-        <line key={i} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
-          stroke="var(--primary)" strokeWidth="1" strokeDasharray="6 4" opacity="0.25" markerEnd="url(#dot)" />
-      ))}
-    </svg>
-  );
-}
-
-// ================================================================
-// Design Intervention Arrow Mock-up
-// ================================================================
-
-function InterventionArrow() {
-  return (
-    <div className="mt-3 pt-3" style={{ borderTop: "1px dashed var(--border)" }}>
-      <div className="text-xs font-semibold tracking-wider mb-2" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-        DESIGN INTERVENTION
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="flex-1 p-2 text-center rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)" }}>
-          <div className="text-xs font-medium" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>BEFORE</div>
-          <div className="text-lg font-bold" style={{ color: "#C44040", fontFamily: "'JetBrains Mono', monospace" }}>4</div>
-          <div className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>Comfort</div>
-        </div>
-        <div className="flex flex-col items-center gap-1 px-1">
-          <span className="font-semibold px-1.5 py-0.5 rounded" style={{ background: "var(--primary)", color: "var(--primary-foreground)", fontSize: "8px", letterSpacing: "0.5px" }}>+WINDOW</span>
-          <svg width="30" height="10" viewBox="0 0 30 10">
-            <defs><marker id="ah2" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-              <polygon points="0 0, 6 2.5, 0 5" fill="var(--primary)" />
-            </marker></defs>
-            <line x1="2" y1="5" x2="24" y2="5" stroke="var(--primary)" strokeWidth="1.5" markerEnd="url(#ah2)" />
-          </svg>
-          <span className="font-semibold px-1.5 py-0.5 rounded" style={{ background: "var(--primary)", color: "var(--primary-foreground)", fontSize: "8px", letterSpacing: "0.5px" }}>+LIGHT</span>
-        </div>
-        <div className="flex-1 p-2 text-center rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)" }}>
-          <div className="text-xs font-medium" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>AFTER</div>
-          <div className="text-lg font-bold" style={{ color: "#2E8B6A", fontFamily: "'JetBrains Mono', monospace" }}>7</div>
-          <div className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>Comfort</div>
-        </div>
-      </div>
-      <div className="text-xs mt-1.5 text-center" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-        Mock-up: Intervention Feedback Loop
-      </div>
-    </div>
-  );
-}
-
-// ================================================================
-// Show Formula Modal
-// ================================================================
-
-function FormulaModal() {
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <button className="sa-btn w-full mt-2" style={{ fontSize: "11px", padding: "8px 12px", background: "var(--primary)", color: "var(--primary-foreground)", border: "none" }}>
-          Show Formulas
-        </button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)", maxHeight: "80vh", overflowY: "auto" }}>
-        <DialogHeader>
-          <DialogTitle style={{ fontFamily: "'Inter', sans-serif", color: "var(--foreground)" }}>Computation Formulas</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-5 mt-2">
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "var(--primary)" }}>PMV — Predicted Mean Vote (ISO 7730 Fanger)</h4>
-            <div className="p-3 rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8 }}>
-              <div>PMV = f(M, W, I<sub>cl</sub>, f<sub>cl</sub>, t<sub>a</sub>, t<sub>r</sub>, v<sub>ar</sub>, p<sub>a</sub>)</div>
-              <div className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>PMV = [0.303 × exp(-0.036 × M) + 0.028] × L</div>
-              <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>where L = internal heat production - heat loss</div>
-              <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
-                M = metabolic rate (W/m²) &nbsp;|&nbsp; W = external work (≈0)<br />
-                I<sub>cl</sub> = clothing insulation (clo) &nbsp;|&nbsp; f<sub>cl</sub> = clothing area factor<br />
-                t<sub>a</sub> = air temperature (°C) &nbsp;|&nbsp; t<sub>r</sub> = mean radiant temp (°C)<br />
-                v<sub>ar</sub> = relative air velocity (m/s) &nbsp;|&nbsp; p<sub>a</sub> = water vapour pressure (Pa)
-              </div>
-            </div>
-          </div>
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "var(--primary)" }}>PPD — Predicted Percentage Dissatisfied</h4>
-            <div className="p-3 rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8 }}>
-              <div>PPD = 100 - 95 × exp(-0.03353 × PMV⁴ - 0.2179 × PMV²)</div>
-              <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>Range: 5% (PMV=0, neutral) → 100% (extreme discomfort)</div>
-            </div>
-          </div>
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "#D4A017" }}>Enclosure Ratio — Ray Casting Method</h4>
-            <div className="p-3 rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8 }}>
-              <div>Enclosure = 1 - (open_rays / total_rays)</div>
-              <div className="mt-2" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>16 rays cast from agent position at 22.5° intervals<br />Each ray checks intersection with walls and room boundaries<br />Max ray distance: 10,000mm (10m)</div>
-            </div>
-          </div>
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "#D4A017" }}>Effective Lux — Vision-Adjusted Illuminance</h4>
-            <div className="p-3 rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8 }}>
-              <div>Eff.Lux = base_lux + Σ(window_influence × distance_decay)</div>
-              <div className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Window influence: max +400 lux, quadratic decay over 5000mm</div>
-              <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Vision adjustment: normal ×1.0 | mild ×0.5 | severe ×0.15</div>
-            </div>
-          </div>
-          <div>
-            <h4 className="text-sm font-bold mb-2" style={{ color: "#C44040" }}>Perceived dB — Hearing-Adjusted Noise</h4>
-            <div className="p-3 rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)", fontFamily: "'JetBrains Mono', monospace", fontSize: "12px", lineHeight: 1.8 }}>
-              <div>Pr.dB = base_dB × hearing_factor</div>
-              <div className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Hearing factor: normal ×1.0 | impaired ×0.6 | deaf ×0.1</div>
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ================================================================
-// PMV Warnings
-// ================================================================
-
-function PMVWarnings({ computedOutputs }: { computedOutputs: ComputedOutputs }) {
-  const warnings = computedOutputs.pmv_warnings || [];
-  if (warnings.length === 0) return null;
-  return (
-    <div className="mt-2 px-2 py-2 rounded-lg" style={{ background: "#FFF8E1", border: "1px solid #E8D48A", fontSize: "10px" }}>
-      <div className="font-semibold mb-0.5" style={{ color: "#8A6D00", letterSpacing: "0.5px" }}>PMV Notes</div>
-      {warnings.map((w, i) => <div key={i} style={{ color: "#6B5500", lineHeight: 1.5 }}>{w}</div>)}
-    </div>
-  );
-}
-
-// ================================================================
-// Design Mode — Layout Config Types & Persistence
-// ================================================================
-
-const SECTION_KEYS = ["agent", "anxiety", "position", "environment", "avatar", "persona", "experience", "spatial", "outputs", "perceptual"] as const;
-type SectionKey = typeof SECTION_KEYS[number];
-
-interface SectionLayout {
-  x: number; // percentage offset from natural position
-  y: number;
-  w: number; // percentage width (0 = use natural)
-  h: number; // percentage height (0 = use natural)
-}
-
-type LayoutConfig = Record<SectionKey, SectionLayout>;
-
-const EMPTY_LAYOUT: LayoutConfig = {
-  "agent": {
-    "x": -1,
-    "y": 12,
-    "w": 0,
-    "h": 0
-  },
-  "anxiety": {
-    "x": 0,
-    "y": 0,
-    "w": 0,
-    "h": 0
-  },
-  "position": {
-    "x": 0,
-    "y": 12,
-    "w": 0,
-    "h": 0
-  },
-  "environment": {
-    "x": 0,
-    "y": 12,
-    "w": 0,
-    "h": 0
-  },
-  "avatar": {
-    "x": 0,
-    "y": 1,
-    "w": 0,
-    "h": 0
-  },
-  "persona": {
-    "x": 0,
-    "y": -4,
-    "w": 0,
-    "h": 0
-  },
-  "experience": {
-    "x": -1,
-    "y": -22,
-    "w": 0,
-    "h": 0
-  },
-  "spatial": {
-    "x": 0,
-    "y": -22,
-    "w": 0,
-    "h": 0
-  },
-  "outputs": {
-    "x": 0,
-    "y": -22,
-    "w": 0,
-    "h": 0
-  },
-  "perceptual": {
-    "x": 0,
-    "y": -33,
-    "w": 0,
-    "h": 0
-  }
-};
-
-const STORAGE_KEY = "sentiarch-design-layout";
-
-function loadLayout(): LayoutConfig {
-  try {
-    const s = localStorage.getItem(STORAGE_KEY);
-    if (!s) return { ...EMPTY_LAYOUT };
-    const parsed = JSON.parse(s);
-    // Validate all keys exist
-    for (const k of SECTION_KEYS) {
-      if (!parsed[k] || typeof parsed[k].x !== "number") return { ...EMPTY_LAYOUT };
-    }
-    return parsed;
-  } catch {
-    return { ...EMPTY_LAYOUT };
-  }
-}
-
-function saveLayout(config: LayoutConfig) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-  } catch { /* ignore */ }
-}
-
-// ================================================================
-// Draggable/Resizable Section Wrapper
+// Design Section (Drag & Resize)
 // ================================================================
 
 function DesignSection({
@@ -1033,34 +491,25 @@ function DesignSection({
   sectionKey: SectionKey;
   designMode: boolean;
   layout: LayoutConfig;
-  onLayoutChange: (key: SectionKey, partial: Partial<SectionLayout>) => void;
+  onLayoutChange: (k: SectionKey, p: Partial<SectionLayout>) => void;
   children: ReactNode;
   className?: string;
   style?: React.CSSProperties;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
+  const sl = layout[sectionKey] || { x: 0, y: 0, w: 0, h: 0 };
   const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; origW: number; origH: number } | null>(null);
 
-  const sl = layout[sectionKey];
-
-  // Drag handlers
-  const onDragStart = useCallback((e: React.MouseEvent) => {
+  const onDragStart = (e: React.MouseEvent) => {
     if (!designMode) return;
-    // Don't drag if clicking on interactive elements
-    const target = e.target as HTMLElement;
-    if (target.closest("input, select, button, textarea, .sa-input, .sa-btn, [role='dialog']")) return;
     e.preventDefault();
-    e.stopPropagation();
     dragState.current = { startX: e.clientX, startY: e.clientY, origX: sl.x, origY: sl.y };
-
-    const onMove = (ev: MouseEvent) => {
+    const onMove = (me: MouseEvent) => {
       if (!dragState.current) return;
-      const dx = ev.clientX - dragState.current.startX;
-      const dy = ev.clientY - dragState.current.startY;
       onLayoutChange(sectionKey, {
-        x: dragState.current.origX + dx,
-        y: dragState.current.origY + dy,
+        x: dragState.current.origX + (me.clientX - dragState.current.startX),
+        y: dragState.current.origY + (me.clientY - dragState.current.startY),
       });
     };
     const onUp = () => {
@@ -1070,25 +519,20 @@ function DesignSection({
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [designMode, sl.x, sl.y, sectionKey, onLayoutChange]);
+  };
 
-  // Resize handlers
-  const onResizeStart = useCallback((e: React.MouseEvent) => {
+  const onResizeStart = (e: React.MouseEvent) => {
     if (!designMode) return;
-    e.preventDefault();
     e.stopPropagation();
-    const el = elRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    resizeState.current = { startX: e.clientX, startY: e.clientY, origW: rect.width, origH: rect.height };
-
-    const onMove = (ev: MouseEvent) => {
+    e.preventDefault();
+    const w = elRef.current?.offsetWidth || 0;
+    const h = elRef.current?.offsetHeight || 0;
+    resizeState.current = { startX: e.clientX, startY: e.clientY, origW: w, origH: h };
+    const onMove = (me: MouseEvent) => {
       if (!resizeState.current) return;
-      const dw = ev.clientX - resizeState.current.startX;
-      const dh = ev.clientY - resizeState.current.startY;
       onLayoutChange(sectionKey, {
-        w: Math.max(100, resizeState.current.origW + dw),
-        h: Math.max(50, resizeState.current.origH + dh),
+        w: resizeState.current.origW + (me.clientX - resizeState.current.startX),
+        h: resizeState.current.origH + (me.clientY - resizeState.current.startY),
       });
     };
     const onUp = () => {
@@ -1098,7 +542,7 @@ function DesignSection({
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [designMode, sectionKey, onLayoutChange]);
+  };
 
   const transform = sl.x !== 0 || sl.y !== 0 ? `translate(${sl.x}px, ${sl.y}px)` : undefined;
   const customWidth = sl.w > 0 ? sl.w : undefined;
@@ -1124,7 +568,6 @@ function DesignSection({
         zIndex: designMode ? 10 : undefined,
       }}
     >
-      {/* Section label in design mode */}
       {designMode && (
         <div style={{
           position: "absolute", top: -10, left: 4, background: "var(--primary)",
@@ -1136,7 +579,6 @@ function DesignSection({
         </div>
       )}
       {children}
-      {/* Resize handle */}
       {designMode && (
         <div
           onMouseDown={onResizeStart}
@@ -1175,7 +617,6 @@ function DesignToolbar({
       setCopyFeedback(true);
       setTimeout(() => setCopyFeedback(false), 2000);
     }).catch(() => {
-      // Fallback: prompt
       prompt("Copy this layout JSON:", json);
     });
   };
@@ -1183,13 +624,6 @@ function DesignToolbar({
   const handleImport = () => {
     try {
       const parsed = JSON.parse(importText);
-      // Validate
-      for (const k of SECTION_KEYS) {
-        if (!parsed[k] || typeof parsed[k].x !== "number") {
-          alert("Invalid layout JSON: missing or malformed section '" + k + "'");
-          return;
-        }
-      }
       onImport(parsed);
       setShowImport(false);
       setImportText("");
@@ -1206,7 +640,6 @@ function DesignToolbar({
 
   return (
     <div className="flex items-center gap-2 flex-wrap mb-3">
-      {/* Toggle */}
       <button
         onClick={() => setDesignMode(!designMode)}
         style={{
@@ -1221,29 +654,18 @@ function DesignToolbar({
 
       {designMode && (
         <>
-          {/* Export */}
           <button onClick={handleExport} style={{ ...btnBase, background: "var(--card)", color: "var(--foreground)" }}>
             {copyFeedback ? "✓ Copied!" : "↗ Export Layout"}
           </button>
-
-          {/* Import */}
           <button onClick={() => setShowImport(!showImport)} style={{ ...btnBase, background: "var(--card)", color: "var(--foreground)" }}>
             ↙ Import Layout
           </button>
-
-          {/* Reset */}
           <button onClick={onReset} style={{ ...btnBase, background: "#C4404015", color: "#C44040", border: "1.5px solid #C4404040" }}>
             ↺ Reset
           </button>
-
-          {/* Grid toggle hint */}
-          <span style={{ fontSize: "9px", color: "var(--muted-foreground)", fontStyle: "italic" }}>
-            Drag sections to move · Corner handle to resize
-          </span>
         </>
       )}
 
-      {/* Import panel */}
       {showImport && (
         <div className="w-full mt-2 p-3 rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
           <div className="text-xs font-semibold mb-2" style={{ color: "var(--foreground)" }}>Paste Layout JSON:</div>
@@ -1260,12 +682,8 @@ function DesignToolbar({
             placeholder='{"agent":{"x":0,"y":0,"w":0,"h":0},...}'
           />
           <div className="flex gap-2 mt-2">
-            <button onClick={handleImport} style={{ ...btnBase, background: "var(--primary)", color: "var(--primary-foreground)", border: "none" }}>
-              Apply
-            </button>
-            <button onClick={() => { setShowImport(false); setImportText(""); }} style={{ ...btnBase, background: "var(--card)", color: "var(--foreground)" }}>
-              Cancel
-            </button>
+            <button onClick={handleImport} style={{ ...btnBase, background: "var(--primary)", color: "var(--primary-foreground)", border: "none" }}>Apply</button>
+            <button onClick={() => { setShowImport(false); setImportText(""); }} style={{ ...btnBase, background: "var(--card)", color: "var(--foreground)" }}>Cancel</button>
           </div>
         </div>
       )}
@@ -1279,7 +697,7 @@ function DesignToolbar({
 
 export default function PersonaMindMap({
   persona, experience, accumulatedState, computedOutputs, ruleTriggers,
-  prevExperience, prevAccumulatedState, onPersonaChange,
+  prevExperience, onPersonaChange,
   hasSimulated = true, personaColor, agentPlaced = false,
 }: {
   persona: PersonaData;
@@ -1288,29 +706,20 @@ export default function PersonaMindMap({
   computedOutputs: ComputedOutputs;
   ruleTriggers: string[];
   prevExperience: ExperienceData | null;
-  prevAccumulatedState: AccumulatedState | null;
   onPersonaChange: (p: PersonaData) => void;
   hasSimulated?: boolean;
   personaColor?: { primary: string; secondary: string; bg: string; label: string };
   agentPlaced?: boolean;
 }) {
-  const { agent, position, environment, spatial } = persona;
+  const { agent, environment, spatial } = persona;
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Design Mode state
   const [designMode, setDesignMode] = useState(false);
   const [layout, setLayout] = useState<LayoutConfig>(() => loadLayout());
 
-  // Persist layout changes
-  useEffect(() => {
-    saveLayout(layout);
-  }, [layout]);
+  useEffect(() => { saveLayout(layout); }, [layout]);
 
   const handleLayoutChange = useCallback((key: SectionKey, partial: Partial<SectionLayout>) => {
-    setLayout((prev) => ({
-      ...prev,
-      [key]: { ...prev[key], ...partial },
-    }));
+    setLayout((prev) => ({ ...prev, [key]: { ...prev[key], ...partial } }));
   }, []);
 
   const handleReset = useCallback(() => {
@@ -1318,28 +727,16 @@ export default function PersonaMindMap({
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   }, []);
 
-  const handleImport = useCallback((config: LayoutConfig) => {
-    setLayout(config);
-  }, []);
+  const handleImport = useCallback((config: LayoutConfig) => { setLayout(config); }, []);
 
   const updateAgent = useCallback((key: string, val: string) => {
     const parsed = ["age", "metabolic_rate", "clothing_insulation"].includes(key) ? parseFloat(val) || 0 : val;
     onPersonaChange({ ...persona, agent: { ...persona.agent, [key]: parsed } });
   }, [persona, onPersonaChange]);
 
-  /**
-   * Update the agent's ASI-3 raw score. Level and modifiers are *always*
-   * re-derived from the score via `buildAnxietyData` — the UI must never let
-   * the user edit them directly.
-   */
   const updateAsiScore = useCallback((nextScore: number) => {
     const anxiety = buildAnxietyData(nextScore);
     onPersonaChange({ ...persona, agent: { ...persona.agent, anxiety } });
-  }, [persona, onPersonaChange]);
-
-  const updatePosition = useCallback((key: string, val: string) => {
-    const parsed = ["duration_in_cell"].includes(key) ? parseInt(val) || 0 : val;
-    onPersonaChange({ ...persona, position: { ...persona.position, [key]: parsed } });
   }, [persona, onPersonaChange]);
 
   const updateEnv = useCallback((key: string, val: string) => {
@@ -1350,31 +747,9 @@ export default function PersonaMindMap({
     onPersonaChange({ ...persona, spatial: { ...persona.spatial, [key]: parseFloat(val) || 0 } });
   }, [persona, onPersonaChange]);
 
-  const comfortDelta = hasSimulated && prevExperience && prevExperience.comfort_score > 0
-    ? experience.comfort_score - prevExperience.comfort_score : null;
-
-  const mbtiOptions = [
-    "ISTJ","ISFJ","INFJ","INTJ","ISTP","ISFP","INFP","INTP",
-    "ESTP","ESFP","ENFP","ENTP","ESTJ","ESFJ","ENFJ","ENTJ",
-  ].map((m) => ({ value: m, label: m }));
-
-  const getComfortColor = (score: number) => {
-    if (score === 0) return { bg: "var(--muted)", text: "var(--muted-foreground)" };
-    if (score <= 3) return { bg: "#C44040", text: "#FFFFFF" };
-    if (score <= 5) return { bg: "#D4A017", text: "#FFFFFF" };
-    if (score <= 7) return { bg: "#2A8F7E", text: "#FFFFFF" };
-    return { bg: "#1D6B5E", text: "#FFFFFF" };
-  };
-
-  const getTrendInfo = (trend: string) => {
-    if (trend === "declining") return { icon: "▼", label: "Declining", color: "#C44040" };
-    if (trend === "rising") return { icon: "▲", label: "Improving", color: "#1D6B5E" };
-    return { icon: "—", label: "Stable", color: "var(--muted-foreground)" };
-  };
-
+  const mbtiOptions = ["ISTJ","ISFJ","INFJ","INTJ","ISTP","ISFP","INFP","INTP","ESTP","ESFP","ENFP","ENTP","ESTJ","ESFJ","ENFJ","ENTJ"].map((m) => ({ value: m, label: m }));
   const accentColor = personaColor?.primary || "var(--primary)";
 
-  // Wrapper shorthand
   const DS = useCallback(({ k, children, className = "", style = {} }: {
     k: SectionKey; children: ReactNode; className?: string; style?: React.CSSProperties;
   }) => (
@@ -1385,357 +760,170 @@ export default function PersonaMindMap({
   ), [designMode, layout, handleLayoutChange]);
 
   return (
-    <div ref={containerRef} className="relative w-full">
-      {/* Design Mode Toolbar */}
-      <DesignToolbar
-        designMode={designMode}
-        setDesignMode={setDesignMode}
-        layout={layout}
-        onReset={handleReset}
-        onImport={handleImport}
-      />
+    <div ref={containerRef} className="relative w-full space-y-6">
+      <DesignToolbar designMode={designMode} setDesignMode={setDesignMode} layout={layout} onReset={handleReset} onImport={handleImport} />
 
+      <div className="flex items-center gap-6 p-6 rounded-2xl bg-white border border-border shadow-sm">
+        <div className="w-24 h-24 rounded-xl bg-muted/30 flex items-center justify-center border border-border overflow-hidden">
+          <PixelAvatar persona={persona} color={accentColor} size={80} />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-1">
+            <h2 className="text-2xl font-bold text-foreground tracking-tight">{agent.id}</h2>
+            <span className="px-2 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider border border-primary/20">{agent.mbti}</span>
+          </div>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground font-medium">
+            <span>{agent.age}Y · {agent.gender === "female" ? "Female" : "Male"}</span>
+            <span className="w-1 h-1 rounded-full bg-border" />
+            <span>{agent.mobility}</span>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Comfort Level</div>
+          <div className="flex items-center gap-2 justify-end">
+            <span className="text-3xl font-black tabular-nums">{hasSimulated ? experience.comfort_score : "--"}</span>
+            <span className="text-sm font-bold text-muted-foreground">/10</span>
+          </div>
+        </div>
+      </div>
 
-
-      {/* SVG Connection Lines removed for cleaner layout */}
-
-      {/* 12-COLUMN TAILWIND GRID */}
-      <div className="relative grid grid-cols-12 gap-3 md:gap-4" style={{ zIndex: 1 }}>
-
-        {/* ── ROW 1: AGENT (col-span-5) ── */}
-        <DS k="agent" className="col-span-12 md:col-span-4">
-          <div data-node="agent">
-            <SectionTag label="AGENT" icon="◆" color={accentColor} />
-            <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
-              <DataRow label="ID">
-                <EditableField value={agent.id} onChange={(v) => updateAgent("id", v)} type="text" />
-              </DataRow>
-              <DataRow label="Age">
-                <EditableField value={agent.age} onChange={(v) => updateAgent("age", v)} type="number" />
-              </DataRow>
-              <DataRow label="Gender">
-                <EditableField value={agent.gender} onChange={(v) => updateAgent("gender", v)} type="select"
-                  options={[{ value: "female", label: "Female" }, { value: "male", label: "Male" }]} />
-              </DataRow>
-              <DataRow label="MBTI">
-                <EditableField value={agent.mbti} onChange={(v) => updateAgent("mbti", v)} type="select" options={mbtiOptions} />
-              </DataRow>
-              <DataRow label="Mobility">
-                <EditableField value={agent.mobility} onChange={(v) => updateAgent("mobility", v)} type="select"
-                  options={[
-                    { value: "normal", label: "Normal" }, { value: "walker", label: "Walker" },
-                    { value: "wheelchair", label: "Wheelchair" }, { value: "cane", label: "Cane" },
-                  ]} />
-              </DataRow>
-              <DataRow label="Hearing">
-                <EditableField value={agent.hearing} onChange={(v) => updateAgent("hearing", v)} type="select"
-                  options={[
-                    { value: "normal", label: "Normal" }, { value: "impaired", label: "Impaired" },
-                    { value: "deaf", label: "Deaf" },
-                  ]} />
-              </DataRow>
-              <DataRow label="Vision">
-                <EditableField value={agent.vision} onChange={(v) => updateAgent("vision", v)} type="select"
-                  options={[
-                    { value: "normal", label: "Normal" },
-                    { value: "mild_impairment", label: "Mild Impairment" },
-                    { value: "severe_impairment", label: "Severe Impairment" },
-                  ]} />
-              </DataRow>
-              <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
-                <SliderField label="Met" value={agent.metabolic_rate} min={0.8} max={4} step={0.05}
-                  onChange={(v) => updateAgent("metabolic_rate", String(v))} color={accentColor} />
-                <SliderField label="Clo" value={agent.clothing_insulation} min={0} max={2} step={0.05}
-                  onChange={(v) => updateAgent("clothing_insulation", String(v))} color={accentColor} />
+      <div className="relative grid grid-cols-12 gap-6" style={{ zIndex: 1 }}>
+        <div className="col-span-12 lg:col-span-7 space-y-6">
+          <DS k="agent">
+            <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-muted/30 border-b border-border flex items-center justify-between">
+                <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Agent Parameters</span>
+                <span className="text-primary opacity-40">◆</span>
               </div>
-            </Panel>
-          </div>
-        </DS>
-
-        {/* ── ROW 1: ANXIETY (col-span-3) ──
-             ASI-3 score is the only editable field. asi_level and modifiers
-             are auto-derived on every change by buildAnxietyData(). */}
-        <DS k="anxiety" className="col-span-12 md:col-span-3">
-          <div data-node="anxiety">
-            <SectionTag label="ANXIETY (ASI-3)" icon="▤" color="#C44040" />
-            <Panel style={{ borderTop: `3px solid #C44040` }}>
-              {(() => {
-                const anx = agent.anxiety ?? defaultAnxiety;
-                return (
-                  <>
-                    <SliderField
-                      label="ASI Score"
-                      value={anx.asi_score}
-                      min={0}
-                      max={72}
-                      step={1}
-                      suffix="/72"
-                      onChange={(v) => updateAsiScore(v)}
-                      color="#C44040"
-                    />
-                    <div className="flex items-center justify-between mt-2 mb-2 px-1">
-                      <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)", letterSpacing: "0.3px" }}>
-                        Level
-                      </span>
-                      <AsiLevelBadge level={anx.asi_level} />
-                    </div>
-                    <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
-                      <div className="text-xs font-semibold mb-1.5" style={{
-                        color: "var(--muted-foreground)", fontSize: "9px",
-                        letterSpacing: "1px", textTransform: "uppercase",
-                      }}>
-                        Modifiers (read-only)
-                      </div>
-                      <ModifierRow label="Noise sens." value={anx.modifiers.noise_sensitivity} />
-                      <ModifierRow label="Thermal range" value={anx.modifiers.thermal_comfort_range} />
-                      <ModifierRow label="Exit proximity" value={anx.modifiers.exit_proximity_need} />
-                      <ModifierRow label="Social thresh." value={anx.modifiers.social_threshold} />
-                      <ModifierRow label="Fatigue accum." value={anx.modifiers.fatigue_accumulation} />
-                    </div>
-                    <div className="mt-2 text-xs" style={{
-                      color: "var(--muted-foreground)", fontSize: "9px", lineHeight: 1.4,
-                    }}>
-                      0–16 normal · 17–23 moderate · 24–72 severe
-                    </div>
-                  </>
-                );
-              })()}
-            </Panel>
-          </div>
-        </DS>
-
-        {/* ── ROW 1: POSITION (col-span-2) ── */}
-        <DS k="position" className="col-span-12 md:col-span-2">
-          <div data-node="position">
-            <SectionTag label="POSITION" icon="◇" color="#D4A017" />
-            <Panel>
-              <StaticRow label="Cell" value={`[${position.cell[0]}, ${position.cell[1]}]`} />
-              <DataRow label="Time">
-                <EditableField value={position.timestamp} onChange={(v) => updatePosition("timestamp", v)} type="time" />
-              </DataRow>
-              <DataRow label="Dur.">
-                <EditableField value={position.duration_in_cell} onChange={(v) => updatePosition("duration_in_cell", v)} suffix="min" />
-              </DataRow>
-            </Panel>
-          </div>
-        </DS>
-
-        {/* ── ROW 1: ENVIRONMENT (col-span-3) ── */}
-        <DS k="environment" className="col-span-12 md:col-span-3">
-          <div data-node="environment">
-            <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
-            <Panel>
-              {!agentPlaced && (
-                <div className="text-xs text-center py-2 px-2 rounded-lg mb-2" style={{
-                  background: "#FFF8E1", border: "1px solid #E8D48A", color: "#8A6D00",
-                }}>
-                  Agent not placed — default values
-                </div>
-              )}
-              <EnvReadOnlyBar label="Lux" value={environment.lux} min={0} max={2000} color="#D4A017" />
-              <EnvReadOnlyBar label="Noise" value={environment.dB} min={0} max={120} suffix="dB" color="#C44040" />
-              <EnvReadOnlyBar label="Temp" value={environment.air_temp} min={10} max={35} suffix="°C" color="#1D6B5E" />
-              <EnvReadOnlyBar label="RH" value={environment.humidity} min={0} max={100} suffix="%" color="#4A90B8" />
-              <EnvReadOnlyBar label="Air V." value={environment.air_velocity} min={0} max={2} suffix="m/s" color="#2E8B6A" />
-            </Panel>
-          </div>
-        </DS>
-
-        {/* ── ROW 2: AVATAR (independent, centered) — HIDDEN ── */}
-        <DS k="avatar" className="col-span-12 flex justify-center my-2 md:my-4 hidden">
-          <div data-node="avatar">
-            <Panel className="flex items-center justify-center" style={{
-              minHeight: 240, minWidth: 220,
-              background: `linear-gradient(135deg, ${accentColor}10, ${accentColor}05)`,
-              border: `2px solid ${accentColor}25`,
-            }}>
-              <PixelAvatar persona={persona} color={accentColor} size={180} />
-            </Panel>
-          </div>
-        </DS>
-
-        {/* ── ROW 3: PERSONA Info Card (centered, col-span-12) ── */}
-        <DS k="persona" className="col-span-12 flex justify-center mb-2 md:mb-4">
-          <div data-node="persona" className="flex items-center gap-6 px-8 py-4 rounded-2xl"
-            style={{
-              background: `linear-gradient(135deg, ${accentColor}18, ${accentColor}08)`,
-              border: `2px solid ${accentColor}40`,
-              boxShadow: `0 4px 20px ${accentColor}15`,
-            }}>
-            <div className="text-center">
-              <div className="text-lg font-bold" style={{ color: "var(--foreground)" }}>{agent.id}</div>
-              <div className="text-sm mt-1" style={{
-                color: "var(--muted-foreground)", fontFamily: "'JetBrains Mono', monospace",
-              }}>
-                {agent.age}{agent.gender === "female" ? "F" : "M"} · {agent.mobility} · {agent.mbti}
-              </div>
-              <div className="flex items-center justify-center gap-2 mt-3">
-                {hasSimulated ? (
-                  <span className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{
-                    background: getComfortColor(experience.comfort_score).bg,
-                    color: getComfortColor(experience.comfort_score).text,
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}>
-                    {experience.comfort_score}/10
-                  </span>
-                ) : (
-                  <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>Not simulated</span>
-                )}
-                <span className="text-xs px-2 py-1.5 rounded-lg" style={{
-                  background: "var(--muted)", border: "1px solid var(--border)",
-                  color: getTrendInfo(experience.trend).color, fontSize: "10px",
-                }}>
-                  {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
-                </span>
-              </div>
-              <div className="flex items-center justify-center gap-2 mt-3">
-                {[
-                  { label: "Met", value: agent.metabolic_rate.toFixed(1) },
-                  { label: "Clo", value: agent.clothing_insulation.toFixed(1) },
-                  { label: "Vision", value: agent.vision === "normal" ? "OK" : agent.vision === "mild_impairment" ? "Mild" : "Severe" },
-                ].map((item) => (
-                  <div key={item.label} className="px-3 py-1.5 text-center rounded-lg" style={{
-                    background: "var(--muted)", border: "1px solid var(--border)",
-                  }}>
-                    <div style={{ color: "var(--muted-foreground)", fontWeight: 600, fontSize: "9px" }}>{item.label}</div>
-                    <div style={{ color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: "12px" }}>{item.value}</div>
-                  </div>
-                ))}
+              <div className="p-5 grid grid-cols-2 gap-x-8 gap-y-1">
+                <DataRow label="ID"><EditableField value={agent.id} onChange={(v) => updateAgent("id", v)} type="text" /></DataRow>
+                <DataRow label="Age"><EditableField value={agent.age} onChange={(v) => updateAgent("age", v)} type="number" /></DataRow>
+                <DataRow label="Gender"><EditableField value={agent.gender} onChange={(v) => updateAgent("gender", v)} type="select" options={[{ value: "female", label: "Female" }, { value: "male", label: "Male" }]} /></DataRow>
+                <DataRow label="MBTI"><EditableField value={agent.mbti} onChange={(v) => updateAgent("mbti", v)} type="select" options={mbtiOptions} /></DataRow>
+                <DataRow label="Mobility"><EditableField value={agent.mobility} onChange={(v) => updateAgent("mobility", v)} type="select" options={[{ value: "normal", label: "Normal" }, { value: "walker", label: "Walker" }, { value: "wheelchair", label: "Wheelchair" }, { value: "cane", label: "Cane" }]} /></DataRow>
+                <DataRow label="Metabolic"><EditableField value={agent.metabolic_rate} onChange={(v) => updateAgent("metabolic_rate", v)} type="number" suffix="met" /></DataRow>
+                <DataRow label="Clothing"><EditableField value={agent.clothing_insulation} onChange={(v) => updateAgent("clothing_insulation", v)} type="number" suffix="clo" /></DataRow>
               </div>
             </div>
-          </div>
-        </DS>
+          </DS>
 
-        {/* ── ROW 4: ENV. SATISFACTION (col-span-5) ── */}
-        <DS k="experience" className="col-span-12 md:col-span-5">
-          <div data-node="experience">
-            <SectionTag label="ENV. SATISFACTION" icon="◌" color="#1D6B5E" />
-            <Panel>
-              <p className="text-xs italic mb-2" style={{ color: "var(--foreground)", lineHeight: 1.6, fontSize: "11px" }}>
-                "{experience.summary}"
-              </p>
-              <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                <span className="text-xs font-bold px-3 py-1.5 rounded-lg" style={{
-                  background: getComfortColor(experience.comfort_score).bg,
-                  color: getComfortColor(experience.comfort_score).text,
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.12)", letterSpacing: "0.5px", fontSize: "10px",
-                }}>
-                  COMFORT {experience.comfort_score}/10
-                </span>
-                {comfortDelta !== null && Math.abs(comfortDelta) >= 0.1 && (
-                  <span className="text-xs font-bold px-2 py-1.5 rounded-lg" style={{
-                    background: comfortDelta > 0 ? "#1D6B5E" : "#C44040",
-                    color: "#FFFFFF", boxShadow: "0 2px 6px rgba(0,0,0,0.12)", fontSize: "10px",
-                  }}>
-                    {comfortDelta > 0 ? "+" : ""}{comfortDelta.toFixed(1)} vs prev
-                  </span>
-                )}
-                <span className="text-xs font-semibold px-2 py-1.5 rounded-lg" style={{
-                  background: "var(--muted)", color: getTrendInfo(experience.trend).color,
-                  border: "1px solid var(--border)", fontSize: "10px",
-                }}>
-                  {getTrendInfo(experience.trend).icon} {getTrendInfo(experience.trend).label}
-                </span>
+          <DS k="anxiety">
+            <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-muted/30 border-b border-border flex items-center justify-between">
+                <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Psychological Load</span>
+                <span className="text-destructive opacity-40">▤</span>
               </div>
-
-              {prevExperience && prevExperience.comfort_score > 0 && (
-                <div className="mt-1 mb-2">
-                  <span className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-                    PREV: Comfort {prevExperience.comfort_score} · {prevExperience.trend.toUpperCase()}
-                  </span>
-                </div>
-              )}
-
-              {ruleTriggers.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1 mb-2">
-                  {ruleTriggers.map((t) => (
-                    <span key={t} className="sa-tag" style={{ fontSize: "9px" }}>{t}</span>
-                  ))}
-                </div>
-              )}
-
-              <InterventionArrow />
-            </Panel>
-          </div>
-        </DS>
-
-        {/* ── ROW 4: SPATIAL (col-span-3) ── */}
-        <DS k="spatial" className="col-span-12 md:col-span-3">
-          <div data-node="spatial">
-            <SectionTag label="SPATIAL" icon="□" color="#D4A017" />
-            <Panel>
-              <StaticRow label="→ Wall"
-                value={!agentPlaced || spatial.dist_to_wall < 0 ? "—" : spatial.dist_to_wall}
-                unit={!agentPlaced || spatial.dist_to_wall < 0 ? undefined : "m"} />
-              <StaticRow label="→ Win."
-                value={!agentPlaced || spatial.dist_to_window < 0 ? "—" : spatial.dist_to_window}
-                unit={!agentPlaced || spatial.dist_to_window < 0 ? undefined : "m"} />
-              <StaticRow label="→ Exit"
-                value={!agentPlaced || spatial.dist_to_exit < 0 ? "—" : spatial.dist_to_exit}
-                unit={!agentPlaced || spatial.dist_to_exit < 0 ? undefined : "m"} />
-              <DataRow label="Ceil.">
-                <EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" />
-              </DataRow>
-              <StaticRow label="Encl." value={!agentPlaced ? "—" : spatial.enclosure_ratio} />
-              <StaticRow label="Vis.Ag" value={!agentPlaced ? "—" : spatial.visible_agents} />
-              <div className="mt-1 text-xs" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-                Auto-calculated from map
+              <div className="p-5">
+                {(() => {
+                  const anx = agent.anxiety ?? defaultAnxiety;
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div>
+                        <SliderField label="ASI-3 Score" value={anx.asi_score} min={0} max={72} step={1} suffix="/72" onChange={(v) => updateAsiScore(v)} color="var(--destructive)" />
+                        <div className="flex items-center justify-between mt-4 p-3 rounded-xl bg-muted/20 border border-border/50">
+                          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Clinical Level</span>
+                          <AsiLevelBadge level={anx.asi_level} />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <ModifierRow label="Noise Sensitivity" value={anx.modifiers.noise_sensitivity} />
+                        <ModifierRow label="Thermal Range" value={anx.modifiers.thermal_comfort_range} />
+                        <ModifierRow label="Exit Proximity" value={anx.modifiers.exit_proximity_need} />
+                        <ModifierRow label="Social Threshold" value={anx.modifiers.social_threshold} />
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-            </Panel>
-          </div>
-        </DS>
+            </div>
+          </DS>
 
-        {/* ── ROW 4: COMPUTED (col-span-4) ── */}
-        <DS k="outputs" className="col-span-12 md:col-span-4">
-          <div data-node="outputs">
-            <SectionTag label="COMPUTED" icon="⊕" color="#1D6B5E" />
-            <Panel>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: "PMV", value: computedOutputs.PMV, tooltip: "Predicted Mean Vote (ISO 7730)" },
-                  { label: "PPD", value: `${computedOutputs.PPD}%`, tooltip: "Predicted Percentage Dissatisfied" },
-                  { label: "Eff.Lx", value: computedOutputs.effective_lux, tooltip: "Vision-adjusted illuminance" },
-                  { label: "Pr.dB", value: computedOutputs.perceived_dB, tooltip: "Hearing-adjusted noise" },
-                ].map((item) => (
-                  <div key={item.label} className="p-2 text-center rounded-lg" title={item.tooltip}
-                    style={{ background: "var(--muted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-inset)" }}>
-                    <div className="font-semibold" style={{ color: "var(--muted-foreground)", letterSpacing: "0.5px", fontSize: "10px" }}>
-                      {item.label}
-                    </div>
-                    <div className="font-bold mt-0.5" style={{
-                      color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace", fontSize: "18px",
-                    }}>
-                      {item.value}
-                    </div>
+          <DS k="environment">
+            <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-muted/30 border-b border-border flex items-center justify-between">
+                <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Environment Parameters</span>
+                <span className="text-primary opacity-40">◉</span>
+              </div>
+              <div className="p-5 space-y-1">
+                <EnvAdjustableBar label="Lux" value={environment.lux} min={0} max={2000} color="#D4A017" onChange={(v) => updateEnv("lux", String(v))} />
+                <EnvAdjustableBar label="Noise" value={environment.dB} min={0} max={120} suffix="dB" color="#C44040" onChange={(v) => updateEnv("dB", String(v))} />
+                <EnvAdjustableBar label="Temp" value={environment.air_temp} min={10} max={35} suffix="°C" color="#1D6B5E" onChange={(v) => updateEnv("air_temp", String(v))} />
+                <EnvAdjustableBar label="RH" value={environment.humidity} min={0} max={100} suffix="%" color="#4A90B8" onChange={(v) => updateEnv("humidity", String(v))} />
+                <EnvAdjustableBar label="Air V." value={environment.air_velocity} min={0} max={2} suffix="m/s" color="#2E8B6A" onChange={(v) => updateEnv("air_velocity", String(v))} />
+              </div>
+            </div>
+          </DS>
+        </div>
+
+        <div className="col-span-12 lg:col-span-5 space-y-6">
+          <DS k="experience">
+            <div className="bg-primary/5 rounded-2xl border border-primary/20 shadow-sm overflow-hidden h-full">
+              <div className="px-5 py-3 bg-primary/10 border-b border-primary/20 flex items-center justify-between">
+                <span className="text-[11px] font-bold text-primary uppercase tracking-widest">Subjective Narrative</span>
+                <span className="text-primary opacity-40">◌</span>
+              </div>
+              <div className="p-6">
+                <blockquote className="text-sm font-medium leading-relaxed text-foreground italic mb-6">"{experience.summary}"</blockquote>
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="p-4 rounded-2xl bg-white border border-border">
+                    <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Comfort</div>
+                    <div className="text-2xl font-black">{experience.comfort_score}<span className="text-xs font-bold text-muted-foreground ml-1">/10</span></div>
                   </div>
-                ))}
+                  <div className="p-4 rounded-2xl bg-white border border-border">
+                    <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Trend</div>
+                    <div className="text-xs font-bold uppercase tracking-wider">{experience.trend}</div>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} />
+                  <LoadBar label="Visual" value={accumulatedState.visual_strain} />
+                  <LoadBar label="Noise" value={accumulatedState.noise_stress} />
+                  <LoadBar label="Social" value={accumulatedState.social_overload} />
+                  <LoadBar label="Fatigue" value={accumulatedState.fatigue} />
+                  <LoadBar label="Wayfind" value={accumulatedState.wayfinding_anxiety} />
+                </div>
               </div>
-              <PMVWarnings computedOutputs={computedOutputs} />
-              <div className="mt-2 text-xs text-center" style={{ color: "var(--muted-foreground)", fontSize: "9px" }}>
-                PMV/PPD: ISO 7730 Fanger Model
-              </div>
-              <FormulaModal />
-            </Panel>
-          </div>
-        </DS>
+            </div>
+          </DS>
 
-        {/* ── ROW 5: PERCEPTUAL LOAD (col-span-12, two-column bars) ── */}
-        <DS k="perceptual" className="col-span-12">
-          <div data-node="perceptual">
-            <SectionTag label="PERCEPTUAL LOAD" icon="▐" color="#C44040" />
-            <Panel>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-                <LoadBar label="Thermal" value={accumulatedState.thermal_discomfort} prevValue={prevAccumulatedState?.thermal_discomfort} />
-                <LoadBar label="Visual" value={accumulatedState.visual_strain} prevValue={prevAccumulatedState?.visual_strain} />
-                <LoadBar label="Noise" value={accumulatedState.noise_stress} prevValue={prevAccumulatedState?.noise_stress} />
-                <LoadBar label="Social" value={accumulatedState.social_overload} prevValue={prevAccumulatedState?.social_overload} />
-                <LoadBar label="Fatigue" value={accumulatedState.fatigue} prevValue={prevAccumulatedState?.fatigue} />
-                <LoadBar label="Wayfind." value={accumulatedState.wayfinding_anxiety} prevValue={prevAccumulatedState?.wayfinding_anxiety} />
+          <DS k="spatial">
+            <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-muted/30 border-b border-border flex items-center justify-between">
+                <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Spatial Metrics</span>
+                <span className="text-primary opacity-40">□</span>
               </div>
-            </Panel>
-          </div>
-        </DS>
+              <div className="p-5 space-y-1">
+                <StaticRow label="Wall Dist." value={spatial.dist_to_wall} unit="m" />
+                <StaticRow label="Win. Dist." value={spatial.dist_to_window} unit="m" />
+                <StaticRow label="Exit Dist." value={spatial.dist_to_exit} unit="m" />
+                <DataRow label="Ceiling H."><EditableField value={spatial.ceiling_h} onChange={(v) => updateSpatial("ceiling_h", v)} suffix="m" /></DataRow>
+              </div>
+            </div>
+          </DS>
 
+          <DS k="outputs">
+            <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-muted/30 border-b border-border flex items-center justify-between">
+                <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Computed Outputs</span>
+                <span className="text-primary opacity-40">⊕</span>
+              </div>
+              <div className="p-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 rounded-lg bg-muted/30 border border-border">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase">PMV</div>
+                    <div className="text-xl font-bold">{computedOutputs.PMV}</div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/30 border border-border">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase">PPD</div>
+                    <div className="text-xl font-bold">{computedOutputs.PPD}%</div>
+                  </div>
+                </div>
+                <PMVWarnings computedOutputs={computedOutputs} />
+                <FormulaModal />
+              </div>
+            </div>
+          </DS>
+        </div>
       </div>
     </div>
   );
