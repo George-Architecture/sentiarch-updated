@@ -42,6 +42,8 @@ import {
   loadZones,
   saveWaypoints,
   loadWaypoints,
+  saveGridConfig,
+  loadGridConfig,
   getLLMConfig,
   callLLM,
   callLLMWithPrompt,
@@ -111,6 +113,7 @@ export default function Home() {
 
   const [shapes, setShapes] = useState<Shape[]>(() => loadShapes());
   const [zones, setZones] = useState<Zone[]>(() => loadZones());
+  const [gridConfig, setGridConfig] = useState<any>(() => loadGridConfig());
   const [activeTab, setActiveTab] = useState(0);
   const [simChecked, setSimChecked] = useState<boolean[]>(() => states.map(() => true));
   const [running, setRunning] = useState(false);
@@ -172,6 +175,7 @@ export default function Home() {
   // Persist
   useEffect(() => { saveShapes(shapes); }, [shapes]);
   useEffect(() => { saveZones(zones); }, [zones]);
+  useEffect(() => { saveGridConfig(gridConfig); }, [gridConfig]);
   useEffect(() => {
     saveMultiAgent({
       personas: states.map((s) => s.persona),
@@ -366,12 +370,21 @@ export default function Home() {
     setStates((prev) => {
       const next = [...prev];
       if (!next[agentIdx]) return prev;
+      const persona = next[agentIdx].persona;
       const route = { ...next[agentIdx].route };
-      route.waypoints = route.waypoints.map((w) =>
+      const wps = route.waypoints.map((w) =>
         w.id === wpId ? { ...w, dwell_minutes: minutes } : w
       );
-      next[agentIdx] = { ...next[agentIdx], route };
-      saveWaypoints(agentIdx, route.waypoints);
+      
+      // Phase 5: Validation
+      const totalDwell = wps.reduce((sum, w) => sum + w.dwell_minutes, 0);
+      if (totalDwell > persona.simulationDuration) {
+        toast.error(`Total dwell time (${totalDwell}m) exceeds simulation duration (${persona.simulationDuration}m)!`);
+        return prev;
+      }
+
+      next[agentIdx] = { ...next[agentIdx], route: { ...route, waypoints: wps } };
+      saveWaypoints(agentIdx, wps);
       return next;
     });
   }, []);
@@ -448,6 +461,13 @@ export default function Home() {
       if (!next[idx]) return prev;
       const old = next[idx];
 
+      // Phase 5: Sync duration_in_cell with simulationDuration for "during time" agent
+      if (newPersona.simulationDuration !== old.persona.simulationDuration) {
+        newPersona.position.duration_in_cell = newPersona.simulationDuration;
+      } else if (newPersona.position.duration_in_cell !== old.persona.position.duration_in_cell) {
+        newPersona.simulationDuration = newPersona.position.duration_in_cell;
+      }
+
       if (isAgentCoreChange(old.persona.agent, newPersona.agent)) {
         next[idx] = {
           ...old,
@@ -466,6 +486,24 @@ export default function Home() {
       return next;
     });
   }, []);
+
+  const updateSimulationDuration = useCallback((val: number) => {
+    setStates((prev) => {
+      const next = [...prev];
+      if (!next[activeTab]) return prev;
+      const currentPersona = next[activeTab].persona;
+      next[activeTab] = {
+        ...next[activeTab],
+        persona: {
+          ...currentPersona,
+          simulationDuration: val,
+          // Also sync duration_in_cell for static agent
+          position: { ...currentPersona.position, duration_in_cell: val }
+        },
+      };
+      return next;
+    });
+  }, [activeTab]);
 
   // Simulate single persona (snapshot)
   const simulateSingle = async (idx: number): Promise<boolean> => {
@@ -658,6 +696,19 @@ export default function Home() {
       return;
     }
 
+    // Phase 5: Validate dwell time sum vs simulationDuration for all agents being run
+    for (const { idx } of agentsWithRoutes) {
+      const s = states[idx];
+      const totalDwell = s.route.waypoints.reduce((sum, wp) => sum + (wp.dwell_minutes || 0), 0);
+      const simDuration = s.persona.simulationDuration || 60;
+      if (totalDwell > simDuration) {
+        toast.error(`Warning (P${idx + 1}): Total dwell time (${totalDwell}m) exceeds simulation duration (${simDuration}m). Please adjust.`, {
+          duration: 5000,
+        });
+        return;
+      }
+    }
+
     // Snapshot each participating agent's current position before any movement
     const snapshot: Record<number, AgentPosition | null> = {};
     agentsWithRoutes.forEach(({ idx }) => {
@@ -823,207 +874,179 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ---- Persona Mind Map Section ---- */}
-      <section>
-        <div className="container py-6">
-          {/* Section header */}
-          <div className="flex items-center gap-3 mb-5">
-            <div className="sa-tag" style={{ background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" }}>
-              Persona Mind Map
-            </div>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-              Click values to edit
-            </span>
-          </div>
-
-          {/* ---- Dynamic Persona Tabs ---- */}
-          <div className="flex items-center gap-2 mb-4 flex-wrap">
-            {states.map((s, i) => {
-              const color = getPersonaColor(i);
-              const isActive = activeTab === i;
-              return (
-                <div key={i} className="relative group">
+      {/* ---- Split Layout Container (50/50 Fixed) ---- */}
+      <section className="container py-6">
+        {/* Agent Tabs & Controls */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap overflow-x-auto pb-2 custom-scrollbar">
+          {states.map((s, i) => {
+            const color = getPersonaColor(i);
+            const isActive = activeTab === i;
+            return (
+              <div key={i} className="relative group shrink-0">
+                <button
+                  onClick={() => setActiveTab(i)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium"
+                  style={{
+                    background: isActive ? color.primary : "var(--card)",
+                    color: isActive ? "#fff" : color.primary,
+                    border: `1.5px solid ${isActive ? color.primary : "var(--border)"}`,
+                    boxShadow: isActive
+                      ? `0 2px 8px ${color.primary}30`
+                      : "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
+                    transform: isActive ? "translateY(-1px)" : "none",
+                  }}
+                >
+                  <div className="w-4 h-4 rounded-full" style={{
+                    background: isActive ? "#fff" : color.primary,
+                    opacity: isActive ? 0.9 : 0.7,
+                  }} />
+                  <span>{s.persona.agent.id}</span>
+                </button>
+                {/* Remove button on hover */}
+                {states.length > 1 && (
                   <button
-                    onClick={() => setActiveTab(i)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium"
+                    onClick={(e) => { e.stopPropagation(); removeAgent(i); }}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{
-                      background: isActive ? color.primary : "var(--card)",
-                      color: isActive ? "#fff" : color.primary,
-                      border: `1.5px solid ${isActive ? color.primary : "var(--border)"}`,
-                      boxShadow: isActive
-                        ? `0 2px 8px ${color.primary}30`
-                        : "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
-                      transform: isActive ? "translateY(-1px)" : "none",
+                      background: "#D94F4F",
+                      color: "#fff",
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+                      lineHeight: 1,
+                    }}
+                    title={`Remove P${i + 1}`}
+                  >
+                    x
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Add Agent Button */}
+          <button
+            onClick={addAgent}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all text-sm font-medium"
+            style={{
+              background: "var(--card)",
+              color: "var(--muted-foreground)",
+              border: "1.5px dashed var(--border)",
+              boxShadow: "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
+            }}
+            title="Add new agent"
+          >
+            <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
+            <span>Add Agent</span>
+          </button>
+
+          <div className="flex-1" />
+          <button
+            onClick={() => setShowComparison(!showComparison)}
+            className="sa-btn text-xs"
+            style={{
+              background: showComparison ? "var(--foreground)" : "var(--card)",
+              color: showComparison ? "#fff" : "var(--foreground)",
+            }}
+          >
+            {showComparison ? "Close Compare" : "Compare All"}
+          </button>
+        </div>
+
+        {/* Simulate Checkboxes */}
+        <div className="flex items-center gap-4 mb-4 px-1 flex-wrap">
+          <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
+            Simulate:
+          </span>
+          {states.map((s, i) => {
+            const color = getPersonaColor(i);
+            return (
+              <label key={i} className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={simChecked[i] ?? true}
+                  onChange={(e) => {
+                    const next = [...simChecked];
+                    next[i] = e.target.checked;
+                    setSimChecked(next);
+                  }}
+                  className="w-4 h-4 rounded"
+                  style={{ accentColor: color.primary }}
+                />
+                <span className="text-sm" style={{ color: color.primary, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {s.persona.agent.id}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        {showComparison ? (
+          <ComparisonView states={states} />
+        ) : (
+          <div className="flex flex-row gap-0 h-[calc(100vh-280px)] min-h-[600px] border border-border rounded-xl overflow-hidden shadow-card bg-card">
+            {/* Left Column: Persona Panel (Fixed 50%) */}
+            <div className="w-1/2 h-full overflow-y-auto border-r border-border p-6 custom-scrollbar bg-background/30">
+              <PersonaMindMap
+                persona={current.persona}
+                experience={current.experience}
+                accumulatedState={current.accState}
+                computedOutputs={current.computed}
+                ruleTriggers={current.triggers}
+                prevExperience={current.prevExperience}
+                onPersonaChange={(p) => updatePersonaWithEnvSync(activeTab, p)}
+                hasSimulated={current.hasSimulated}
+                personaColor={getPersonaColor(activeTab)}
+                agentPlaced={current.agentPos !== null}
+              />
+            </div>
+
+            {/* Right Column: Spatial Map (Fixed 50%) */}
+            <div className="w-1/2 h-full relative bg-muted/20">
+              {/* Map Toolbar Overlay */}
+              <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-2 pointer-events-none">
+                <div className="sa-tag pointer-events-auto" style={{ background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" }}>
+                  Spatial Map
+                </div>
+                <div className="flex-1" />
+                <div className="flex items-center gap-2 pointer-events-auto">
+                  <button
+                    onClick={() => setShowHeatmap(!showHeatmap)}
+                    className="sa-btn text-xs px-3 py-1"
+                    style={{
+                      background: showHeatmap ? "#D94F4F" : "var(--card)",
+                      color: showHeatmap ? "#fff" : "var(--foreground)",
+                      borderColor: showHeatmap ? "#D94F4F" : "var(--border)",
                     }}
                   >
-                    <div className="w-4 h-4 rounded-full" style={{
-                      background: isActive ? "#fff" : color.primary,
-                      opacity: isActive ? 0.9 : 0.7,
-                    }} />
-                    <span>{s.persona.agent.id}</span>
+                    {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
                   </button>
-                  {/* Remove button on hover */}
-                  {states.length > 1 && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); removeAgent(i); }}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity"
-                      style={{
-                        background: "#D94F4F",
-                        color: "#fff",
-                        boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
-                        lineHeight: 1,
-                      }}
-                      title={`Remove P${i + 1}`}
-                    >
-                      x
-                    </button>
-                  )}
+                  <button
+                    onClick={resetAgents}
+                    className="sa-btn text-xs px-3 py-1"
+                    disabled={routeRunning}
+                    style={{ opacity: routeRunning ? 0.6 : 1 }}
+                    title="Reset all agents to their original starting positions"
+                  >
+                    Reset Agents
+                  </button>
                 </div>
-              );
-            })}
+              </div>
 
-            {/* Add Agent Button */}
-            <button
-              onClick={addAgent}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all text-sm font-medium"
-              style={{
-                background: "var(--card)",
-                color: "var(--muted-foreground)",
-                border: "1.5px dashed var(--border)",
-                boxShadow: "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
-              }}
-              title="Add new agent"
-            >
-              <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
-              <span>Add Agent</span>
-            </button>
-
-            <div className="flex-1" />
-            <button
-              onClick={() => setShowComparison(!showComparison)}
-              className="sa-btn text-xs"
-              style={{
-                background: showComparison ? "var(--foreground)" : "var(--card)",
-                color: showComparison ? "#fff" : "var(--foreground)",
-              }}
-            >
-              {showComparison ? "Close Compare" : "Compare All"}
-            </button>
-          </div>
-
-          {/* Simulate Checkboxes */}
-          <div className="flex items-center gap-4 mb-4 px-1 flex-wrap">
-            <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
-              Simulate:
-            </span>
-            {states.map((s, i) => {
-              const color = getPersonaColor(i);
-              return (
-                <label key={i} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={simChecked[i] ?? true}
-                    onChange={(e) => {
-                      const next = [...simChecked];
-                      next[i] = e.target.checked;
-                      setSimChecked(next);
-                    }}
-                    className="w-4 h-4 rounded"
-                    style={{ accentColor: color.primary }}
-                  />
-                  <span className="text-sm" style={{ color: color.primary, fontFamily: "'JetBrains Mono', monospace" }}>
-                    {s.persona.agent.id}
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-
-          {/* Comparison View */}
-          {showComparison && <ComparisonView states={states} />}
-
-          {/* Active Persona Mind Map */}
-          {!showComparison && (
-            <PersonaMindMap
-              persona={current.persona}
-              experience={current.experience}
-              accumulatedState={current.accState}
-              computedOutputs={current.computed}
-              ruleTriggers={current.triggers}
-              prevExperience={current.prevExperience}
-              prevAccumulatedState={current.prevAccState}
-              onPersonaChange={(p) => updatePersonaWithEnvSync(activeTab, p)}
-              hasSimulated={current.hasSimulated}
-              personaColor={getPersonaColor(activeTab)}
-              agentPlaced={current.agentPos !== null}
-            />
-          )}
-        </div>
-      </section>
-
-      {/* ---- Divider ---- */}
-      <div className="container">
-        <div className="h-px" style={{ background: "var(--border)" }} />
-      </div>
-
-      {/* ---- Spatial Map Section ---- */}
-      <section>
-        <div className="container py-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="sa-tag" style={{ background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" }}>
-              Spatial Map
-            </div>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                Click to place Agent #{activeTab + 1} &middot; World Coordinates (mm)
-              </span>
-              <button
-                onClick={() => setShowHeatmap(!showHeatmap)}
-                className="sa-btn text-xs px-3 py-1"
-                style={{
-                  background: showHeatmap ? "#D94F4F" : "var(--card)",
-                  color: showHeatmap ? "#fff" : "var(--foreground)",
-                  borderColor: showHeatmap ? "#D94F4F" : "var(--border)",
-                }}
-              >
-                {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
-              </button>
-              <button
-                onClick={resetAgents}
-                className="sa-btn text-xs px-3 py-1"
-                disabled={routeRunning}
-                style={{ opacity: routeRunning ? 0.6 : 1 }}
-                title="Reset all agents to their original starting positions"
-              >
-                Reset Agents
-              </button>
+              <SpatialMap
+                gridConfig={gridConfig}
+                agentPositions={agentPositions}
+                activeAgentIdx={activeTab}
+                onAgentPlace={(pos) => placeAgent(activeTab, pos)}
+                allWaypoints={allWaypoints}
+                onAddWaypoint={addWaypoint}
+                onRemoveWaypoint={removeWaypoint}
+                animatingAgents={animatingAgents}
+                pathTrails={pathTrails}
+                heatmapPoints={heatmapPoints}
+                showHeatmap={showHeatmap}
+              />
             </div>
           </div>
-
-          <SpatialMap
-            shapes={shapes}
-            zones={zones}
-            agentPositions={agentPositions}
-            activeAgentIdx={activeTab}
-            onAgentPlace={(pos) => placeAgent(activeTab, pos)}
-            onAgentRemove={(idx) => {
-              setStates((prev) => prev.map((s, i) => i === idx ? { ...s, agentPos: null } : s));
-            }}
-            onAddShape={addShape}
-            onAddZone={addZone}
-            onUpdateShapes={updateShapes}
-            onDeleteShape={deleteShape}
-            allWaypoints={allWaypoints}
-            onAddWaypoint={addWaypoint}
-            onRemoveWaypoint={removeWaypoint}
-            animatingAgents={animatingAgents}
-            pathTrails={pathTrails}
-            heatmapPoints={heatmapPoints}
-            showHeatmap={showHeatmap}
-          />
-        </div>
+        )}
       </section>
 
       {/* ---- Divider ---- */}
@@ -1037,6 +1060,18 @@ export default function Home() {
           <div className="flex items-center gap-3 mb-5">
             <div className="sa-tag" style={{ background: "#E67E22", color: "#fff", borderColor: "#E67E22" }}>
               Waypoint Routes
+            </div>
+            <div className="flex items-center gap-2 ml-4">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Global Simulation Duration:</span>
+              <input
+                type="number"
+                min={1}
+                value={current.persona.simulationDuration}
+                onChange={(e) => updateSimulationDuration(parseInt(e.target.value) || 1)}
+                className="w-16 px-2 py-1 rounded border border-border bg-white text-xs font-bold"
+                style={{ fontFamily: "'JetBrains Mono', monospace" }}
+              />
+              <span className="text-[10px] font-bold text-muted-foreground">min</span>
             </div>
             <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
             <div className="flex items-center gap-2">
@@ -1078,6 +1113,22 @@ export default function Home() {
               </p>
             ) : (
               <div className="space-y-2">
+                {(() => {
+                  const totalDwell = activeWPs.reduce((sum, wp) => sum + (wp.dwell_minutes || 0), 0);
+                  const simDuration = current.persona.simulationDuration || 60;
+                  if (totalDwell > simDuration) {
+                    return (
+                      <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-3">
+                        <span className="text-destructive text-lg">⚠</span>
+                        <div className="text-xs font-bold text-destructive">
+                          Warning: Total dwell time ({totalDwell}m) exceeds simulation duration ({simDuration}m).
+                          Simulation will be blocked until adjusted.
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 {activeWPs.map((wp, i) => (
                   <div key={wp.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{
                     background: "var(--background)",
@@ -1373,24 +1424,66 @@ export default function Home() {
         <div className="h-px" style={{ background: "var(--border)" }} />
       </div>
 
-      {/* ---- Coordinate Input Section ---- */}
+      {/* ---- Grid Configuration Section ---- */}
       <section>
         <div className="container py-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="sa-tag" style={{ background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" }}>
-              Coordinate Input
+              Grid System Configuration
             </div>
             <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
           </div>
-          <div className="sa-card">
-            <CoordinateInput
-              onAddShape={addShape}
-              onClearAll={clearAll}
-              zones={zones}
-              onAddZone={addZone}
-              onUpdateZone={updateZone}
-              onRemoveZone={removeZone}
-            />
+          <div className="sa-card p-6 bg-white border border-border rounded-xl">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest block mb-2">X Columns</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={gridConfig.cols}
+                    onChange={(e) => setGridConfig((prev: any) => ({ ...prev, cols: parseInt(e.target.value) || 1 }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-bold"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  />
+                </label>
+              </div>
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest block mb-2">Y Rows</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={gridConfig.rows}
+                    onChange={(e) => setGridConfig((prev: any) => ({ ...prev, rows: parseInt(e.target.value) || 1 }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-bold"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  />
+                </label>
+              </div>
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest block mb-2">Cell Size (mm)</span>
+                  <input
+                    type="number"
+                    min={100}
+                    step={100}
+                    value={gridConfig.cellSize}
+                    onChange={(e) => setGridConfig((prev: any) => ({ ...prev, cellSize: parseInt(e.target.value) || 1000 }))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-bold"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/10">
+              <p className="text-xs text-primary/80 font-medium">
+                The map is now a pure grid system. Each cell represents a {gridConfig.cellSize}mm × {gridConfig.cellSize}mm space unit.
+                Total area: {(gridConfig.cols * gridConfig.cellSize / 1000).toFixed(1)}m × {(gridConfig.rows * gridConfig.cellSize / 1000).toFixed(1)}m.
+              </p>
+            </div>
           </div>
         </div>
       </section>

@@ -476,7 +476,7 @@ export function detectEnclosedRegions(shapes: Shape[]): DetectedRegion[] {
   // ---- Build results with contour polygons ----
   const results: DetectedRegion[] = [];
 
-  for (const [regionId, meta] of regionMeta) {
+  for (const [regionId, meta] of Array.from(regionMeta.entries())) {
     if (meta.count < MIN_REGION_CELLS) continue;
     if (meta.touchesBorder) continue;
 
