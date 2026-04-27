@@ -12,7 +12,9 @@ import type {
   ExperienceData,
   AccumulatedState,
   ComputedOutputs,
+  AnxietyLevel,
 } from "@/lib/store";
+import { buildAnxietyData, defaultAnxiety } from "@/lib/store";
 import SliderField from "@/components/SliderField";
 import {
   Dialog,
@@ -662,6 +664,43 @@ function EnvReadOnlyBar({
   );
 }
 
+/**
+ * Read-only badge showing one of the three ASI-3 bands. Colour-codes
+ * normal / moderate / severe to match the psych-assessment convention.
+ */
+function AsiLevelBadge({ level }: { level: AnxietyLevel }) {
+  const map: Record<AnxietyLevel, { bg: string; fg: string; label: string }> = {
+    normal:   { bg: "#2E8B6A", fg: "#FFFFFF", label: "NORMAL" },
+    moderate: { bg: "#D4A017", fg: "#FFFFFF", label: "MODERATE" },
+    severe:   { bg: "#C44040", fg: "#FFFFFF", label: "SEVERE" },
+  };
+  const c = map[level];
+  return (
+    <span className="px-2.5 py-1 rounded-md" style={{
+      background: c.bg, color: c.fg, fontFamily: "'JetBrains Mono', monospace",
+      fontSize: "10px", fontWeight: 700, letterSpacing: "0.5px",
+      boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+    }}>{c.label}</span>
+  );
+}
+
+/**
+ * Read-only modifier row. Values come straight from the canonical table keyed
+ * by level and are never editable from the UI.
+ */
+function ModifierRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between py-1 px-1"
+      style={{ borderBottom: "1px dashed var(--border)" }}>
+      <span className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "10px" }}>{label}</span>
+      <span style={{
+        fontFamily: "'JetBrains Mono', monospace", fontSize: "11px",
+        fontWeight: 600, color: "var(--foreground)",
+      }}>×{value.toFixed(2)}</span>
+    </div>
+  );
+}
+
 function StaticRow({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
   return (
     <div className="flex items-center justify-between py-1.5 px-1" style={{ borderBottom: "1px solid var(--border)" }}>
@@ -886,7 +925,7 @@ function PMVWarnings({ computedOutputs }: { computedOutputs: ComputedOutputs }) 
 // Design Mode — Layout Config Types & Persistence
 // ================================================================
 
-const SECTION_KEYS = ["agent", "position", "environment", "avatar", "persona", "experience", "spatial", "outputs", "perceptual"] as const;
+const SECTION_KEYS = ["agent", "anxiety", "position", "environment", "avatar", "persona", "experience", "spatial", "outputs", "perceptual"] as const;
 type SectionKey = typeof SECTION_KEYS[number];
 
 interface SectionLayout {
@@ -902,6 +941,12 @@ const EMPTY_LAYOUT: LayoutConfig = {
   "agent": {
     "x": -1,
     "y": 12,
+    "w": 0,
+    "h": 0
+  },
+  "anxiety": {
+    "x": 0,
+    "y": 0,
     "w": 0,
     "h": 0
   },
@@ -1282,6 +1327,16 @@ export default function PersonaMindMap({
     onPersonaChange({ ...persona, agent: { ...persona.agent, [key]: parsed } });
   }, [persona, onPersonaChange]);
 
+  /**
+   * Update the agent's ASI-3 raw score. Level and modifiers are *always*
+   * re-derived from the score via `buildAnxietyData` — the UI must never let
+   * the user edit them directly.
+   */
+  const updateAsiScore = useCallback((nextScore: number) => {
+    const anxiety = buildAnxietyData(nextScore);
+    onPersonaChange({ ...persona, agent: { ...persona.agent, anxiety } });
+  }, [persona, onPersonaChange]);
+
   const updatePosition = useCallback((key: string, val: string) => {
     const parsed = ["duration_in_cell"].includes(key) ? parseInt(val) || 0 : val;
     onPersonaChange({ ...persona, position: { ...persona.position, [key]: parsed } });
@@ -1348,7 +1403,7 @@ export default function PersonaMindMap({
       <div className="relative grid grid-cols-12 gap-3 md:gap-4" style={{ zIndex: 1 }}>
 
         {/* ── ROW 1: AGENT (col-span-5) ── */}
-        <DS k="agent" className="col-span-12 md:col-span-5">
+        <DS k="agent" className="col-span-12 md:col-span-4">
           <div data-node="agent">
             <SectionTag label="AGENT" icon="◆" color={accentColor} />
             <Panel style={{ borderTop: `3px solid ${accentColor}` }}>
@@ -1397,8 +1452,60 @@ export default function PersonaMindMap({
           </div>
         </DS>
 
-        {/* ── ROW 1: POSITION (col-span-3) ── */}
-        <DS k="position" className="col-span-12 md:col-span-3">
+        {/* ── ROW 1: ANXIETY (col-span-3) ──
+             ASI-3 score is the only editable field. asi_level and modifiers
+             are auto-derived on every change by buildAnxietyData(). */}
+        <DS k="anxiety" className="col-span-12 md:col-span-3">
+          <div data-node="anxiety">
+            <SectionTag label="ANXIETY (ASI-3)" icon="▤" color="#C44040" />
+            <Panel style={{ borderTop: `3px solid #C44040` }}>
+              {(() => {
+                const anx = agent.anxiety ?? defaultAnxiety;
+                return (
+                  <>
+                    <SliderField
+                      label="ASI Score"
+                      value={anx.asi_score}
+                      min={0}
+                      max={72}
+                      step={1}
+                      suffix="/72"
+                      onChange={(v) => updateAsiScore(v)}
+                      color="#C44040"
+                    />
+                    <div className="flex items-center justify-between mt-2 mb-2 px-1">
+                      <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)", letterSpacing: "0.3px" }}>
+                        Level
+                      </span>
+                      <AsiLevelBadge level={anx.asi_level} />
+                    </div>
+                    <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+                      <div className="text-xs font-semibold mb-1.5" style={{
+                        color: "var(--muted-foreground)", fontSize: "9px",
+                        letterSpacing: "1px", textTransform: "uppercase",
+                      }}>
+                        Modifiers (read-only)
+                      </div>
+                      <ModifierRow label="Noise sens." value={anx.modifiers.noise_sensitivity} />
+                      <ModifierRow label="Thermal range" value={anx.modifiers.thermal_comfort_range} />
+                      <ModifierRow label="Exit proximity" value={anx.modifiers.exit_proximity_need} />
+                      <ModifierRow label="Social thresh." value={anx.modifiers.social_threshold} />
+                      <ModifierRow label="Fatigue accum." value={anx.modifiers.fatigue_accumulation} />
+                    </div>
+                    <div className="mt-2 text-xs" style={{
+                      color: "var(--muted-foreground)", fontSize: "9px", lineHeight: 1.4,
+                    }}>
+                      0–16 normal · 17–23 moderate · 24–72 severe
+                    </div>
+                  </>
+                );
+              })()}
+            </Panel>
+          </div>
+        </DS>
+
+        {/* ── ROW 1: POSITION (col-span-2) ── */}
+        <DS k="position" className="col-span-12 md:col-span-2">
           <div data-node="position">
             <SectionTag label="POSITION" icon="◇" color="#D4A017" />
             <Panel>
@@ -1413,8 +1520,8 @@ export default function PersonaMindMap({
           </div>
         </DS>
 
-        {/* ── ROW 1: ENVIRONMENT (col-span-4) ── */}
-        <DS k="environment" className="col-span-12 md:col-span-4">
+        {/* ── ROW 1: ENVIRONMENT (col-span-3) ── */}
+        <DS k="environment" className="col-span-12 md:col-span-3">
           <div data-node="environment">
             <SectionTag label="ENVIRONMENT" icon="◉" color="#1D6B5E" />
             <Panel>
