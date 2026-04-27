@@ -5,6 +5,91 @@
 import defaultLayoutData from "./defaultLayout.json";
 
 // ---- Types ----
+
+// ---- Anxiety (ASI-3) Types & Helpers ----
+// The Anxiety Sensitivity Index (ASI-3) is an 18-item self-report scale; each
+// item is scored 0–4, giving a total range of 0–72. Clinical cut-offs (Taylor
+// et al., 2007) divide scores into three bands:
+//   • 0–16  → normal       (no sensitivity modulation; all modifiers = 1.0)
+//   • 17–23 → moderate     (perceptual thresholds tightened modestly)
+//   • 24–72 → severe       (perceptual thresholds tightened strongly)
+//
+// Each level maps to five behavioural modifiers that SentiArch uses to scale
+// environmental perception downstream:
+//   • noise_sensitivity     — multiplies perceived_dB
+//   • thermal_comfort_range — divisor that narrows the agent's acceptable PMV
+//                             envelope (anxiety_pmv_range = 1 / this)
+//   • exit_proximity_need   — multiplies dist_to_exit into a personal-space
+//                             requirement
+//   • social_threshold      — reserved for future crowd / social-overload use
+//   • fatigue_accumulation  — reserved for future fatigue carry-over use
+export type AnxietyLevel = "normal" | "moderate" | "severe";
+
+export interface AnxietyModifiers {
+  noise_sensitivity: number;
+  thermal_comfort_range: number;
+  exit_proximity_need: number;
+  social_threshold: number;
+  fatigue_accumulation: number;
+}
+
+export interface AnxietyData {
+  asi_score: number;          // integer 0–72
+  asi_level: AnxietyLevel;    // auto-derived from asi_score
+  modifiers: AnxietyModifiers; // auto-assigned from asi_level
+}
+
+/** Derive ASI level band from raw ASI-3 score (0–72). */
+export function deriveAnxietyLevel(asiScore: number): AnxietyLevel {
+  const s = Math.max(0, Math.min(72, Math.round(asiScore)));
+  if (s <= 16) return "normal";
+  if (s <= 23) return "moderate";
+  return "severe";
+}
+
+/** Canonical modifier table. Normal = identity; higher bands tighten thresholds. */
+export const ANXIETY_MODIFIERS_BY_LEVEL: Record<AnxietyLevel, AnxietyModifiers> = {
+  normal: {
+    noise_sensitivity: 1.0,
+    thermal_comfort_range: 1.0,
+    exit_proximity_need: 1.0,
+    social_threshold: 1.0,
+    fatigue_accumulation: 1.0,
+  },
+  moderate: {
+    noise_sensitivity: 1.15,
+    thermal_comfort_range: 1.25,
+    exit_proximity_need: 1.2,
+    social_threshold: 1.2,
+    fatigue_accumulation: 1.1,
+  },
+  severe: {
+    noise_sensitivity: 1.35,
+    thermal_comfort_range: 1.6,
+    exit_proximity_need: 1.5,
+    social_threshold: 1.45,
+    fatigue_accumulation: 1.25,
+  },
+};
+
+/**
+ * Build a full AnxietyData block from a raw ASI score.
+ * Level and modifiers are always recomputed from score — they are never edited
+ * directly by the user.
+ */
+export function buildAnxietyData(asiScore: number): AnxietyData {
+  const clamped = Math.max(0, Math.min(72, Math.round(asiScore)));
+  const level = deriveAnxietyLevel(clamped);
+  return {
+    asi_score: clamped,
+    asi_level: level,
+    modifiers: { ...ANXIETY_MODIFIERS_BY_LEVEL[level] },
+  };
+}
+
+/** Default anxiety block used when loading older saved data without one. */
+export const defaultAnxiety: AnxietyData = buildAnxietyData(0);
+
 export interface AgentData {
   id: string;
   age: number;
@@ -15,6 +100,7 @@ export interface AgentData {
   vision: "normal" | "mild_impairment" | "severe_impairment";
   metabolic_rate: number;
   clothing_insulation: number;
+  anxiety: AnxietyData;
 }
 
 export interface PositionData {
@@ -68,6 +154,17 @@ export interface ComputedOutputs {
   effective_lux: number;
   perceived_dB: number;
   pmv_warnings: string[];
+  // ---- Anxiety-adjusted derived values ----
+  /** perceived_dB × anxiety.modifiers.noise_sensitivity */
+  anxiety_perceived_dB: number;
+  /** 1 / anxiety.modifiers.thermal_comfort_range — narrower value means the
+   *  agent tolerates a smaller PMV envelope before registering discomfort. */
+  anxiety_pmv_range: number;
+  /** spatial.dist_to_exit × anxiety.modifiers.exit_proximity_need, in metres.
+   *  Interpreted as the effective personal-space distance an anxious agent
+   *  wants to maintain from the nearest exit. Returns -1 when dist_to_exit
+   *  is -1 (no exit detected). */
+  anxiety_personal_space: number;
 }
 
 export interface Shape {
@@ -548,6 +645,7 @@ export const defaultPersonas: PersonaData[] = [
       vision: "mild_impairment",
       metabolic_rate: 0.8,
       clothing_insulation: 1.2,
+      anxiety: buildAnxietyData(8),
     },
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 45 },
     environment: { ...defaultEnvironment },
@@ -565,6 +663,7 @@ export const defaultPersonas: PersonaData[] = [
       vision: "normal",
       metabolic_rate: 1.6,
       clothing_insulation: 0.5,
+      anxiety: buildAnxietyData(20),
     },
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 30 },
     environment: { ...defaultEnvironment },
@@ -582,6 +681,7 @@ export const defaultPersonas: PersonaData[] = [
       vision: "severe_impairment",
       metabolic_rate: 1.0,
       clothing_insulation: 0.8,
+      anxiety: buildAnxietyData(28),
     },
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 60 },
     environment: { ...defaultEnvironment },
@@ -602,6 +702,7 @@ export function createNewPersona(index: number): PersonaData {
       vision: "normal",
       metabolic_rate: 1.2,
       clothing_insulation: 0.7,
+      anxiety: buildAnxietyData(0),
     },
     position: { cell: [0, 0], timestamp: "14:30", duration_in_cell: 30 },
     environment: { ...defaultEnvironment },
@@ -631,6 +732,9 @@ export const defaultComputedOutputs: ComputedOutputs = {
   effective_lux: 0,
   perceived_dB: 0,
   pmv_warnings: [],
+  anxiety_perceived_dB: 0,
+  anxiety_pmv_range: 1.0,
+  anxiety_personal_space: 0,
 };
 
 // ---- Baseline Reset: Agent Core Fields ----
@@ -640,7 +744,12 @@ export const AGENT_CORE_FIELDS: (keyof AgentData)[] = [
 ];
 
 export function isAgentCoreChange(prev: AgentData, next: AgentData): boolean {
-  return AGENT_CORE_FIELDS.some((k) => prev[k] !== next[k]);
+  if (AGENT_CORE_FIELDS.some((k) => prev[k] !== next[k])) return true;
+  // Anxiety is a core field too: a different ASI level implies different
+  // perceptual modifiers and invalidates prior simulation state.
+  const prevLevel = prev.anxiety?.asi_level ?? defaultAnxiety.asi_level;
+  const nextLevel = next.anxiety?.asi_level ?? defaultAnxiety.asi_level;
+  return prevLevel !== nextLevel;
 }
 
 // ---- PMV/PPD Calculation (pythermalcomfort-inspired, ISO 7730 Fanger) ----
@@ -723,11 +832,23 @@ export function computeOutputs(persona: PersonaData): ComputedOutputs {
   );
   const visionFactor = persona.agent.vision === "normal" ? 1 : persona.agent.vision === "mild_impairment" ? 0.75 : 0.5;
   const hearingFactor = persona.agent.hearing === "normal" ? 1 : persona.agent.hearing === "impaired" ? 1.1 : 0.7;
+  const perceivedDb = Math.round(persona.environment.dB * hearingFactor);
+  const anxiety = persona.agent.anxiety ?? defaultAnxiety;
+  const mods = anxiety.modifiers;
+  const anxietyPerceivedDb = Math.round(perceivedDb * mods.noise_sensitivity * 10) / 10;
+  const anxietyPmvRange = Math.round((1 / mods.thermal_comfort_range) * 100) / 100;
+  const distExit = persona.spatial.dist_to_exit;
+  const anxietyPersonalSpace = distExit < 0
+    ? -1
+    : Math.round(distExit * mods.exit_proximity_need * 10) / 10;
   return {
     PMV: pmv, PPD: ppd,
     effective_lux: Math.round(persona.environment.lux * visionFactor),
-    perceived_dB: Math.round(persona.environment.dB * hearingFactor),
+    perceived_dB: perceivedDb,
     pmv_warnings: warnings,
+    anxiety_perceived_dB: anxietyPerceivedDb,
+    anxiety_pmv_range: anxietyPmvRange,
+    anxiety_personal_space: anxietyPersonalSpace,
   };
 }
 
@@ -938,7 +1059,23 @@ export function saveMultiAgent(data: { personas: PersonaData[]; positions: (Agen
   try { localStorage.setItem(MULTI_AGENT_KEY, JSON.stringify(data)); } catch {}
 }
 export function loadMultiAgent(): { personas: PersonaData[]; positions: (AgentPosition | null)[] } | null {
-  try { const s = localStorage.getItem(MULTI_AGENT_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+  try {
+    const s = localStorage.getItem(MULTI_AGENT_KEY);
+    if (!s) return null;
+    const parsed = JSON.parse(s) as { personas: PersonaData[]; positions: (AgentPosition | null)[] };
+    // Migration: older saves may not contain an anxiety block on agents. Backfill
+    // with default (score 0, normal, identity modifiers) so downstream computations
+    // never see `undefined`.
+    parsed.personas = (parsed.personas || []).map((p) => {
+      if (!p || !p.agent) return p;
+      if (p.agent.anxiety && typeof p.agent.anxiety.asi_score === "number") {
+        // Always re-derive level/modifiers from score to keep data self-consistent.
+        return { ...p, agent: { ...p.agent, anxiety: buildAnxietyData(p.agent.anxiety.asi_score) } };
+      }
+      return { ...p, agent: { ...p.agent, anxiety: buildAnxietyData(0) } };
+    });
+    return parsed;
+  } catch { return null; }
 }
 
 // ---- Waypoint Persistence ----
@@ -1006,6 +1143,9 @@ export function buildLLMPrompt(persona: PersonaData, computed: ComputedOutputs, 
     ? "The agent CAN perceive windows and natural light from them."
     : "CRITICAL: There are NO windows visible to this agent. Do NOT mention windows, views, or natural light.";
 
+  const anxiety = persona.agent.anxiety ?? defaultAnxiety;
+  const anxietyLine = `ANXIETY (ASI-3): score ${anxiety.asi_score}/72, level ${anxiety.asi_level.toUpperCase()} — noise×${anxiety.modifiers.noise_sensitivity}, thermal_range×${anxiety.modifiers.thermal_comfort_range}, exit_need×${anxiety.modifiers.exit_proximity_need}`;
+
   return `You are simulating the subjective experience of a building occupant.
 
 AGENT:
@@ -1013,6 +1153,7 @@ AGENT:
 - MBTI: ${persona.agent.mbti} (infer ALL personality-driven preferences from this)
 - Mobility: ${persona.agent.mobility}, Hearing: ${persona.agent.hearing}, Vision: ${persona.agent.vision}
 - Met: ${persona.agent.metabolic_rate}, Clo: ${persona.agent.clothing_insulation}
+- ${anxietyLine}
 CURRENT ZONE: ${currentZoneLabel}
 POSITION: Cell [${persona.position.cell.join(", ")}], Time: ${persona.position.timestamp}, Duration: ${persona.position.duration_in_cell} min
 
@@ -1022,7 +1163,7 @@ ${spatialContext}
 SPATIAL: Wall ${persona.spatial.dist_to_wall}m, Window ${hasWindows ? persona.spatial.dist_to_window + "m" : "N/A"}, Exit ${hasDoors ? persona.spatial.dist_to_exit + "m" : "N/A"}, Ceil ${persona.spatial.ceiling_h}m, Encl ${persona.spatial.enclosure_ratio}, VisAgents ${persona.spatial.visible_agents}
 ${windowInstruction}
 
-COMPUTED: PMV ${computed.PMV}, PPD ${computed.PPD}%, EffLux ${computed.effective_lux}, PrdB ${computed.perceived_dB}
+COMPUTED: PMV ${computed.PMV}, PPD ${computed.PPD}%, EffLux ${computed.effective_lux}, PrdB ${computed.perceived_dB}, AnxPrdB ${computed.anxiety_perceived_dB}, AnxPMVrange ${computed.anxiety_pmv_range}, AnxPersonalSpace ${computed.anxiety_personal_space}m
 
 Respond in this exact JSON format (no markdown):
 {
