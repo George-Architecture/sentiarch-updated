@@ -1615,8 +1615,8 @@ export default function SpatialMap({
 
   return (
     <div ref={containerRef} className="w-full">
-      {/* Toolbar */}
-      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+      {/* Toolbar — wraps to multiple lines so all tools are always visible */}
+      <div className="flex items-center gap-1 mb-2 flex-wrap">
         {TOOLS.map((tool) => (
           <button
             key={tool.mode}
@@ -1629,18 +1629,19 @@ export default function SpatialMap({
               boxShadow: activeTool === tool.mode
                 ? "0 2px 8px rgba(29, 107, 94, 0.3), inset 0 1px 0 rgba(255,255,255,0.15)"
                 : "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8), inset 0 1px 0 rgba(255,255,255,0.6)",
-              padding: "6px 12px",
-              borderRadius: "8px",
-              fontSize: "12px",
+              padding: "4px 8px",
+              borderRadius: "6px",
+              fontSize: "11px",
               fontWeight: 500,
               display: "flex",
               alignItems: "center",
-              gap: "6px",
+              gap: "4px",
               transition: "all 0.15s ease",
+              whiteSpace: "nowrap",
             }}
             aria-label={tool.label}
           >
-            <span style={{ fontSize: "14px", lineHeight: 1 }}>{tool.icon}</span>
+            <span style={{ fontSize: "12px", lineHeight: 1 }}>{tool.icon}</span>
             <span>{tool.label}</span>
           </button>
         ))}
@@ -1656,9 +1657,9 @@ export default function SpatialMap({
             color: "var(--muted-foreground)",
             border: "1.5px solid var(--border)",
             boxShadow: "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8)",
-            padding: "6px 10px",
-            borderRadius: "8px",
-            fontSize: "12px",
+            padding: "4px 8px",
+            borderRadius: "6px",
+            fontSize: "11px",
             fontWeight: 500,
           }}
           title="Undo (Ctrl+Z)"
@@ -1728,9 +1729,9 @@ export default function SpatialMap({
             color: "var(--foreground)",
             border: "1.5px solid var(--border)",
             boxShadow: "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8)",
-            padding: "6px 12px",
-            borderRadius: "8px",
-            fontSize: "12px",
+            padding: "4px 8px",
+            borderRadius: "6px",
+            fontSize: "11px",
             fontWeight: 500,
           }}
           title="Fit view to content"
@@ -1746,18 +1747,18 @@ export default function SpatialMap({
             color: "var(--primary)",
             border: "1.5px solid var(--primary)",
             boxShadow: "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8)",
-            padding: "6px 12px",
-            borderRadius: "8px",
-            fontSize: "12px",
+            padding: "4px 8px",
+            borderRadius: "6px",
+            fontSize: "11px",
             fontWeight: 500,
             display: "flex",
             alignItems: "center",
-            gap: "5px",
+            gap: "4px",
           }}
           title="Export layout data as JSON (shapes, zones, agents, waypoints)"
         >
-          <span style={{ fontSize: "13px" }}>⬇</span>
-          Export Layout
+          <span style={{ fontSize: "12px" }}>⬇</span>
+          Export
         </button>
         {/* Zone Labels toggle */}
         <button
@@ -1768,18 +1769,17 @@ export default function SpatialMap({
             color: showZoneLabels ? "#fff" : "var(--muted-foreground)",
             border: `1.5px solid ${showZoneLabels ? "var(--primary)" : "var(--border)"}`,
             boxShadow: "2px 2px 6px rgba(0,0,0,0.05), -1px -1px 4px rgba(255,255,255,0.8)",
-            padding: "6px 12px",
-            borderRadius: "8px",
-            fontSize: "12px",
+            padding: "4px 8px",
+            borderRadius: "6px",
+            fontSize: "11px",
             fontWeight: 500,
             display: "flex",
             alignItems: "center",
-            gap: "5px",
+            gap: "4px",
           }}
           title={showZoneLabels ? "Hide zone labels" : "Show zone labels"}
         >
-          <span style={{ fontSize: "13px" }}>{showZoneLabels ? "💬" : "🔇"}</span>
-          Zone Labels
+          {showZoneLabels ? "💬" : "🔇"} Labels
         </button>
       </div>
 

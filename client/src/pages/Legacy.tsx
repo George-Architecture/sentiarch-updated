@@ -983,8 +983,8 @@ export default function Home() {
           <ComparisonView states={states} />
         ) : (
           <div className="flex flex-row gap-0 h-[calc(100vh-280px)] min-h-[600px] border border-border rounded-xl overflow-hidden shadow-card bg-card">
-            {/* Left Column: Persona Panel (Fixed 50%) */}
-            <div className="w-1/2 h-full overflow-y-auto border-r border-border p-6 custom-scrollbar bg-background/30">
+            {/* Left Column: Persona Panel (Fixed 50%) — independent scroll zone */}
+            <div className="w-1/2 h-full overflow-y-auto overscroll-contain border-r border-border p-6 custom-scrollbar bg-background/30" style={{ isolation: 'isolate' }}>
               <PersonaMindMap
                 persona={current.persona}
                 experience={current.experience}
@@ -1000,37 +1000,37 @@ export default function Home() {
             </div>
 
             {/* Right Column: Spatial Map (Fixed 50%) */}
-            <div className="w-1/2 h-full relative bg-muted/20">
-              {/* Map Toolbar Overlay */}
-              <div className="absolute top-4 left-4 right-4 z-10 flex items-center gap-2 pointer-events-none">
-                <div className="sa-tag pointer-events-auto" style={{ background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" }}>
+            <div className="w-1/2 h-full flex flex-col bg-muted/20">
+              {/* Map Header — fixed, never overlaps canvas */}
+              <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-border bg-card/80 backdrop-blur-sm">
+                <div className="sa-tag" style={{ background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" }}>
                   Spatial Map
                 </div>
                 <div className="flex-1" />
-                <div className="flex items-center gap-2 pointer-events-auto">
-                  <button
-                    onClick={() => setShowHeatmap(!showHeatmap)}
-                    className="sa-btn text-xs px-3 py-1"
-                    style={{
-                      background: showHeatmap ? "#D94F4F" : "var(--card)",
-                      color: showHeatmap ? "#fff" : "var(--foreground)",
-                      borderColor: showHeatmap ? "#D94F4F" : "var(--border)",
-                    }}
-                  >
-                    {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
-                  </button>
-                  <button
-                    onClick={resetAgents}
-                    className="sa-btn text-xs px-3 py-1"
-                    disabled={routeRunning}
-                    style={{ opacity: routeRunning ? 0.6 : 1 }}
-                    title="Reset all agents to their original starting positions"
-                  >
-                    Reset Agents
-                  </button>
-                </div>
+                <button
+                  onClick={() => setShowHeatmap(!showHeatmap)}
+                  className="sa-btn text-xs px-3 py-1"
+                  style={{
+                    background: showHeatmap ? "#D94F4F" : "var(--card)",
+                    color: showHeatmap ? "#fff" : "var(--foreground)",
+                    borderColor: showHeatmap ? "#D94F4F" : "var(--border)",
+                  }}
+                >
+                  {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
+                </button>
+                <button
+                  onClick={resetAgents}
+                  className="sa-btn text-xs px-3 py-1"
+                  disabled={routeRunning}
+                  style={{ opacity: routeRunning ? 0.6 : 1 }}
+                  title="Reset all agents to their original starting positions"
+                >
+                  Reset Agents
+                </button>
               </div>
 
+              {/* Map canvas area — takes remaining height, scrollable if needed */}
+              <div className="flex-1 overflow-auto p-4">
               <SpatialMap
                 shapes={shapes}
                 zones={zones}
@@ -1049,6 +1049,7 @@ export default function Home() {
                 heatmapPoints={heatmapPoints}
                 showHeatmap={showHeatmap}
               />
+              </div>{/* end map canvas area */}
             </div>
           </div>
         )}
