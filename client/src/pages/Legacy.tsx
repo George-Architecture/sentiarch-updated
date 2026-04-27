@@ -1032,10 +1032,15 @@ export default function Home() {
               </div>
 
               <SpatialMap
-                gridConfig={gridConfig}
+                shapes={shapes}
+                zones={zones}
                 agentPositions={agentPositions}
                 activeAgentIdx={activeTab}
                 onAgentPlace={(pos) => placeAgent(activeTab, pos)}
+                onAddShape={addShape}
+                onAddZone={addZone}
+                onUpdateShapes={updateShapes}
+                onDeleteShape={deleteShape}
                 allWaypoints={allWaypoints}
                 onAddWaypoint={addWaypoint}
                 onRemoveWaypoint={removeWaypoint}
