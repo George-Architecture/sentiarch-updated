@@ -803,7 +803,7 @@ export default function Home() {
             <b>{states.length} agent{states.length !== 1 ? "s" : ""}</b>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3" style={{ flexShrink: 0 }}>
           <span className="sa-session-tag">
             <span className="sa-live-dot"></span>SIM · {simLiveLabel}
           </span>
@@ -1157,7 +1157,27 @@ export default function Home() {
       {/* MAP AREA                                                     */}
       {/* ============================================================ */}
       <div className="sa-map-area">
-        <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex" }}>
+        {/* Map action bar — sits above the canvas, never overlaps toolbar */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-1)", flexShrink: 0 }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginRight: 4 }}>Map</span>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={() => setShowHeatmap(!showHeatmap)}
+            className="sa-tool-btn"
+            data-active={showHeatmap}
+          >
+            {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
+          </button>
+          <button
+            onClick={resetAgents}
+            disabled={routeRunning}
+            className="sa-tool-btn"
+            style={{ opacity: routeRunning ? 0.5 : 1 }}
+          >
+            Reset Agents
+          </button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", overflow: "auto" }}>
           <SpatialMap
             shapes={shapes}
             zones={zones}
@@ -1180,26 +1200,7 @@ export default function Home() {
             showHeatmap={showHeatmap}
           />
 
-          {/* Heatmap / Reset action pills (top-right overlay) */}
-          <div style={{ position: "absolute", top: 14, right: 14, display: "flex", gap: 6, zIndex: 6 }}>
-            <button
-              onClick={() => setShowHeatmap(!showHeatmap)}
-              className="sa-tool-btn"
-              data-active={showHeatmap}
-              style={{ backdropFilter: "blur(8px)", background: "rgba(33,30,27,0.92)" }}
-            >
-              {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
-            </button>
-            <button
-              onClick={resetAgents}
-              disabled={routeRunning}
-              className="sa-tool-btn"
-              style={{ opacity: routeRunning ? 0.5 : 1, backdropFilter: "blur(8px)", background: "rgba(33,30,27,0.92)" }}
-              title="Reset all agents to their original starting positions"
-            >
-              Reset Agents
-            </button>
-          </div>
+
 
           {/* Comfort card overlay (top-right, under toolbar) */}
           {current.hasSimulated && (

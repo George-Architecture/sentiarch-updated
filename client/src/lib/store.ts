@@ -58,17 +58,17 @@ export const ANXIETY_MODIFIERS_BY_LEVEL: Record<AnxietyLevel, AnxietyModifiers> 
   },
   moderate: {
     noise_sensitivity: 1.15,
-    thermal_comfort_range: 1.25,
-    exit_proximity_need: 1.2,
-    social_threshold: 1.2,
-    fatigue_accumulation: 1.1,
+    thermal_comfort_range: 1.08,
+    exit_proximity_need: 1.25,
+    social_threshold: 1.20,
+    fatigue_accumulation: 1.12,
   },
   severe: {
-    noise_sensitivity: 1.35,
-    thermal_comfort_range: 1.6,
-    exit_proximity_need: 1.5,
-    social_threshold: 1.45,
-    fatigue_accumulation: 1.25,
+    noise_sensitivity: 1.40,
+    thermal_comfort_range: 1.15,
+    exit_proximity_need: 1.55,
+    social_threshold: 1.50,
+    fatigue_accumulation: 1.30,
   },
 };
 
