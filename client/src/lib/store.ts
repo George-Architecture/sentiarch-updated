@@ -1163,7 +1163,7 @@ AGENT:
 - Met: ${persona.agent.metabolic_rate}, Clo: ${persona.agent.clothing_insulation}
 - ${anxietyLine}
 CURRENT ZONE: ${currentZoneLabel}
-POSITION: Cell [${persona.position.cell.join(", ")}], Time: ${persona.position.timestamp}, Duration: ${persona.position.duration_in_cell} min
+POSITION: Cell [${persona.position.cell.join(", ")}], Time: ${persona.position.timestamp}, Total stay budget: ${persona.position.duration_in_cell} min (sum across all waypoint dwells)
 
 ENVIRONMENT: ${persona.environment.lux} lux, ${persona.environment.dB} dB, ${persona.environment.air_temp}°C, ${persona.environment.humidity}% RH, ${persona.environment.air_velocity} m/s
 
@@ -1184,10 +1184,32 @@ As ${persona.agent.mbti}, reflect cognitive functions and emotional tendencies. 
 }
 
 // ---- Walk / Dwell LLM Prompts ----
+export interface RouteTiming {
+  cumulativeMin: number;   // dwelling minutes elapsed before/including this step
+  totalBudgetMin: number;  // persona.position.duration_in_cell — the visit budget
+  legIndex: number;        // 1-based index of this leg
+  legCount: number;        // total number of legs
+}
+
+function timingBlock(t: RouteTiming, legType: "walking" | "dwelling", legMinutes: number): string {
+  const remaining = Math.max(0, t.totalBudgetMin - t.cumulativeMin);
+  const legLine = legType === "dwelling"
+    ? `THIS STEP: dwelling at this waypoint for ${legMinutes} minute(s).`
+    : `THIS STEP: walking transit (no dwell time counted).`;
+  return `
+ROUTE TIMING (authoritative — IGNORE the "Total stay budget" line above when describing time; use ONLY these values):
+- Leg ${t.legIndex} of ${t.legCount}.
+- ${legLine}
+- Cumulative dwelling time so far (including this step): ${t.cumulativeMin} min of ${t.totalBudgetMin} min total visit budget.
+- Remaining budget after this step: ${remaining} min.
+Do NOT invent durations. Reference time only via the values above.`;
+}
+
 export function buildWalkPrompt(
   persona: PersonaData, computed: ComputedOutputs, shapes: Shape[],
   fromWP: Waypoint, toWP: Waypoint, currentPos: AgentPosition, zones: Zone[] = [],
-  prevAccState?: AccumulatedState
+  prevAccState?: AccumulatedState,
+  timing?: RouteTiming
 ): string {
   const base = buildLLMPrompt(persona, computed, shapes, zones);
   const accBlock = prevAccState ? `
@@ -1199,7 +1221,8 @@ PREVIOUS ACCUMULATED STRESS STATE (from prior steps — these stresses carry for
 - Fatigue: ${prevAccState.fatigue.toFixed(2)}
 - Wayfinding anxiety: ${prevAccState.wayfinding_anxiety.toFixed(2)}
 IMPORTANT: The agent has already accumulated these stress levels. New accumulated_state values should build upon (not reset) these prior levels unless conditions have genuinely improved.` : '';
-  return `${base}${accBlock}
+  const timingStr = timing ? timingBlock(timing, "walking", 0) : '';
+  return `${base}${accBlock}${timingStr}
 
 CONTEXT: The agent is currently WALKING from "${fromWP.label}" (${fromWP.position.x}, ${fromWP.position.y}) to "${toWP.label}" (${toWP.position.x}, ${toWP.position.y}).
 Current position along the path: (${currentPos.x}, ${currentPos.y}).
@@ -1210,7 +1233,8 @@ Keep the narrative brief (2-3 sentences) and first-person.`;
 export function buildDwellPrompt(
   persona: PersonaData, computed: ComputedOutputs, shapes: Shape[],
   waypoint: Waypoint, dwellMinutes: number, zones: Zone[] = [],
-  prevAccState?: AccumulatedState
+  prevAccState?: AccumulatedState,
+  timing?: RouteTiming
 ): string {
   const base = buildLLMPrompt(persona, computed, shapes, zones);
   const accBlock = prevAccState ? `
@@ -1222,9 +1246,10 @@ PREVIOUS ACCUMULATED STRESS STATE (from prior steps — these stresses carry for
 - Fatigue: ${prevAccState.fatigue.toFixed(2)}
 - Wayfinding anxiety: ${prevAccState.wayfinding_anxiety.toFixed(2)}
 IMPORTANT: The agent has already accumulated these stress levels. New accumulated_state values should build upon (not reset) these prior levels unless conditions have genuinely improved.` : '';
-  return `${base}${accBlock}
+  const timingStr = timing ? timingBlock(timing, "dwelling", dwellMinutes) : '';
+  return `${base}${accBlock}${timingStr}
 
-CONTEXT: The agent has arrived at "${waypoint.label}" and is STAYING here for ${dwellMinutes} minutes.
+CONTEXT: The agent has arrived at "${waypoint.label}" and is STAYING here for ${dwellMinutes} minute(s) (see ROUTE TIMING above for cumulative context).
 Position: (${waypoint.position.x}, ${waypoint.position.y}).
 Describe the dwelling experience objectively: how the space actually feels given the environmental data, any sensory discomfort or adaptation, social pressure, and overall condition. Do NOT default to positive — if conditions are poor, the experience should reflect genuine discomfort.
 Keep the narrative brief (2-3 sentences) and first-person.`;

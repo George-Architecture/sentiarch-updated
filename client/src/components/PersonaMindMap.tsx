@@ -271,6 +271,18 @@ const ASI_LEVEL = (v: number) =>
   : v <= 48 ? { label: "MODERATE", color: "var(--amber)" }
   : { label: "SEVERE",   color: "var(--brick)" };
 
+export interface RouteSummary {
+  totalDwellMin: number;
+  totalBudgetMin: number;
+  avgComfort: number;
+  avgStress: number;
+  legCount: number;
+  finalSummary: string;
+  trend: "rising" | "declining" | "stable";
+  startComfort: number;
+  endComfort: number;
+}
+
 export default function PersonaMindMap({
   persona,
   experience,
@@ -283,6 +295,7 @@ export default function PersonaMindMap({
   hasSimulated = true,
   personaColor,
   agentPlaced = false,
+  routeSummary = null,
 }: {
   persona: PersonaData;
   experience: ExperienceData;
@@ -295,6 +308,7 @@ export default function PersonaMindMap({
   hasSimulated?: boolean;
   personaColor?: { primary: string; secondary: string; bg: string; label: string };
   agentPlaced?: boolean;
+  routeSummary?: RouteSummary | null;
 }) {
   const { agent, position, environment, spatial } = persona;
   const asi = agent.anxiety.asi_score;
@@ -521,40 +535,101 @@ export default function PersonaMindMap({
       </Section>
 
       {/* ── 07 · EXPERIENCES ─────────────────────────── */}
-      <Section num="07" title="Env. Satisfaction" tag="amber">
+      <Section
+        num="07"
+        title={routeSummary ? "Env. Satisfaction · Route Summary" : "Env. Satisfaction"}
+        tag="amber"
+        badge={routeSummary ? `${routeSummary.legCount} legs` : undefined}
+      >
         <div style={{
           background: "var(--bg-2)", border: "1px solid var(--line-1)",
           padding: "12px 14px", marginBottom: 10,
           fontFamily: "var(--font-serif)", fontSize: 13, lineHeight: 1.6, color: "var(--ink-1)",
           borderLeft: "2px solid var(--amber)",
         }}>
-          {hasSimulated && experience.summary
-            ? experience.summary
-            : <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>Run calculation to generate narrative…</span>}
+          {routeSummary
+            ? (routeSummary.finalSummary || <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>Route ran but no narrative captured.</span>)
+            : hasSimulated && experience.summary
+              ? experience.summary
+              : <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>Run calculation to generate narrative…</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-2)", letterSpacing: "0.08em" }}>COMFORT</span>
-          <span style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: comfortColor }}>{comfort}</span>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)" }}>/10</span>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, border: "1px solid var(--line-2)", padding: "2px 6px", color: trendColor, marginLeft: 4 }}>
-            {trendArrow} {experience.trend}
-          </span>
-        </div>
-        {prevExperience && (
-          <div style={{
-            marginTop: 10,
-            display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center", textAlign: "center",
-          }}>
-            <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "10px 6px" }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Before</div>
-              <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: prevExperience.comfort_score >= 7 ? "var(--calm)" : prevExperience.comfort_score >= 4 ? "var(--amber)" : "var(--brick)" }}>{prevExperience.comfort_score}</div>
+        {routeSummary ? (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
+              {(() => {
+                const c = routeSummary.avgComfort;
+                const cColor = c >= 7 ? "var(--calm)" : c >= 4 ? "var(--amber)" : "var(--brick)";
+                const s = routeSummary.avgStress;
+                const sColor = s <= 3 ? "var(--calm)" : s <= 6 ? "var(--amber)" : "var(--brick)";
+                const overBudget = routeSummary.totalDwellMin > routeSummary.totalBudgetMin;
+                const tColor = overBudget ? "var(--brick)" : "var(--ink-0)";
+                return (
+                  <>
+                    <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "8px 10px", textAlign: "center" }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Avg Comfort</div>
+                      <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: cColor, lineHeight: 1 }}>
+                        {c}<span style={{ fontSize: 10, color: "var(--ink-3)", marginLeft: 2 }}>/10</span>
+                      </div>
+                    </div>
+                    <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "8px 10px", textAlign: "center" }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Avg Stress</div>
+                      <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: sColor, lineHeight: 1 }}>
+                        {s}<span style={{ fontSize: 10, color: "var(--ink-3)", marginLeft: 2 }}>/10</span>
+                      </div>
+                    </div>
+                    <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "8px 10px", textAlign: "center" }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Time</div>
+                      <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: tColor, lineHeight: 1 }}>
+                        {routeSummary.totalDwellMin}<span style={{ fontSize: 10, color: "var(--ink-3)", marginLeft: 2 }}>/{routeSummary.totalBudgetMin}m</span>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 14, color: "var(--ink-2)" }}>→</div>
-            <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "10px 6px" }}>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>After</div>
-              <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: comfortColor }}>{comfort}</div>
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center", textAlign: "center",
+            }}>
+              <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "10px 6px" }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Start</div>
+                <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: routeSummary.startComfort >= 7 ? "var(--calm)" : routeSummary.startComfort >= 4 ? "var(--amber)" : "var(--brick)" }}>{routeSummary.startComfort}</div>
+              </div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 14, color: routeSummary.trend === "rising" ? "var(--calm)" : routeSummary.trend === "declining" ? "var(--brick)" : "var(--ink-2)" }}>
+                {routeSummary.trend === "rising" ? "↑" : routeSummary.trend === "declining" ? "↓" : "→"}
+              </div>
+              <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "10px 6px" }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>End</div>
+                <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: routeSummary.endComfort >= 7 ? "var(--calm)" : routeSummary.endComfort >= 4 ? "var(--amber)" : "var(--brick)" }}>{routeSummary.endComfort}</div>
+              </div>
             </div>
-          </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-2)", letterSpacing: "0.08em" }}>COMFORT</span>
+              <span style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: comfortColor }}>{comfort}</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)" }}>/10</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, border: "1px solid var(--line-2)", padding: "2px 6px", color: trendColor, marginLeft: 4 }}>
+                {trendArrow} {experience.trend}
+              </span>
+            </div>
+            {prevExperience && (
+              <div style={{
+                marginTop: 10,
+                display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 6, alignItems: "center", textAlign: "center",
+              }}>
+                <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "10px 6px" }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Before</div>
+                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: prevExperience.comfort_score >= 7 ? "var(--calm)" : prevExperience.comfort_score >= 4 ? "var(--amber)" : "var(--brick)" }}>{prevExperience.comfort_score}</div>
+                </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 14, color: "var(--ink-2)" }}>→</div>
+                <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "10px 6px" }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 8, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>After</div>
+                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 22, color: comfortColor }}>{comfort}</div>
+                </div>
+              </div>
+            )}
+          </>
         )}
         {ruleTriggers && ruleTriggers.length > 0 && (
           <div style={{ marginTop: 10 }}>

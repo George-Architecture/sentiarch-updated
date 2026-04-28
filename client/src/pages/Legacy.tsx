@@ -43,7 +43,6 @@ import {
   saveWaypoints,
   loadWaypoints,
   getLLMConfig,
-  callLLM,
   callLLMWithPrompt,
   buildWalkPrompt,
   buildDwellPrompt,
@@ -84,6 +83,28 @@ function lerpPos(a: AgentPosition, b: AgentPosition, t: number): AgentPosition {
 // Distance between two positions (mm)
 function posDist(a: AgentPosition, b: AgentPosition): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
+// Rescale waypoint dwell_minutes proportionally so their sum fits within `budget`.
+// Treats `budget` as the upper limit defined by persona.position.duration_in_cell.
+// Returns the original list unchanged if already within budget or budget <= 0.
+function rescaleWaypointsToBudget(wps: Waypoint[], budget: number): Waypoint[] {
+  if (wps.length === 0 || budget <= 0) return wps;
+  const total = wps.reduce((s, w) => s + Math.max(0, w.dwell_minutes), 0);
+  if (total <= budget) return wps;
+  const ratio = budget / total;
+  const rounded = wps.map((w) => ({
+    ...w,
+    dwell_minutes: Math.max(0, Math.round(w.dwell_minutes * ratio)),
+  }));
+  // Absorb rounding drift in the last waypoint so the sum equals `budget` exactly.
+  const newSum = rounded.reduce((s, w) => s + w.dwell_minutes, 0);
+  const drift = budget - newSum;
+  if (drift !== 0) {
+    const last = rounded[rounded.length - 1];
+    last.dwell_minutes = Math.max(0, last.dwell_minutes + drift);
+  }
+  return rounded;
 }
 
 export default function Home() {
@@ -343,7 +364,8 @@ export default function Home() {
       }
 
       const route = { ...next[agentIdx].route };
-      route.waypoints = [...route.waypoints, wp];
+      const budget = next[agentIdx].persona.position.duration_in_cell;
+      route.waypoints = rescaleWaypointsToBudget([...route.waypoints, wp], budget);
       next[agentIdx] = { ...next[agentIdx], route };
       saveWaypoints(agentIdx, route.waypoints);
       return next;
@@ -367,8 +389,10 @@ export default function Home() {
       const next = [...prev];
       if (!next[agentIdx]) return prev;
       const route = { ...next[agentIdx].route };
-      route.waypoints = route.waypoints.map((w) =>
-        w.id === wpId ? { ...w, dwell_minutes: minutes } : w
+      const budget = next[agentIdx].persona.position.duration_in_cell;
+      route.waypoints = rescaleWaypointsToBudget(
+        route.waypoints.map((w) => (w.id === wpId ? { ...w, dwell_minutes: minutes } : w)),
+        budget
       );
       next[agentIdx] = { ...next[agentIdx], route };
       saveWaypoints(agentIdx, route.waypoints);
@@ -448,6 +472,20 @@ export default function Home() {
       if (!next[idx]) return prev;
       const old = next[idx];
 
+      // The position duration is a SHARED clock: all agents inhabit the same
+      // time budget. When it changes for one, propagate to every agent and
+      // re-clamp each agent's waypoint dwells against the new budget.
+      const oldBudget = old.persona.position.duration_in_cell;
+      const newBudget = newPersona.position.duration_in_cell;
+      const budgetChanged = oldBudget !== newBudget;
+
+      const route = budgetChanged
+        ? { ...old.route, waypoints: rescaleWaypointsToBudget(old.route.waypoints, newBudget) }
+        : old.route;
+      if (budgetChanged && route.waypoints !== old.route.waypoints) {
+        saveWaypoints(idx, route.waypoints);
+      }
+
       if (isAgentCoreChange(old.persona.agent, newPersona.agent)) {
         next[idx] = {
           ...old,
@@ -458,70 +496,35 @@ export default function Home() {
           prevAccState: null,
           triggers: [],
           hasSimulated: false,
+          route,
         };
-        return next;
+      } else {
+        next[idx] = { ...old, persona: newPersona, route };
       }
 
-      next[idx] = { ...old, persona: newPersona };
+      // Propagate the shared budget to every other agent.
+      if (budgetChanged) {
+        for (let i = 0; i < next.length; i++) {
+          if (i === idx) continue;
+          const other = next[i];
+          const rescaled = rescaleWaypointsToBudget(other.route.waypoints, newBudget);
+          if (rescaled !== other.route.waypoints) {
+            saveWaypoints(i, rescaled);
+          }
+          next[i] = {
+            ...other,
+            persona: {
+              ...other.persona,
+              position: { ...other.persona.position, duration_in_cell: newBudget },
+            },
+            route: { ...other.route, waypoints: rescaled },
+          };
+        }
+      }
+
       return next;
     });
   }, []);
-
-  // Simulate single persona (snapshot)
-  const simulateSingle = async (idx: number): Promise<boolean> => {
-    const s = states[idx];
-    if (!s) return false;
-    const result = await callLLM(s.persona, s.computed, shapes, zones);
-    if (!result) return false;
-
-    setStates((prev) => {
-      const next = [...prev];
-      if (!next[idx]) return prev;
-      const old = next[idx];
-      const prevScore = old.hasSimulated ? old.experience.comfort_score : 0;
-      const newScore = result.experience.comfort_score;
-      let trend: "rising" | "declining" | "stable" = "stable";
-      if (prevScore > 0) {
-        const delta = newScore - prevScore;
-        if (delta > 0.5) trend = "rising";
-        else if (delta < -0.5) trend = "declining";
-      }
-
-      next[idx] = {
-        ...old,
-        prevExperience: old.hasSimulated ? { ...old.experience } : null,
-        prevAccState: old.hasSimulated ? { ...old.accState } : null,
-        experience: { ...result.experience, trend },
-        accState: result.accumulatedState,
-        triggers: result.ruleTriggers,
-        hasSimulated: true,
-      };
-      return next;
-    });
-    return true;
-  };
-
-  // Batch simulate (snapshot)
-  const batchSimulate = async () => {
-    if (!getLLMConfig()) {
-      toast.error("Please configure API key first");
-      navigate("/settings");
-      return;
-    }
-    const toRun = simChecked.map((c, i) => c ? i : -1).filter((i) => i >= 0 && i < states.length);
-    if (toRun.length === 0) {
-      toast.error("Please select at least one persona to simulate");
-      return;
-    }
-    setRunning(true);
-    toast.info(`Simulating ${toRun.length} persona(s)...`);
-    const results = await Promise.all(toRun.map((idx) => simulateSingle(idx)));
-    const successes = results.filter(Boolean).length;
-    const failures = results.filter((r) => !r).length;
-    if (successes > 0) toast.success(`${successes} simulation(s) complete!`);
-    if (failures > 0) toast.error(`${failures} simulation(s) failed.`);
-    setRunning(false);
-  };
 
   // ---- Route Playback Engine ----
   const runRouteForAgent = async (idx: number): Promise<PerceptionLogEntry[]> => {
@@ -536,6 +539,10 @@ export default function Home() {
     const fullPath: AgentPosition[] = [s.agentPos, ...wps.map(w => w.position)];
     // Track accumulated state across steps
     let currentAccState: typeof s.accState = { ...s.accState };
+    // Cumulative dwell minutes elapsed (walks don't accumulate; only dwells do).
+    let cumulativeDwellMin = 0;
+    const totalBudgetMin = s.persona.position.duration_in_cell;
+    const legCount = fullPath.length - 1;
 
     for (let i = 0; i < fullPath.length - 1; i++) {
       if (routeAbortRef.current) break;
@@ -559,7 +566,10 @@ export default function Home() {
         ? { id: "agent-start", position: fromPos, dwell_minutes: 0, label: "Agent Start" }
         : wps[i-1];
 
-      const walkPrompt = buildWalkPrompt(walkPersona, walkComputed, shapes, dummyFromWP, targetWP, midPos, zones, currentAccState);
+      const walkPrompt = buildWalkPrompt(
+        walkPersona, walkComputed, shapes, dummyFromWP, targetWP, midPos, zones, currentAccState,
+        { cumulativeMin: cumulativeDwellMin, totalBudgetMin, legIndex: i + 1, legCount }
+      );
       const walkResult = await callLLMWithPrompt(walkPrompt);
 
       const walkEntry: PerceptionLogEntry = {
@@ -604,7 +614,11 @@ export default function Home() {
       const dwellPersona = { ...s.persona, environment: dwellEnvData, spatial: dwellSpatial };
       const dwellComputed = computeOutputs(dwellPersona);
 
-      const dwellPrompt = buildDwellPrompt(dwellPersona, dwellComputed, shapes, targetWP, targetWP.dwell_minutes, zones, currentAccState);
+      cumulativeDwellMin += targetWP.dwell_minutes;
+      const dwellPrompt = buildDwellPrompt(
+        dwellPersona, dwellComputed, shapes, targetWP, targetWP.dwell_minutes, zones, currentAccState,
+        { cumulativeMin: cumulativeDwellMin, totalBudgetMin, legIndex: i + 1, legCount }
+      );
       const dwellResult = await callLLMWithPrompt(dwellPrompt);
 
       const dwellEntry: PerceptionLogEntry = {
@@ -642,36 +656,99 @@ export default function Home() {
     return log;
   };
 
-  const runAllRoutes = async () => {
+  // Stationary "stay-in-place" simulation: agent has no waypoints, so we
+  // simulate dwelling at their current position for the full duration budget.
+  // Produces a single dwelling PerceptionLogEntry so §07 Route Summary works.
+  const simulateStationary = async (idx: number): Promise<PerceptionLogEntry[]> => {
+    const s = states[idx];
+    if (!s || !s.agentPos) return [];
+
+    const pos = s.agentPos;
+    const dwellEnv = getEnvAtPosition(pos.x, pos.y, zones, shapes);
+    const dwellEnvData = zoneEnvToEnvironment(dwellEnv);
+    const dwellSpatial = computeSpatialFromAgent(pos, shapes, s.persona.spatial);
+    const dwellPersona = { ...s.persona, environment: dwellEnvData, spatial: dwellSpatial };
+    const dwellComputed = computeOutputs(dwellPersona);
+    const totalBudgetMin = s.persona.position.duration_in_cell;
+
+    const stationaryWP: Waypoint = {
+      id: "stationary",
+      label: "Position",
+      position: pos,
+      dwell_minutes: totalBudgetMin,
+    };
+
+    const prompt = buildDwellPrompt(
+      dwellPersona, dwellComputed, shapes, stationaryWP, totalBudgetMin, zones, undefined,
+      { cumulativeMin: totalBudgetMin, totalBudgetMin, legIndex: 1, legCount: 1 }
+    );
+    const result = await callLLMWithPrompt(prompt);
+
+    const entry: PerceptionLogEntry = {
+      waypoint_id: stationaryWP.id,
+      phase: "dwelling",
+      position: pos,
+      environment: dwellEnvData,
+      spatial: dwellSpatial,
+      computed: dwellComputed,
+      experience: result?.experience || { summary: "Stayed in position.", comfort_score: 5, trend: "stable" },
+      accState: result?.accumulatedState || s.accState,
+      triggers: result?.ruleTriggers || [],
+      timestamp: new Date().toISOString(),
+    };
+
+    if (result) {
+      setStates((prev) => {
+        const next = [...prev];
+        if (!next[idx]) return prev;
+        next[idx] = {
+          ...next[idx],
+          experience: result.experience,
+          accState: result.accumulatedState,
+          triggers: result.ruleTriggers,
+          hasSimulated: true,
+        };
+        return next;
+      });
+    }
+
+    return [entry];
+  };
+
+  // Unified run: every selected agent gets simulated. Agents with waypoints
+  // run the full route; agents without waypoints dwell in place for the
+  // shared duration budget. Both feed the same Route Summary in §07.
+  const runUnifiedSimulation = async () => {
     if (!getLLMConfig()) {
       toast.error("Please configure API key first");
       navigate("/settings");
       return;
     }
 
-    const agentsWithRoutes = states
-      .map((s, i) => ({ idx: i, wps: s.route.waypoints, hasPos: !!s.agentPos }))
-      .filter((a) => a.hasPos && a.wps.length >= 1 && simChecked[a.idx]);
+    const toRun = states
+      .map((s, i) => ({ idx: i, s }))
+      .filter(({ s, idx }) => simChecked[idx] && !!s.agentPos);
 
-    if (agentsWithRoutes.length === 0) {
-      toast.error("No agents have waypoint routes defined (need agent placed and at least 1 waypoint)");
+    if (toRun.length === 0) {
+      toast.error("Place at least one selected agent on the map first.");
       return;
     }
 
-    // Snapshot each participating agent's current position before any movement
+    const withRoute = toRun.filter(({ s }) => s.route.waypoints.length >= 1);
+    const stationary = toRun.filter(({ s }) => s.route.waypoints.length === 0);
+
+    // Snapshot positions of moving agents so resetAgents can restore them.
     const snapshot: Record<number, AgentPosition | null> = {};
-    agentsWithRoutes.forEach(({ idx }) => {
-      snapshot[idx] = states[idx]?.agentPos ?? null;
-    });
+    withRoute.forEach(({ idx }) => { snapshot[idx] = states[idx]?.agentPos ?? null; });
     originalAgentPositionsRef.current = snapshot;
 
     setRouteRunning(true);
     routeAbortRef.current = false;
     setPathTrails({});
-    toast.info(`Running route simulation for ${agentsWithRoutes.length} agent(s)...`);
+    toast.info(`Simulating ${withRoute.length} route(s) + ${stationary.length} stationary...`);
 
-    const results = await Promise.all(
-      agentsWithRoutes.map(async ({ idx }) => {
+    const results = await Promise.all([
+      ...withRoute.map(async ({ idx }) => {
         try {
           const log = await runRouteForAgent(idx);
           return { idx, log };
@@ -679,8 +756,17 @@ export default function Home() {
           console.error(`Route failed for agent ${idx}:`, err);
           return { idx, log: [] };
         }
-      })
-    );
+      }),
+      ...stationary.map(async ({ idx }) => {
+        try {
+          const log = await simulateStationary(idx);
+          return { idx, log };
+        } catch (err) {
+          console.error(`Stationary failed for agent ${idx}:`, err);
+          return { idx, log: [] };
+        }
+      }),
+    ]);
 
     setStates((prev) => {
       const next = [...prev];
@@ -696,7 +782,7 @@ export default function Home() {
     });
 
     const total = results.reduce((s, r) => s + r.log.length, 0);
-    toast.success(`Route simulation complete! ${total} perception entries logged.`);
+    toast.success(`Simulation complete: ${total} entries logged.`);
     setRouteRunning(false);
   };
 
@@ -769,6 +855,43 @@ export default function Home() {
   const activeWPs = states[activeTab]?.route.waypoints || [];
   const activeLog = states[activeTab]?.route.perceptionLog || [];
 
+  // Roll the per-leg perception log into a single Env. Satisfaction summary.
+  // Works for both route runs (multi-leg) and stationary runs (single dwell).
+  const activeRouteSummary = useMemo(() => {
+    if (!current || activeLog.length === 0) return null;
+    const dwellEntries = activeLog.filter((e) => e.phase === "dwelling");
+    if (dwellEntries.length === 0) return null;
+    const avgComfort = Math.round(
+      (activeLog.reduce((s, e) => s + e.experience.comfort_score, 0) / activeLog.length) * 10
+    ) / 10;
+    const avgStress = Math.round(
+      (dwellEntries.reduce((s, e) => s + computeStressScore(e.accState), 0) / dwellEntries.length) * 10
+    ) / 10;
+    const hasRoute = activeWPs.length > 0;
+    const totalBudgetMin = current.persona.position.duration_in_cell;
+    const totalDwellMin = hasRoute
+      ? activeWPs.reduce((s, w) => s + (w.dwell_minutes || 0), 0)
+      : totalBudgetMin;
+    const legCount = hasRoute ? activeWPs.length : 1;
+    const startComfort = activeLog[0].experience.comfort_score;
+    const endComfort = activeLog[activeLog.length - 1].experience.comfort_score;
+    const delta = endComfort - startComfort;
+    const trend: "rising" | "declining" | "stable" =
+      delta > 0.5 ? "rising" : delta < -0.5 ? "declining" : "stable";
+    const finalSummary = dwellEntries[dwellEntries.length - 1].experience.summary || "";
+    return {
+      totalDwellMin,
+      totalBudgetMin,
+      avgComfort,
+      avgStress,
+      legCount,
+      finalSummary,
+      trend,
+      startComfort,
+      endComfort,
+    };
+  }, [activeLog, activeWPs, current]);
+
   if (!current) return null;
 
   // ---- Derived values for bottom bar / comfort strip ----
@@ -810,11 +933,11 @@ export default function Home() {
           <button className="sa-btn" onClick={exportJSON}>Export JSON</button>
           <button
             className="sa-btn sa-btn-primary"
-            onClick={batchSimulate}
+            onClick={runUnifiedSimulation}
             disabled={running || routeRunning}
             style={{ opacity: (running || routeRunning) ? 0.5 : 1 }}
           >
-            {running ? "Calculating…" : "Run Calculation"}
+            {routeRunning ? "Simulating…" : "Run Simulation"}
           </button>
           <button className="sa-btn" onClick={() => navigate("/settings")}>Settings</button>
         </div>
@@ -944,6 +1067,7 @@ export default function Home() {
             hasSimulated={current.hasSimulated}
             personaColor={getPersonaColor(activeTab)}
             agentPlaced={current.agentPos !== null}
+            routeSummary={activeRouteSummary}
           />
         )}
 
@@ -961,7 +1085,7 @@ export default function Home() {
             {routeRunning ? (
               <button className="sa-btn sa-btn-danger" style={{ flex: 1, fontSize: 11 }} onClick={stopRoutes}>Stop Routes</button>
             ) : (
-              <button className="sa-btn sa-btn-primary" style={{ flex: 1, fontSize: 11 }} disabled={running} onClick={runAllRoutes}>Run Route Simulation</button>
+              <button className="sa-btn sa-btn-primary" style={{ flex: 1, fontSize: 11 }} disabled={running} onClick={runUnifiedSimulation}>Run Simulation</button>
             )}
             {activeWPs.length > 0 && (
               <button className="sa-btn" style={{ fontSize: 11, color: "var(--brick)", borderColor: "var(--brick)" }} onClick={() => clearWaypoints(activeTab)}>Clear</button>
@@ -1160,6 +1284,37 @@ export default function Home() {
         {/* Map action bar — sits above the canvas, never overlaps toolbar */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-1)", flexShrink: 0 }}>
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginRight: 4 }}>Map</span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Active</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            {states.map((s, i) => {
+              const color = getPersonaColor(i);
+              const isActive = activeTab === i;
+              return (
+                <button
+                  key={i}
+                  onClick={() => setActiveTab(i)}
+                  title={s.persona.agent.id}
+                  style={{
+                    padding: "3px 9px",
+                    border: `1px solid ${isActive ? color.primary : "var(--line-1)"}`,
+                    background: isActive ? `${color.primary}22` : "var(--bg-2)",
+                    color: isActive ? color.primary : "var(--ink-2)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    letterSpacing: "0.06em",
+                    borderRadius: 2,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                >
+                  <span style={{ width: 7, height: 7, background: color.primary, borderRadius: 1 }} />
+                  {s.persona.agent.id}
+                </button>
+              );
+            })}
+          </div>
           <div style={{ flex: 1 }} />
           <button
             onClick={() => setShowHeatmap(!showHeatmap)}
@@ -1254,16 +1409,16 @@ export default function Home() {
             className="sa-transport-btn sa-transport-btn-primary"
             onClick={() => {
               if (routeRunning) stopRoutes();
-              else runAllRoutes();
+              else runUnifiedSimulation();
             }}
             disabled={running}
-            title={routeRunning ? "Stop route simulation" : "Run route simulation"}
+            title={routeRunning ? "Stop simulation" : "Run simulation (route + stationary)"}
           >{routeRunning ? "❚❚" : "▶"}</button>
           <button
             className="sa-transport-btn"
-            onClick={batchSimulate}
+            onClick={runUnifiedSimulation}
             disabled={running || routeRunning}
-            title="Run snapshot simulation"
+            title="Run simulation"
           >⏭</button>
           <button
             className="sa-transport-btn"
