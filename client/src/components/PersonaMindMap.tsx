@@ -267,7 +267,8 @@ function InlineSlider({
 
 const ASI_LEVEL = (v: number) =>
   v <= 16 ? { label: "NORMAL",   color: "var(--calm)" }
-  : v <= 23 ? { label: "MODERATE", color: "var(--amber)" }
+  : v <= 23 ? { label: "MILD",     color: "var(--amber)" }
+  : v <= 48 ? { label: "MODERATE", color: "var(--amber)" }
   : { label: "SEVERE",   color: "var(--brick)" };
 
 export default function PersonaMindMap({
@@ -338,9 +339,9 @@ export default function PersonaMindMap({
     return [
       { k: "Noise sensitivity", v: m.noise_sensitivity },
       { k: "Thermal range", v: 1 / m.thermal_comfort_range },
+      { k: "Personal space", v: m.personal_space_radius },
+      { k: "Enclosure sens.", v: m.enclosure_sensitivity },
       { k: "Exit proximity", v: m.exit_proximity_need },
-      { k: "Social threshold", v: m.social_threshold },
-      { k: "Fatigue accum.", v: m.fatigue_accumulation },
     ];
   }, [agent.anxiety.modifiers]);
 
@@ -440,7 +441,7 @@ export default function PersonaMindMap({
           ))}
         </div>
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)", marginTop: 8, lineHeight: 1.5 }}>
-          0–16 normal · 17–23 moderate · 24–72 severe
+          0–16 normal · 17–23 mild · 24–48 moderate · 49–72 severe
         </div>
       </Section>
 
