@@ -1012,7 +1012,7 @@ export function posToCell(x: number, y: number, cellSize = 1000): [number, numbe
 }
 
 // ---- Default Layout ----
-export const DEFAULT_LAYOUT = defaultLayoutData as {
+export const DEFAULT_LAYOUT = defaultLayoutData as unknown as {
   shapes: Shape[];
   zones: Zone[];
   agentPositions: (AgentPosition | null)[];
