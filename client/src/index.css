@@ -45,17 +45,17 @@
 :root {
   --radius: 4px;
 
-  /* ── Claude dark theme palette ───────────────────────────────── */
-  --bg-0: #1a1816;       /* deepest — outside canvas */
-  --bg-1: #211e1b;       /* panel base */
-  --bg-2: #28241f;       /* raised */
-  --bg-3: #2f2a24;       /* hover */
-  --line-1: #3a342c;     /* hairlines */
-  --line-2: #4a4338;     /* stronger lines */
-  --ink-0: #f4ecde;      /* primary text — warm bone */
-  --ink-1: #c9bfae;      /* secondary */
-  --ink-2: #8a8174;      /* tertiary / labels */
-  --ink-3: #5a5347;      /* faint / annotations */
+  /* ── Light theme palette ───────────────────────────────── */
+  --bg-0: #ffffff;       /* deepest — outside canvas */
+  --bg-1: #f9f8f7;       /* panel base */
+  --bg-2: #f0ede8;       /* raised */
+  --bg-3: #e8e4df;       /* hover */
+  --line-1: #e0dcd7;     /* hairlines */
+  --line-2: #d0ccc7;     /* stronger lines */
+  --ink-0: #1a1a1a;      /* primary text — dark */
+  --ink-1: #333333;      /* secondary */
+  --ink-2: #666666;      /* tertiary / labels */
+  --ink-3: #999999;      /* faint / annotations */
 
   --amber: #e8a04a;
   --amber-soft: #d68e3a;
@@ -371,7 +371,7 @@
   .sa-btn-primary:active { background: var(--amber-soft); }
   .sa-btn-danger {
     background: var(--brick);
-    color: #fff;
+    color: var(--ink-0);
     border-color: var(--brick);
   }
   .sa-btn-danger:hover { background: var(--brick-soft); border-color: var(--brick-soft); }
