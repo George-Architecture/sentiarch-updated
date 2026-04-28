@@ -23,14 +23,14 @@ import defaultLayoutData from "./defaultLayout.json";
 //                             requirement
 //   • social_threshold      — reserved for future crowd / social-overload use
 //   • fatigue_accumulation  — reserved for future fatigue carry-over use
-export type AnxietyLevel = "normal" | "moderate" | "severe";
+export type AnxietyLevel = "normal" | "mild" | "moderate" | "severe";
 
 export interface AnxietyModifiers {
   noise_sensitivity: number;
   thermal_comfort_range: number;
+  personal_space_radius: number;
+  enclosure_sensitivity: number;
   exit_proximity_need: number;
-  social_threshold: number;
-  fatigue_accumulation: number;
 }
 
 export interface AnxietyData {
@@ -43,7 +43,8 @@ export interface AnxietyData {
 export function deriveAnxietyLevel(asiScore: number): AnxietyLevel {
   const s = Math.max(0, Math.min(72, Math.round(asiScore)));
   if (s <= 16) return "normal";
-  if (s <= 23) return "moderate";
+  if (s <= 23) return "mild";
+  if (s <= 48) return "moderate";
   return "severe";
 }
 
@@ -52,23 +53,30 @@ export const ANXIETY_MODIFIERS_BY_LEVEL: Record<AnxietyLevel, AnxietyModifiers> 
   normal: {
     noise_sensitivity: 1.0,
     thermal_comfort_range: 1.0,
+    personal_space_radius: 1.0,
+    enclosure_sensitivity: 1.0,
     exit_proximity_need: 1.0,
-    social_threshold: 1.0,
-    fatigue_accumulation: 1.0,
+  },
+  mild: {
+    noise_sensitivity: 1.2,
+    thermal_comfort_range: 1.3,
+    personal_space_radius: 1.05,
+    enclosure_sensitivity: 1.2,
+    exit_proximity_need: 1.2,
   },
   moderate: {
-    noise_sensitivity: 1.15,
-    thermal_comfort_range: 1.25,
-    exit_proximity_need: 1.2,
-    social_threshold: 1.2,
-    fatigue_accumulation: 1.1,
+    noise_sensitivity: 1.4,
+    thermal_comfort_range: 1.6,
+    personal_space_radius: 1.09,
+    enclosure_sensitivity: 1.5,
+    exit_proximity_need: 1.5,
   },
   severe: {
-    noise_sensitivity: 1.35,
-    thermal_comfort_range: 1.6,
-    exit_proximity_need: 1.5,
-    social_threshold: 1.45,
-    fatigue_accumulation: 1.25,
+    noise_sensitivity: 1.6,
+    thermal_comfort_range: 1.9,
+    personal_space_radius: 1.15,
+    enclosure_sensitivity: 1.8,
+    exit_proximity_need: 1.9,
   },
 };
 
@@ -1012,7 +1020,7 @@ export function posToCell(x: number, y: number, cellSize = 1000): [number, numbe
 }
 
 // ---- Default Layout ----
-export const DEFAULT_LAYOUT = defaultLayoutData as {
+export const DEFAULT_LAYOUT = defaultLayoutData as unknown as {
   shapes: Shape[];
   zones: Zone[];
   agentPositions: (AgentPosition | null)[];

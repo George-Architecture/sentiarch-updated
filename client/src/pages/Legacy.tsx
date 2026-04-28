@@ -771,74 +771,69 @@ export default function Home() {
 
   if (!current) return null;
 
+  // ---- Derived values for bottom bar / comfort strip ----
+  const comfortScore = current.experience.comfort_score || 0;
+  const comfortColor = comfortScore >= 7 ? "var(--calm)" : comfortScore >= 4 ? "var(--amber)" : "var(--brick)";
+  const simLiveLabel = running ? "CALC" : routeRunning ? "ROUTE" : current.hasSimulated ? "READY" : "IDLE";
+  const simulatedCount = states.filter((s) => s.hasSimulated).length;
+  const totalWaypoints = Object.values(allWaypoints).reduce((acc, wps) => acc + wps.length, 0);
+
   return (
-    <div className="min-h-screen" style={{ background: "var(--background)" }}>
-      {/* ---- Header ---- */}
-      <header style={{
-        background: "var(--card)",
-        borderBottom: "1px solid var(--border)",
-        boxShadow: "0 1px 8px rgba(0,0,0,0.04)",
-      }}>
-        <div className="container py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold" style={{ color: "var(--foreground)" }}>
-              SentiArch
-            </h1>
-            <p className="text-xs mt-0.5 tracking-wide" style={{ color: "var(--muted-foreground)" }}>
-              Multi-Agent Environmental Experience Model
-            </p>
+    <div className="sa-shell">
+      {/* ============================================================ */}
+      {/* TOP BAR                                                      */}
+      {/* ============================================================ */}
+      <div className="sa-topbar">
+        <div className="flex items-center gap-5" style={{ minWidth: 0 }}>
+          <div className="sa-brand">
+            <svg viewBox="0 0 22 22" fill="none" width="22" height="22" style={{ flexShrink: 0 }}>
+              <rect x="2" y="2" width="18" height="18" stroke="var(--amber)" strokeWidth="1.2" />
+              <path d="M2 11 L20 11 M11 2 L11 20" stroke="var(--amber)" strokeWidth="0.6" strokeDasharray="1.5 1.5" />
+              <circle cx="11" cy="11" r="3.2" fill="var(--amber)" opacity="0.85" />
+            </svg>
+            <span>SentiArch</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="text-right hidden md:block mr-3">
-              <div className="text-sm font-medium" style={{ color: "var(--foreground)", fontFamily: "'JetBrains Mono', monospace" }}>
-                {current.persona.agent.id}
-              </div>
-              <div className="text-xs font-medium" style={{
-                color: current.experience.comfort_score > 0
-                  ? (current.experience.trend === "declining" ? "#D94F4F" : current.experience.trend === "rising" ? "#1D9E75" : "var(--muted-foreground)")
-                  : "var(--muted-foreground)",
-              }}>
-                Comfort {current.experience.comfort_score}/10
-              </div>
-            </div>
-            <button className="sa-btn" onClick={exportJSON}>
-              Export JSON
-            </button>
-            <button
-              className="sa-btn sa-btn-primary"
-              onClick={batchSimulate}
-              disabled={running || routeRunning}
-              style={{ opacity: (running || routeRunning) ? 0.6 : 1 }}
-            >
-              {running ? "Calculating..." : "Run Current Calculation"}
-            </button>
-            <button
-              className="sa-btn"
-              onClick={() => navigate("/settings")}
-              style={{ padding: "8px 12px" }}
-            >
-              Settings
-            </button>
+          <div className="sa-crumb" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span>Project</span>
+            <span style={{ color: "var(--ink-3)" }}>·</span>
+            <b>SENTIARCH / Multi-Agent</b>
+            <span style={{ color: "var(--ink-3)" }}>·</span>
+            <span>Scenario</span>
+            <span style={{ color: "var(--ink-3)" }}>·</span>
+            <b>{states.length} agent{states.length !== 1 ? "s" : ""}</b>
           </div>
         </div>
-      </header>
+        <div className="flex items-center gap-3" style={{ flexShrink: 0 }}>
+          <span className="sa-session-tag">
+            <span className="sa-live-dot"></span>SIM · {simLiveLabel}
+          </span>
+          <button className="sa-btn" onClick={exportJSON}>Export JSON</button>
+          <button
+            className="sa-btn sa-btn-primary"
+            onClick={batchSimulate}
+            disabled={running || routeRunning}
+            style={{ opacity: (running || routeRunning) ? 0.5 : 1 }}
+          >
+            {running ? "Calculating…" : "Run Calculation"}
+          </button>
+          <button className="sa-btn" onClick={() => navigate("/settings")}>Settings</button>
+        </div>
+      </div>
 
-      {/* ---- Persona Mind Map Section ---- */}
-      <section>
-        <div className="container py-6">
-          {/* Section header */}
-          <div className="flex items-center gap-3 mb-5">
-            <div className="sa-tag" style={{ background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" }}>
-              Persona Mind Map
-            </div>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-              Click values to edit
+      {/* ============================================================ */}
+      {/* LEFT PANEL — persona tabs, mind map, waypoints, logs         */}
+      {/* ============================================================ */}
+      <div className="sa-left-panel">
+        {/* --- Agent tabs & comparison toggle --- */}
+        <div className="sa-section">
+          <div className="sa-section-head">
+            <span className="sa-section-title">
+              <span className="sa-section-dot" style={{ background: "var(--amber)" }} />
+              <span><span className="sa-section-title-num">00</span> · Agents</span>
             </span>
+            <span className="sa-section-meta">{states.length} agent{states.length !== 1 ? "s" : ""}</span>
           </div>
-
-          {/* ---- Dynamic Persona Tabs ---- */}
-          <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 10 }}>
             {states.map((s, i) => {
               const color = getPersonaColor(i);
               const isActive = activeTab === i;
@@ -846,81 +841,72 @@ export default function Home() {
                 <div key={i} className="relative group">
                   <button
                     onClick={() => setActiveTab(i)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium"
                     style={{
-                      background: isActive ? color.primary : "var(--card)",
-                      color: isActive ? "#fff" : color.primary,
-                      border: `1.5px solid ${isActive ? color.primary : "var(--border)"}`,
-                      boxShadow: isActive
-                        ? `0 2px 8px ${color.primary}30`
-                        : "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
-                      transform: isActive ? "translateY(-1px)" : "none",
+                      padding: "4px 10px",
+                      border: `1px solid ${isActive ? color.primary : "var(--line-1)"}`,
+                      background: isActive ? `${color.primary}22` : "var(--bg-2)",
+                      color: isActive ? color.primary : "var(--ink-2)",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                      letterSpacing: "0.06em",
+                      borderRadius: 2,
+                      cursor: "pointer",
                     }}
                   >
-                    <div className="w-4 h-4 rounded-full" style={{
-                      background: isActive ? "#fff" : color.primary,
-                      opacity: isActive ? 0.9 : 0.7,
-                    }} />
-                    <span>{s.persona.agent.id}</span>
+                    {s.persona.agent.id}
                   </button>
-                  {/* Remove button on hover */}
                   {states.length > 1 && (
                     <button
                       onClick={(e) => { e.stopPropagation(); removeAgent(i); }}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity"
-                      style={{
-                        background: "#D94F4F",
-                        color: "#fff",
-                        boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
-                        lineHeight: 1,
-                      }}
-                      title={`Remove P${i + 1}`}
-                    >
-                      x
-                    </button>
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ background: "var(--brick)", color: "#fff", fontSize: 9, lineHeight: 1, borderRadius: 2 }}
+                      title={`Remove ${s.persona.agent.id}`}
+                    >×</button>
                   )}
                 </div>
               );
             })}
-
-            {/* Add Agent Button */}
             <button
               onClick={addAgent}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all text-sm font-medium"
               style={{
-                background: "var(--card)",
-                color: "var(--muted-foreground)",
-                border: "1.5px dashed var(--border)",
-                boxShadow: "2px 2px 6px rgba(0,0,0,0.04), -1px -1px 4px rgba(255,255,255,0.7)",
+                padding: "4px 10px",
+                border: "1px dashed var(--line-2)",
+                background: "transparent",
+                color: "var(--ink-2)",
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+                letterSpacing: "0.06em",
+                borderRadius: 2,
+                cursor: "pointer",
               }}
               title="Add new agent"
-            >
-              <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
-              <span>Add Agent</span>
-            </button>
-
+            >+ ADD</button>
             <div className="flex-1" />
             <button
               onClick={() => setShowComparison(!showComparison)}
-              className="sa-btn text-xs"
               style={{
-                background: showComparison ? "var(--foreground)" : "var(--card)",
-                color: showComparison ? "#fff" : "var(--foreground)",
+                padding: "4px 10px",
+                border: `1px solid ${showComparison ? "var(--amber)" : "var(--line-2)"}`,
+                background: showComparison ? "rgba(232,160,74,0.12)" : "var(--bg-2)",
+                color: showComparison ? "var(--amber)" : "var(--ink-2)",
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                borderRadius: 2,
+                cursor: "pointer",
               }}
             >
               {showComparison ? "Close Compare" : "Compare All"}
             </button>
           </div>
 
-          {/* Simulate Checkboxes */}
-          <div className="flex items-center gap-4 mb-4 px-1 flex-wrap">
-            <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
-              Simulate:
-            </span>
+          <div className="flex items-center gap-3 flex-wrap" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
+            <span style={{ color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Simulate</span>
             {states.map((s, i) => {
               const color = getPersonaColor(i);
               return (
-                <label key={i} className="flex items-center gap-1.5 cursor-pointer">
+                <label key={i} className="flex items-center gap-1.5" style={{ cursor: "pointer" }}>
                   <input
                     type="checkbox"
                     checked={simChecked[i] ?? true}
@@ -929,79 +915,269 @@ export default function Home() {
                       next[i] = e.target.checked;
                       setSimChecked(next);
                     }}
-                    className="w-4 h-4 rounded"
-                    style={{ accentColor: color.primary }}
+                    style={{ width: 12, height: 12, accentColor: color.primary }}
                   />
-                  <span className="text-sm" style={{ color: color.primary, fontFamily: "'JetBrains Mono', monospace" }}>
+                  <span style={{ color: color.primary, fontFamily: "var(--font-mono)", fontSize: 11 }}>
                     {s.persona.agent.id}
                   </span>
                 </label>
               );
             })}
           </div>
-
-          {/* Comparison View */}
-          {showComparison && <ComparisonView states={states} />}
-
-          {/* Active Persona Mind Map */}
-          {!showComparison && (
-            <PersonaMindMap
-              persona={current.persona}
-              experience={current.experience}
-              accumulatedState={current.accState}
-              computedOutputs={current.computed}
-              ruleTriggers={current.triggers}
-              prevExperience={current.prevExperience}
-              prevAccumulatedState={current.prevAccState}
-              onPersonaChange={(p) => updatePersonaWithEnvSync(activeTab, p)}
-              hasSimulated={current.hasSimulated}
-              personaColor={getPersonaColor(activeTab)}
-              agentPlaced={current.agentPos !== null}
-            />
-          )}
         </div>
-      </section>
 
-      {/* ---- Divider ---- */}
-      <div className="container">
-        <div className="h-px" style={{ background: "var(--border)" }} />
-      </div>
+        {/* --- Comparison view or active persona mind map --- */}
+        {showComparison ? (
+          <div className="sa-section">
+            <ComparisonView states={states} />
+          </div>
+        ) : (
+          <PersonaMindMap
+            persona={current.persona}
+            experience={current.experience}
+            accumulatedState={current.accState}
+            computedOutputs={current.computed}
+            ruleTriggers={current.triggers}
+            prevExperience={current.prevExperience}
+            prevAccumulatedState={current.prevAccState}
+            onPersonaChange={(p) => updatePersonaWithEnvSync(activeTab, p)}
+            hasSimulated={current.hasSimulated}
+            personaColor={getPersonaColor(activeTab)}
+            agentPlaced={current.agentPos !== null}
+          />
+        )}
 
-      {/* ---- Spatial Map Section ---- */}
-      <section>
-        <div className="container py-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="sa-tag" style={{ background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" }}>
-              Spatial Map
-            </div>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                Click to place Agent #{activeTab + 1} &middot; World Coordinates (mm)
-              </span>
-              <button
-                onClick={() => setShowHeatmap(!showHeatmap)}
-                className="sa-btn text-xs px-3 py-1"
-                style={{
-                  background: showHeatmap ? "#D94F4F" : "var(--card)",
-                  color: showHeatmap ? "#fff" : "var(--foreground)",
-                  borderColor: showHeatmap ? "#D94F4F" : "var(--border)",
-                }}
-              >
-                {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
-              </button>
-              <button
-                onClick={resetAgents}
-                className="sa-btn text-xs px-3 py-1"
-                disabled={routeRunning}
-                style={{ opacity: routeRunning ? 0.6 : 1 }}
-                title="Reset all agents to their original starting positions"
-              >
-                Reset Agents
-              </button>
-            </div>
+        {/* --- Waypoint Route section --- */}
+        <div className="sa-section">
+          <div className="sa-section-head">
+            <span className="sa-section-title">
+              <span className="sa-section-dot" style={{ background: "var(--brick)" }} />
+              <span><span className="sa-section-title-num">09</span> · Waypoint Route</span>
+            </span>
+            <span className="sa-section-meta">{activeWPs.length} WP</span>
           </div>
 
+          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+            {routeRunning ? (
+              <button className="sa-btn sa-btn-danger" style={{ flex: 1, fontSize: 11 }} onClick={stopRoutes}>Stop Routes</button>
+            ) : (
+              <button className="sa-btn sa-btn-primary" style={{ flex: 1, fontSize: 11 }} disabled={running} onClick={runAllRoutes}>Run Route Simulation</button>
+            )}
+            {activeWPs.length > 0 && (
+              <button className="sa-btn" style={{ fontSize: 11, color: "var(--brick)", borderColor: "var(--brick)" }} onClick={() => clearWaypoints(activeTab)}>Clear</button>
+            )}
+          </div>
+
+          {activeWPs.length === 0 ? (
+            <p style={{ fontSize: 11, color: "var(--ink-3)", lineHeight: 1.6, fontFamily: "var(--font-mono)" }}>
+              Select the Waypoint tool on the map toolbar and click to place waypoints for {current.persona.agent.id}. At least 2 waypoints are needed.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {activeWPs.map((wp, i) => (
+                <div key={wp.id} style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "6px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)",
+                }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: getPersonaColor(activeTab).primary, minWidth: 20, fontWeight: 600 }}>{i + 1}</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-0)", minWidth: 40 }}>{wp.label}</span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)" }}>({wp.position.x}, {wp.position.y})</span>
+                  <div className="flex-1" />
+                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--ink-2)", fontFamily: "var(--font-mono)" }}>
+                    <span>DWELL</span>
+                    <input
+                      type="number" min={0} max={120} value={wp.dwell_minutes}
+                      onChange={(e) => updateWaypointDwell(activeTab, wp.id, parseInt(e.target.value) || 0)}
+                      style={{
+                        width: 44, padding: "2px 4px", textAlign: "center",
+                        background: "var(--bg-1)", border: "1px solid var(--line-1)",
+                        color: "var(--ink-0)", fontFamily: "var(--font-mono)", fontSize: 11,
+                      }}
+                    />
+                    <span style={{ color: "var(--ink-3)" }}>min</span>
+                  </label>
+                  <button
+                    onClick={() => removeWaypoint(activeTab, wp.id)}
+                    style={{ width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", color: "var(--brick)", border: "1px solid var(--line-1)", fontSize: 11, cursor: "pointer" }}
+                    title="Remove waypoint"
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* --- Route results summary --- */}
+        {activeLog.length > 0 && (() => {
+          const dwellEntries = activeLog.filter((e) => e.phase === "dwelling");
+          const walkEntries = activeLog.filter((e) => e.phase === "walking");
+          const avgComfort = activeLog.length > 0
+            ? Math.round((activeLog.reduce((s, e) => s + e.experience.comfort_score, 0) / activeLog.length) * 10) / 10
+            : 0;
+          const avgStress = dwellEntries.length > 0
+            ? Math.round((dwellEntries.reduce((s, e) => s + computeStressScore(e.accState), 0) / dwellEntries.length) * 10) / 10
+            : 0;
+
+          const pillColor = (good: boolean, mid: boolean) => good ? "var(--calm)" : mid ? "var(--amber)" : "var(--brick)";
+
+          return (
+            <div className="sa-section">
+              <div className="sa-section-head">
+                <span className="sa-section-title">
+                  <span className="sa-section-dot" style={{ background: "var(--calm)" }} />
+                  <span><span className="sa-section-title-num">10</span> · Route Results</span>
+                </span>
+                <span className="sa-section-meta">{activeLog.length} entries</span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
+                <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "8px 10px", textAlign: "center" }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Avg Comfort</div>
+                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: pillColor(avgComfort >= 7, avgComfort >= 4), lineHeight: 1 }}>{avgComfort}<span style={{ fontSize: 10, color: "var(--ink-3)", marginLeft: 2 }}>/10</span></div>
+                </div>
+                <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "8px 10px", textAlign: "center" }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Avg Stress</div>
+                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: pillColor(avgStress <= 3, avgStress <= 6), lineHeight: 1 }}>{avgStress}<span style={{ fontSize: 10, color: "var(--ink-3)", marginLeft: 2 }}>/10</span></div>
+                </div>
+                <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)", padding: "8px 10px", textAlign: "center" }}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Entries</div>
+                  <div style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: "var(--ink-0)", lineHeight: 1 }}>{activeLog.length}</div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {dwellEntries.map((entry, i) => {
+                  const wp = activeWPs.find((w) => w.id === entry.waypoint_id);
+                  const stress = computeStressScore(entry.accState);
+                  const stressCol = stress <= 3 ? "var(--calm)" : stress <= 6 ? "var(--amber)" : "var(--brick)";
+                  const comfortCol = entry.experience.comfort_score >= 7 ? "var(--calm)" : entry.experience.comfort_score >= 4 ? "var(--amber)" : "var(--brick)";
+                  const walkEntry = walkEntries.find((w) => w.to === entry.waypoint_id);
+                  return (
+                    <div key={i} style={{ background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-1)" }}>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: getPersonaColor(activeTab).primary, fontWeight: 600 }}>{wp?.label || `WP${i+1}`}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)" }}>({entry.position.x}, {entry.position.y})</span>
+                        <div className="flex-1" />
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: comfortCol }}>C {entry.experience.comfort_score}/10</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: stressCol }}>S {stress}/10</span>
+                      </div>
+                      <div style={{ padding: "8px 10px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "4px 12px", marginBottom: 8 }}>
+                          {([
+                            { key: "thermal_discomfort", label: "Thermal" },
+                            { key: "visual_strain",      label: "Visual"  },
+                            { key: "noise_stress",       label: "Noise"   },
+                            { key: "social_overload",    label: "Social"  },
+                            { key: "fatigue",            label: "Fatigue" },
+                            { key: "wayfinding_anxiety", label: "Wayfind" },
+                          ] as const).map(({ key, label }) => {
+                            const val = entry.accState[key];
+                            const col = val <= 0.3 ? "var(--calm)" : val <= 0.6 ? "var(--amber)" : "var(--brick)";
+                            return (
+                              <div key={key}>
+                                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: 9 }}>
+                                  <span style={{ color: "var(--ink-3)" }}>{label}</span>
+                                  <span style={{ color: col }}>{val.toFixed(1)}</span>
+                                </div>
+                                <div style={{ width: "100%", height: 2, background: "var(--line-1)", marginTop: 2 }}>
+                                  <div style={{ width: `${Math.min(100, val*100)}%`, height: "100%", background: col }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p style={{ fontSize: 12, lineHeight: 1.5, color: "var(--ink-1)", fontFamily: "var(--font-serif)", borderLeft: "2px solid var(--amber)", paddingLeft: 10, margin: 0 }}>{entry.experience.summary}</p>
+                        {walkEntry && (
+                          <div style={{ marginTop: 8, padding: "6px 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--teal)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                              <span style={{ border: "1px solid var(--teal)", padding: "1px 5px" }}>WALK</span>
+                              <span style={{ color: "var(--ink-3)" }}>en route to {wp?.label || "?"}</span>
+                            </div>
+                            <p style={{ fontSize: 11, lineHeight: 1.5, color: "var(--ink-2)", margin: 0 }}>{walkEntry.experience.summary}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <details style={{ marginTop: 10 }}>
+                <summary style={{ cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                  Full Perception Log — {activeLog.length} entries
+                </summary>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8, maxHeight: 300, overflowY: "auto" }}>
+                  {activeLog.map((entry, i) => (
+                    <div key={i} style={{ padding: "6px 8px", background: entry.phase === "walking" ? "rgba(122,166,196,0.08)" : "rgba(138,166,118,0.08)", border: `1px solid ${entry.phase === "walking" ? "rgba(122,166,196,0.2)" : "rgba(138,166,118,0.2)"}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, fontFamily: "var(--font-mono)", fontSize: 9 }}>
+                        <span style={{ padding: "1px 5px", border: `1px solid ${entry.phase === "walking" ? "var(--teal)" : "var(--calm)"}`, color: entry.phase === "walking" ? "var(--teal)" : "var(--calm)", letterSpacing: "0.1em" }}>
+                          {entry.phase === "walking" ? "WALK" : "DWELL"}
+                        </span>
+                        {entry.phase === "walking" && entry.from && entry.to && (
+                          <span style={{ color: "var(--ink-3)" }}>
+                            {activeWPs.find((w) => w.id === entry.from)?.label || "?"} → {activeWPs.find((w) => w.id === entry.to)?.label || "?"}
+                          </span>
+                        )}
+                        {entry.phase === "dwelling" && (
+                          <span style={{ color: "var(--ink-3)" }}>@ {activeWPs.find((w) => w.id === entry.waypoint_id)?.label || "?"}</span>
+                        )}
+                        <div className="flex-1" />
+                        <span style={{ color: "var(--ink-3)" }}>S {computeStressScore(entry.accState).toFixed(1)}</span>
+                        <span style={{ color: entry.experience.comfort_score >= 7 ? "var(--calm)" : entry.experience.comfort_score >= 4 ? "var(--amber)" : "var(--brick)" }}>C {entry.experience.comfort_score}/10</span>
+                      </div>
+                      <p style={{ fontSize: 11, lineHeight: 1.4, color: "var(--ink-1)", margin: 0 }}>{entry.experience.summary}</p>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
+          );
+        })()}
+
+        {/* --- Coordinate Input section --- */}
+        <div className="sa-section" style={{ borderBottom: "none" }}>
+          <div className="sa-section-head">
+            <span className="sa-section-title">
+              <span className="sa-section-dot" style={{ background: "var(--teal)" }} />
+              <span><span className="sa-section-title-num">11</span> · Coordinate Input</span>
+            </span>
+          </div>
+          <CoordinateInput
+            onAddShape={addShape}
+            onClearAll={clearAll}
+            zones={zones}
+            onAddZone={addZone}
+            onUpdateZone={updateZone}
+            onRemoveZone={removeZone}
+          />
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* MAP AREA                                                     */}
+      {/* ============================================================ */}
+      <div className="sa-map-area">
+        {/* Map action bar — sits above the canvas, never overlaps toolbar */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-1)", flexShrink: 0 }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginRight: 4 }}>Map</span>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={() => setShowHeatmap(!showHeatmap)}
+            className="sa-tool-btn"
+            data-active={showHeatmap}
+          >
+            {showHeatmap ? "Hide Heatmap" : "Stress Heatmap"}
+          </button>
+          <button
+            onClick={resetAgents}
+            disabled={routeRunning}
+            className="sa-tool-btn"
+            style={{ opacity: routeRunning ? 0.5 : 1 }}
+          >
+            Reset Agents
+          </button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", overflow: "auto" }}>
           <SpatialMap
             shapes={shapes}
             zones={zones}
@@ -1023,377 +1199,101 @@ export default function Home() {
             heatmapPoints={heatmapPoints}
             showHeatmap={showHeatmap}
           />
-        </div>
-      </section>
 
-      {/* ---- Divider ---- */}
-      <div className="container">
-        <div className="h-px" style={{ background: "var(--border)" }} />
-      </div>
 
-      {/* ---- Waypoint Route Section ---- */}
-      <section>
-        <div className="container py-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="sa-tag" style={{ background: "#E67E22", color: "#fff", borderColor: "#E67E22" }}>
-              Waypoint Routes
-            </div>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-            <div className="flex items-center gap-2">
-              {routeRunning ? (
-                <button className="sa-btn text-xs" onClick={stopRoutes}
-                  style={{ background: "#D94F4F15", color: "#D94F4F", borderColor: "#D94F4F40" }}>
-                  Stop Routes
-                </button>
-              ) : (
-                <button className="sa-btn sa-btn-primary text-xs" onClick={runAllRoutes}
-                  disabled={running}
-                  style={{ background: "#E67E22", borderColor: "#E67E22" }}>
-                  Run Route Simulation
-                </button>
-              )}
-            </div>
-          </div>
 
-          {/* Active agent waypoints */}
-          <div className="sa-card">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-3 h-3 rounded-full" style={{ background: getPersonaColor(activeTab).primary }} />
-              <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-                P{activeTab + 1} Route — {activeWPs.length} waypoint{activeWPs.length !== 1 ? "s" : ""}
-              </span>
-              <div className="flex-1" />
-              {activeWPs.length > 0 && (
-                <button className="sa-btn text-xs" onClick={() => clearWaypoints(activeTab)}
-                  style={{ background: "#D94F4F10", color: "#D94F4F", borderColor: "#D94F4F30" }}>
-                  Clear Route
-                </button>
-              )}
-            </div>
-
-            {activeWPs.length === 0 ? (
-              <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                Select the Waypoint tool on the map toolbar and click to place waypoints for this agent.
-                At least 2 waypoints are needed to run a route simulation.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {activeWPs.map((wp, i) => (
-                  <div key={wp.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{
-                    background: "var(--background)",
-                    border: "1px solid var(--border)",
-                  }}>
-                    <span className="text-xs font-bold" style={{
-                      color: getPersonaColor(activeTab).primary,
-                      fontFamily: "'JetBrains Mono', monospace",
-                      minWidth: "24px",
-                    }}>
-                      {i + 1}
-                    </span>
-                    <span className="text-xs font-medium" style={{ color: "var(--foreground)", minWidth: "50px" }}>
-                      {wp.label}
-                    </span>
-                    <span className="text-xs" style={{
-                      color: "var(--muted-foreground)",
-                      fontFamily: "'JetBrains Mono', monospace",
-                    }}>
-                      ({wp.position.x}, {wp.position.y})
-                    </span>
-                    <div className="flex-1" />
-                    <label className="flex items-center gap-1.5 text-xs">
-                      <span style={{ color: "var(--muted-foreground)" }}>Dwell:</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={120}
-                        value={wp.dwell_minutes}
-                        onChange={(e) => updateWaypointDwell(activeTab, wp.id, parseInt(e.target.value) || 0)}
-                        className="w-12 px-1 py-0.5 rounded text-xs text-center"
-                        style={{
-                          background: "var(--card)",
-                          border: "1px solid var(--border)",
-                          color: "var(--foreground)",
-                          fontFamily: "'JetBrains Mono', monospace",
-                        }}
-                      />
-                      <span style={{ color: "var(--muted-foreground)" }}>min</span>
-                    </label>
-                    <button
-                      onClick={() => removeWaypoint(activeTab, wp.id)}
-                      className="w-5 h-5 flex items-center justify-center rounded text-xs"
-                      style={{ background: "#D94F4F15", color: "#D94F4F" }}
-                      title="Remove waypoint"
-                    >
-                      x
-                    </button>
-                  </div>
-                ))}
+          {/* Comfort card overlay (top-right, under toolbar) */}
+          {current.hasSimulated && (
+            <div style={{
+              position: "absolute", top: 58, right: 14, zIndex: 5,
+              background: "rgba(33,30,27,0.92)", backdropFilter: "blur(8px)",
+              border: "1px solid var(--line-2)", padding: "12px 16px", minWidth: 200,
+            }}>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-2)", marginBottom: 6 }}>
+                Comfort Score · {current.persona.agent.id}
               </div>
-            )}
-          </div>
-
-          {/* ---- Results Panel: Per-Waypoint Summary ---- */}
-          {activeLog.length > 0 && (() => {
-            const dwellEntries = activeLog.filter((e) => e.phase === "dwelling");
-            const walkEntries = activeLog.filter((e) => e.phase === "walking");
-            const avgComfort = activeLog.length > 0
-              ? Math.round((activeLog.reduce((s, e) => s + e.experience.comfort_score, 0) / activeLog.length) * 10) / 10
-              : 0;
-            const avgStress = dwellEntries.length > 0
-              ? Math.round((dwellEntries.reduce((s, e) => s + computeStressScore(e.accState), 0) / dwellEntries.length) * 10) / 10
-              : 0;
-
-            return (
-              <>
-                <div className="sa-card mt-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-                      Route Results Summary
-                    </span>
-                    <div className="flex-1" />
-                    <div className="flex items-center gap-3">
-                      <div className="text-center px-3 py-1.5 rounded-lg" style={{
-                        background: avgComfort >= 7 ? "#1D9E7512" : avgComfort >= 4 ? "#E67E2212" : "#D94F4F12",
-                        border: `1px solid ${avgComfort >= 7 ? "#1D9E7530" : avgComfort >= 4 ? "#E67E2230" : "#D94F4F30"}`,
-                      }}>
-                        <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>Avg Comfort</div>
-                        <div className="text-lg font-bold" style={{
-                          color: avgComfort >= 7 ? "#1D9E75" : avgComfort >= 4 ? "#E67E22" : "#D94F4F",
-                          fontFamily: "'JetBrains Mono', monospace",
-                        }}>{avgComfort}/10</div>
-                      </div>
-                      <div className="text-center px-3 py-1.5 rounded-lg" style={{
-                        background: avgStress <= 3 ? "#1D9E7512" : avgStress <= 6 ? "#E67E2212" : "#D94F4F12",
-                        border: `1px solid ${avgStress <= 3 ? "#1D9E7530" : avgStress <= 6 ? "#E67E2230" : "#D94F4F30"}`,
-                      }}>
-                        <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>Avg Stress</div>
-                        <div className="text-lg font-bold" style={{
-                          color: avgStress <= 3 ? "#1D9E75" : avgStress <= 6 ? "#E67E22" : "#D94F4F",
-                          fontFamily: "'JetBrains Mono', monospace",
-                        }}>{avgStress}/10</div>
-                      </div>
-                      <div className="text-center px-3 py-1.5 rounded-lg" style={{
-                        background: "var(--background)",
-                        border: "1px solid var(--border)",
-                      }}>
-                        <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>Entries</div>
-                        <div className="text-lg font-bold" style={{
-                          color: "var(--foreground)",
-                          fontFamily: "'JetBrains Mono', monospace",
-                        }}>{activeLog.length}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {dwellEntries.map((entry, i) => {
-                      const wp = activeWPs.find((w) => w.id === entry.waypoint_id);
-                      const stress = computeStressScore(entry.accState);
-                      const stressColor = stress <= 3 ? "#1D9E75" : stress <= 6 ? "#E67E22" : "#D94F4F";
-                      const comfortColor = entry.experience.comfort_score >= 7 ? "#1D9E75" :
-                                           entry.experience.comfort_score >= 4 ? "#E67E22" : "#D94F4F";
-                      const walkEntry = walkEntries.find((w) => w.to === entry.waypoint_id);
-
-                      return (
-                        <div key={i} className="rounded-xl overflow-hidden" style={{
-                          border: "1px solid var(--border)",
-                          background: "var(--background)",
-                        }}>
-                          <div className="flex items-center gap-3 px-4 py-2.5" style={{
-                            background: "var(--card)",
-                            borderBottom: "1px solid var(--border)",
-                          }}>
-                            <span className="text-sm font-bold" style={{
-                              color: getPersonaColor(activeTab).primary,
-                              fontFamily: "'JetBrains Mono', monospace",
-                            }}>
-                              {wp?.label || `WP${i + 1}`}
-                            </span>
-                            <span className="text-xs" style={{
-                              color: "var(--muted-foreground)",
-                              fontFamily: "'JetBrains Mono', monospace",
-                            }}>
-                              ({entry.position.x}, {entry.position.y})
-                            </span>
-                            <div className="flex-1" />
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-1 px-2 py-0.5 rounded" style={{
-                                background: `${comfortColor}12`,
-                                border: `1px solid ${comfortColor}30`,
-                              }}>
-                                <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>Comfort</span>
-                                <span className="text-xs font-bold" style={{
-                                  color: comfortColor,
-                                  fontFamily: "'JetBrains Mono', monospace",
-                                }}>{entry.experience.comfort_score}/10</span>
-                              </div>
-                              <div className="flex items-center gap-1 px-2 py-0.5 rounded" style={{
-                                background: `${stressColor}12`,
-                                border: `1px solid ${stressColor}30`,
-                              }}>
-                                <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>Stress</span>
-                                <span className="text-xs font-bold" style={{
-                                  color: stressColor,
-                                  fontFamily: "'JetBrains Mono', monospace",
-                                }}>{stress}/10</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="px-4 py-3">
-                            <div className="grid grid-cols-3 gap-x-4 gap-y-2 mb-3">
-                              {([
-                                { key: "thermal_discomfort", label: "Thermal" },
-                                { key: "visual_strain", label: "Visual" },
-                                { key: "noise_stress", label: "Noise" },
-                                { key: "social_overload", label: "Social" },
-                                { key: "fatigue", label: "Fatigue" },
-                                { key: "wayfinding_anxiety", label: "Wayfinding" },
-                              ] as const).map(({ key, label }) => {
-                                const val = entry.accState[key];
-                                const barColor = val <= 0.3 ? "#1D9E75" : val <= 0.6 ? "#E67E22" : "#D94F4F";
-                                return (
-                                  <div key={key}>
-                                    <div className="flex items-center justify-between mb-0.5">
-                                      <span className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "10px" }}>{label}</span>
-                                      <span className="text-xs font-medium" style={{
-                                        color: barColor,
-                                        fontFamily: "'JetBrains Mono', monospace",
-                                        fontSize: "10px",
-                                      }}>{val.toFixed(1)}</span>
-                                    </div>
-                                    <div className="w-full h-1.5 rounded-full" style={{ background: "var(--border)" }}>
-                                      <div className="h-full rounded-full transition-all" style={{
-                                        width: `${Math.min(100, val * 100)}%`,
-                                        background: barColor,
-                                        opacity: 0.7,
-                                      }} />
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-
-                            <div className="rounded-lg px-3 py-2" style={{
-                              background: "var(--card)",
-                              border: "1px solid var(--border)",
-                            }}>
-                              <p className="text-xs leading-relaxed" style={{ color: "var(--foreground)" }}>
-                                {entry.experience.summary}
-                              </p>
-                            </div>
-
-                            {walkEntry && (
-                              <div className="mt-2 rounded-lg px-3 py-2" style={{
-                                background: "#3B82F606",
-                                border: "1px solid #3B82F615",
-                              }}>
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <span className="text-xs font-bold px-1 py-0.5 rounded" style={{
-                                    background: "#3B82F612",
-                                    color: "#3B82F6",
-                                    fontFamily: "'JetBrains Mono', monospace",
-                                    fontSize: "9px",
-                                  }}>WALK</span>
-                                  <span className="text-xs" style={{ color: "var(--muted-foreground)", fontSize: "10px" }}>
-                                    en route to {wp?.label || "?"}
-                                  </span>
-                                </div>
-                                <p className="text-xs leading-relaxed" style={{ color: "var(--foreground)" }}>
-                                  {walkEntry.experience.summary}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <details className="sa-card mt-4">
-                  <summary className="cursor-pointer text-sm font-semibold" style={{ color: "var(--foreground)" }}>
-                    Full Perception Log — {activeLog.length} entries
-                  </summary>
-                  <div className="space-y-2 mt-3 max-h-80 overflow-y-auto">
-                    {activeLog.map((entry, i) => (
-                      <div key={i} className="px-3 py-2 rounded-lg" style={{
-                        background: entry.phase === "walking" ? "#3B82F608" : "#1D9E7508",
-                        border: `1px solid ${entry.phase === "walking" ? "#3B82F620" : "#1D9E7520"}`,
-                      }}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{
-                            background: entry.phase === "walking" ? "#3B82F615" : "#1D9E7515",
-                            color: entry.phase === "walking" ? "#3B82F6" : "#1D9E75",
-                            fontFamily: "'JetBrains Mono', monospace",
-                          }}>
-                            {entry.phase === "walking" ? "WALK" : "DWELL"}
-                          </span>
-                          {entry.phase === "walking" && entry.from && entry.to && (
-                            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                              {activeWPs.find((w) => w.id === entry.from)?.label || "?"} → {activeWPs.find((w) => w.id === entry.to)?.label || "?"}
-                            </span>
-                          )}
-                          {entry.phase === "dwelling" && (
-                            <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                              @ {activeWPs.find((w) => w.id === entry.waypoint_id)?.label || "?"}
-                            </span>
-                          )}
-                          <div className="flex-1" />
-                          <span className="text-xs" style={{
-                            color: "var(--muted-foreground)",
-                            fontFamily: "'JetBrains Mono', monospace",
-                            fontSize: "10px",
-                          }}>
-                            Stress: {computeStressScore(entry.accState).toFixed(1)}
-                          </span>
-                          <span className="text-xs font-medium" style={{
-                            color: entry.experience.comfort_score >= 7 ? "#1D9E75" :
-                                   entry.experience.comfort_score >= 4 ? "#E67E22" : "#D94F4F",
-                            fontFamily: "'JetBrains Mono', monospace",
-                          }}>
-                            {entry.experience.comfort_score}/10
-                          </span>
-                        </div>
-                        <p className="text-xs leading-relaxed" style={{ color: "var(--foreground)" }}>
-                          {entry.experience.summary}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              </>
-            );
-          })()}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ fontFamily: "var(--font-serif)", fontSize: 32, color: comfortColor, lineHeight: 1 }}>{comfortScore}</span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)" }}>/10</span>
+                <div className="flex-1" />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: current.experience.trend === "rising" ? "var(--calm)" : current.experience.trend === "declining" ? "var(--brick)" : "var(--ink-2)" }}>
+                  {current.experience.trend === "rising" ? "↑" : current.experience.trend === "declining" ? "↓" : "→"} {current.experience.trend}
+                </span>
+              </div>
+              <div style={{ height: 3, background: "var(--line-1)", marginTop: 10 }}>
+                <div style={{ height: "100%", width: `${comfortScore * 10}%`, background: comfortColor, transition: "width 0.3s" }} />
+              </div>
+            </div>
+          )}
         </div>
-      </section>
 
-      {/* ---- Divider ---- */}
-      <div className="container">
-        <div className="h-px" style={{ background: "var(--border)" }} />
+        {/* Comfort strip between map and bottom bar */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 18px", height: 40, borderTop: "1px solid var(--line-1)", background: "var(--bg-1)", flexShrink: 0 }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-2)", letterSpacing: "0.1em" }}>COMFORT</span>
+          <span style={{ fontFamily: "var(--font-serif)", fontSize: 20, color: comfortColor }}>{comfortScore}</span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)" }}>/10</span>
+          <div style={{ flex: 1, height: 3, background: "var(--line-1)", position: "relative" }}>
+            <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${comfortScore * 10}%`, background: comfortColor, transition: "width 0.3s" }} />
+          </div>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.06em" }}>{current.persona.agent.id} · {current.experience.trend}</span>
+        </div>
       </div>
 
-      {/* ---- Coordinate Input Section ---- */}
-      <section>
-        <div className="container py-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="sa-tag" style={{ background: "var(--primary)", color: "#fff", borderColor: "var(--primary)" }}>
-              Coordinate Input
-            </div>
-            <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-          </div>
-          <div className="sa-card">
-            <CoordinateInput
-              onAddShape={addShape}
-              onClearAll={clearAll}
-              zones={zones}
-              onAddZone={addZone}
-              onUpdateZone={updateZone}
-              onRemoveZone={removeZone}
-            />
-          </div>
+      {/* ============================================================ */}
+      {/* BOTTOM BAR — transport, timeline, status pills               */}
+      {/* ============================================================ */}
+      <div className="sa-bottom-bar">
+        <div className="sa-transport">
+          <button
+            className="sa-transport-btn"
+            onClick={resetAgents}
+            disabled={routeRunning}
+            title="Reset all agents"
+          >⏮</button>
+          <button
+            className="sa-transport-btn sa-transport-btn-primary"
+            onClick={() => {
+              if (routeRunning) stopRoutes();
+              else runAllRoutes();
+            }}
+            disabled={running}
+            title={routeRunning ? "Stop route simulation" : "Run route simulation"}
+          >{routeRunning ? "❚❚" : "▶"}</button>
+          <button
+            className="sa-transport-btn"
+            onClick={batchSimulate}
+            disabled={running || routeRunning}
+            title="Run snapshot simulation"
+          >⏭</button>
+          <button
+            className="sa-transport-btn"
+            onClick={clearAll}
+            title="Clear map"
+          >↻</button>
         </div>
-      </section>
+
+        <div className="sa-timeline">
+          <div className="sa-timeline-track" />
+          <div className="sa-timeline-fill" style={{ width: `${Math.min(100, simulatedCount / Math.max(1, states.length) * 100)}%` }} />
+          {states.map((s, i) => (
+            <div
+              key={i}
+              className={`sa-timeline-event ${s.hasSimulated ? "sa-timeline-event-amber" : ""}`}
+              style={{ left: `${((i + 0.5) / states.length) * 100}%` }}
+              title={s.persona.agent.id}
+            />
+          ))}
+          <span style={{ position: "absolute", bottom: -2, left: 0, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)" }}>AGENT 1</span>
+          <span style={{ position: "absolute", bottom: -2, right: 0, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-3)" }}>AGENT {states.length}</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="sa-status-pill"><span className="sa-live-dot" />LLM SYNC</span>
+          <span className="sa-status-pill">WAYPOINTS · {totalWaypoints}</span>
+          <span className="sa-status-pill">SHAPES · {shapes.length}</span>
+          <span className="sa-status-pill">ZONES · {zones.length}</span>
+        </div>
+      </div>
     </div>
   );
 }
