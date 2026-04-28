@@ -338,7 +338,7 @@ export default function PersonaMindMap({
     const m = agent.anxiety.modifiers;
     return [
       { k: "Noise sensitivity", v: m.noise_sensitivity },
-      { k: "Thermal range", v: 1 / m.thermal_comfort_range },
+      { k: "Thermal range", v: m.thermal_comfort_range },
       { k: "Personal space", v: m.personal_space_radius },
       { k: "Enclosure sens.", v: m.enclosure_sensitivity },
       { k: "Exit proximity", v: m.exit_proximity_need },
